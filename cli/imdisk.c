@@ -1502,7 +1502,7 @@ wmain(int argc, LPWSTR argv[])
       {
 	printf
 	  ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\n"
-	   "Version %i.%i.%i - (Compiled " __TIMESTAMP__ ")\n"
+	   "Version %i.%i.%i - (Compiled " __DATE__ ")\n"
 	   "\n"
 	   "Copyright (C) 2004-2009 Olof Lagerkvist.\r\n"
 "\n"

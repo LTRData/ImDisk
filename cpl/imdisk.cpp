@@ -444,7 +444,7 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
 
   SetDlgItemText(hWndStatus, IDC_STATUS_MSG, L"Saving image file...");
 
-  if (ImDiskSaveImageFile(hDev, hImage, 2 << 20, &bCancelFlag))
+  if (ImDiskSaveImageFile(hDev, hImage, 0, &bCancelFlag))
     {
       DestroyWindow(hWndStatus);
       EnableWindow(hWnd, TRUE);
@@ -1409,7 +1409,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	     (int) (IMDISK_VERSION & 0xFF00) >> 8,
 	     (int) (IMDISK_VERSION & 0xF0) >> 4,
 	     (int) IMDISK_VERSION & 0xF,
-	     __TIMESTAMP__);
+	     __DATE__);
 
 	  return TRUE;
 	}

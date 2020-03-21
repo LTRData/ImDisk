@@ -1,7 +1,7 @@
 /*
     API library for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2007-2009 Olof Lagerkvist.
+    Copyright (C) 2007-2010 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -1344,7 +1344,7 @@ ImDiskRemoveDevice(HWND hWnd,
 		  return FALSE;
 		}
 
-	      if (!ImDiskSaveImageFile(device, image, 2 << 20, NULL))
+	      if (!ImDiskSaveImageFile(device, image, 0, NULL))
 		{
 		  MsgBoxLastError(hWnd, L"Error saving image:");
 
@@ -1706,27 +1706,29 @@ BOOL
 WINAPI
 ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		    IN HANDLE FileHandle,
-		    IN DWORD BufferSize,
+		    IN DWORD BufferSize OPTIONAL,
 		    IN LPBOOL CancelFlag OPTIONAL)
 {
   LPBYTE buffer;
   IMDISK_SET_DEVICE_FLAGS device_flags = { 0 };
-  LONGLONG disk_size;
+  LARGE_INTEGER disk_size;
+  LONGLONG saved_size = 0;
   DWORD dwReadSize;
   DWORD dwWriteSize;
+  ULARGE_INTEGER image_size = { 0 };
 
-  if (BufferSize == 0)
-    {
-      SetLastError(ERROR_INVALID_PARAMETER);
-      return FALSE;
-    }
-
-  buffer = VirtualAlloc(NULL, BufferSize, MEM_COMMIT, PAGE_READWRITE);
-  if (buffer == NULL)
+  if (!ImDiskGetVolumeSize(DeviceHandle, &disk_size.QuadPart))
     return FALSE;
 
-  // Turn on FSCTL_ALLOW_EXTENDED_DASD_IO so that we can make sure that we
-  // read the entire drive
+  if (disk_size.QuadPart == 0)
+    return TRUE;
+
+  // Auto-select buffer size based on disk size
+  if (BufferSize == 0)
+    BufferSize = 1 << 19;
+
+  // Turn on FSCTL_ALLOW_EXTENDED_DASD_IO so that we can make sure that
+  // we read the entire drive
   DeviceIoControl(DeviceHandle,
 		  FSCTL_ALLOW_EXTENDED_DASD_IO,
 		  NULL,
@@ -1735,6 +1737,10 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		  0,
 		  &dwReadSize,
 		  NULL);
+
+  buffer = VirtualAlloc(NULL, BufferSize, MEM_COMMIT, PAGE_READWRITE);
+  if (buffer == NULL)
+    return FALSE;
 
   for (;;)
     {
@@ -1749,6 +1755,9 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 	      return FALSE;
 	    }
 	}
+
+      if (disk_size.QuadPart - saved_size < BufferSize)
+	BufferSize = (DWORD) (disk_size.QuadPart - saved_size);
 
       if (!ReadFile(DeviceHandle, buffer, BufferSize, &dwReadSize, NULL))
 	{
@@ -1772,6 +1781,8 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 	  return FALSE;
 	}
 
+      saved_size += dwWriteSize;
+
       if (dwWriteSize != dwReadSize)
 	{
 	  DWORD dwLastError = GetLastError();
@@ -1793,25 +1804,21 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		  NULL);
 
   // This piece of code compares size of created image file with that of the
-  // original disk volume and possibly adjusts image file size to fill out to
-  // same size.
-  if (ImDiskGetVolumeSize(DeviceHandle, &disk_size))
+  // original disk volume and possibly adjusts image file size if it does not
+  // exactly match the size of the original disk/partition.
+  image_size.LowPart = GetFileSize(FileHandle, &image_size.HighPart);
+  if (image_size.QuadPart != 0)
     {
-      ULARGE_INTEGER image_size = { 0 };
-      image_size.LowPart = GetFileSize(FileHandle, &image_size.HighPart);
-      if (image_size.QuadPart != 0)
-	{
-	  DWORD ptr = SetFilePointer(FileHandle,
-				     image_size.LowPart,
-				     (LPLONG) &image_size.HighPart,
-				     FILE_BEGIN);
-	  if (ptr == INVALID_SET_FILE_POINTER)
-	    if (GetLastError() == NO_ERROR)
-	      ptr = 0;
+      DWORD ptr = SetFilePointer(FileHandle,
+				 disk_size.LowPart,
+				 (LPLONG) &disk_size.HighPart,
+				 FILE_BEGIN);
+      if (ptr == INVALID_SET_FILE_POINTER)
+	if (GetLastError() == NO_ERROR)
+	  ptr = 0;
 
-	  if (ptr != INVALID_SET_FILE_POINTER)
-	    SetEndOfFile(FileHandle);
-	}
+      if (ptr != INVALID_SET_FILE_POINTER)
+	SetEndOfFile(FileHandle);
     }
 
   return TRUE;
@@ -1825,6 +1832,15 @@ ImDiskGetVolumeSize(IN HANDLE Handle,
   PARTITION_INFORMATION partition_info = { 0 };
   DISK_GEOMETRY disk_geometry = { 0 };
   DWORD dwBytesReturned;
+
+  DeviceIoControl(Handle,
+		  IOCTL_DISK_UPDATE_PROPERTIES,
+		  NULL,
+		  0,
+		  NULL,
+		  0,
+		  &dwBytesReturned,
+		  NULL);
 
   if (DeviceIoControl(Handle,
 		      IOCTL_DISK_GET_PARTITION_INFO,

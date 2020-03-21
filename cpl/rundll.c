@@ -234,7 +234,7 @@ RunDLL_SaveImageFile(HWND hWnd,
 
   SetDlgItemText(hWndStatus, IDC_STATUS_MSG, L"Saving image file...");
 
-  if (ImDiskSaveImageFile(hDev, hImage, 2 << 20, &bCancelFlag))
+  if (ImDiskSaveImageFile(hDev, hImage, 0, &bCancelFlag))
     {
       DestroyWindow(hWndStatus);
       CloseHandle(hDev);

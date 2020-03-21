@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0127
+#define IMDISK_VERSION                 0x0128
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -621,11 +621,9 @@ ImDiskExtendDevice(IN HWND hWndStatusText OPTIONAL,
 		   with intermediate buffering. The handle cannot be opened for
 		   overlapped operation.
 
-   BufferSize      Buffer size for reading and writing. If DeviceHandle or
-                   FileHandle are opened for operation without intermediate
-		   buffering the BufferSize must be a multiple of the sector
-		   sizes of the devices accessed without intermediate
-		   buffering.
+   BufferSize      I/O buffer size to use when reading source disk. This
+                   parameter is optional, if it is zero the buffer size to use
+                   will automatically choosen.
 
    CancelFlag      Optional pointer to a BOOL value. If this BOOL value is set
                    to TRUE during the function call the operation is cancelled,
@@ -638,7 +636,7 @@ BOOL
 WINAPI
 ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		    IN HANDLE FileHandle,
-		    IN DWORD BufferSize,
+		    IN DWORD BufferSize OPTIONAL,
 		    IN LPBOOL CancelFlag OPTIONAL);
 
 /**
