@@ -6,8 +6,8 @@
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,2,8,23
-PRODUCTVERSION 1,2,8,23
+FILEVERSION 1,3,1,23
+PRODUCTVERSION 1,3,1,23
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -24,12 +24,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "ImDisk I/O Packet Forwarder Service\0"
-            VALUE "FileVersion", "1.2.8.23\0"
+            VALUE "FileVersion", "1.3.1.23\0"
             VALUE "InternalName", "imdsksvc\0"
             VALUE "LegalCopyright", "Copyright © 2005-2010 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "imdsksvc.exe\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", "1.2.8.23\0"
+            VALUE "ProductVersion", "1.3.1.23\0"
         END
     END
     BLOCK "VarFileInfo"

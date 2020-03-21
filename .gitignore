@@ -365,3 +365,4 @@ devio/devio
 devio/devio.FreeBSD
 devio/devio.Interix
 devio/devio.static.FreeBSD
+*.7z

@@ -325,6 +325,12 @@ volatile ULONGLONG DeviceList = 0;
 //
 ULONG MaxDevices;
 
+//
+// An array of boolean values for each drive letter where TRUE means a
+// drive letter disallowed for use by ImDisk devices.
+//
+BOOLEAN DisallowedDriveLetters[L'Z'-L'A'+1] = { FALSE };
+
 #pragma code_seg("INIT")
 
 //
@@ -373,7 +379,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
   if (key_handle != NULL)
     {
-      UNICODE_STRING number_of_devices_value;
+      UNICODE_STRING value_name;
       PKEY_VALUE_PARTIAL_INFORMATION value_info;
       ULONG required_size;
 
@@ -387,10 +393,41 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	  return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-      RtlInitUnicodeString(&number_of_devices_value,
+      RtlInitUnicodeString(&value_name,
+			   IMDISK_CFG_DISALLOWED_DRIVE_LETTERS_VALUE);
+      
+      status = ZwQueryValueKey(key_handle, &value_name,
+			       KeyValuePartialInformation, value_info,
+			       sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
+			       sizeof(ULONG), &required_size);
+
+      if (!NT_SUCCESS(status))
+	KdPrint(("ImDisk: Using default value for '%ws'.\n",
+		 IMDISK_CFG_DISALLOWED_DRIVE_LETTERS_VALUE));
+      else if (value_info->Type == REG_SZ)
+	{
+	  PWSTR str = (PWSTR) value_info->Data;
+
+	  for ( ; *str != 0; str++)
+	    {
+	      // Ensure upper-case driveletter.
+	      *str &= ~0x20;
+
+	      if ((*str >= L'A') & (*str <= L'Z'))
+		DisallowedDriveLetters[*str - L'A'] = TRUE;
+	    }
+	}
+      else
+	{
+	  ExFreePool(value_info);
+	  ZwClose(key_handle);
+	  return STATUS_INVALID_PARAMETER;
+	}
+
+      RtlInitUnicodeString(&value_name,
 			   IMDISK_CFG_LOAD_DEVICES_VALUE);
       
-      status = ZwQueryValueKey(key_handle, &number_of_devices_value,
+      status = ZwQueryValueKey(key_handle, &value_name,
 			       KeyValuePartialInformation, value_info,
 			       sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
 			       sizeof(ULONG), &required_size);
@@ -411,10 +448,10 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	  return STATUS_INVALID_PARAMETER;
 	}
 
-      RtlInitUnicodeString(&number_of_devices_value,
+      RtlInitUnicodeString(&value_name,
 			   IMDISK_CFG_MAX_DEVICES_VALUE);
 
-      status = ZwQueryValueKey(key_handle, &number_of_devices_value,
+      status = ZwQueryValueKey(key_handle, &value_name,
 			       KeyValuePartialInformation, value_info,
 			       sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
 			       sizeof(ULONG), &required_size);
@@ -971,6 +1008,17 @@ ImDiskAddVirtualDisk(IN PDRIVER_OBJECT DriverObject,
   ASSERT(DriverObject != NULL);
   ASSERT(CreateData != NULL);
 
+  // Check if drive letter is disallowed by registry setting
+  if (CreateData->DriveLetter != 0)
+    {
+      // Ensure upper-case driveletter.
+      WCHAR ucase_drive_letter = CreateData->DriveLetter & ~0x20;
+
+      if ((ucase_drive_letter >= L'A') & (ucase_drive_letter <= L'Z'))
+	if (DisallowedDriveLetters[ucase_drive_letter - L'A'])
+	  return STATUS_ACCESS_DENIED;
+    }
+
   device_thread_data.driver_object = DriverObject;
   device_thread_data.create_data = CreateData;
   device_thread_data.client_thread = ClientThread;
@@ -1287,16 +1335,26 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
       if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) &
 	  (IMDISK_PROXY_TYPE(CreateData->Flags) != IMDISK_PROXY_TYPE_DIRECT))
-	RtlInitUnicodeString(&real_file_name, IMDPROXY_SVC_PIPE_NATIVE_NAME);
-      else
-	real_file_name = file_name;
+	{
+	  RtlInitUnicodeString(&real_file_name, IMDPROXY_SVC_PIPE_NATIVE_NAME);
 
-      InitializeObjectAttributes(&object_attributes,
-				 &real_file_name,
-				 OBJ_CASE_INSENSITIVE |
-				 OBJ_FORCE_ACCESS_CHECK,
-				 NULL,
-				 NULL);
+	  InitializeObjectAttributes(&object_attributes,
+				     &real_file_name,
+				     OBJ_CASE_INSENSITIVE,
+				     NULL,
+				     NULL);
+	}
+      else
+	{
+	  real_file_name = file_name;
+
+	  InitializeObjectAttributes(&object_attributes,
+				     &real_file_name,
+				     OBJ_CASE_INSENSITIVE |
+				     OBJ_FORCE_ACCESS_CHECK,
+				     NULL,
+				     NULL);
+	}
 
       KdPrint(("ImDisk: Passing WriteMode=%#x and WriteShare=%#x\n",
 	       (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) |
@@ -3150,6 +3208,8 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 	if (device_extension->image_modified)
 	  create_data->Flags |= IMDISK_IMAGE_MODIFIED;
+
+	create_data->ImageOffset = device_extension->image_offset;
 
 	create_data->DriveLetter = device_extension->drive_letter;
 
