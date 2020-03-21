@@ -1,0 +1,616 @@
+/*
+    I/O Packet Forwarder Service for the ImDisk Virtual Disk Driver for
+    Windows NT/2000/XP.
+    This service redirects I/O requests sent to the ImDisk Virtual Disk Driver
+    to another computer through a serial communication interface or by opening
+    a TCP/IP connection.
+
+    Copyright (C) 2005-2006 Olof Lagerkvist.
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*/
+
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0333
+#endif
+
+#include <windows.h>
+#include <winioctl.h>
+#include <winsock.h>
+
+#include <stdlib.h>
+#include <process.h>
+
+#include "..\inc\imdisk.h"
+#include "..\inc\imdproxy.h"
+#include "..\inc\wio.hpp"
+
+#pragma comment(linker, "-subsystem:windows,3.51")
+
+SERVICE_STATUS ImDiskSvcStatus;  
+SERVICE_STATUS_HANDLE ImDiskSvcStatusHandle; 
+HANDLE ImDiskSvcStopEvent = NULL;
+
+// Define DEBUG if you want debug output.
+#ifdef DEBUG
+
+#define KdPrint(x)
+#define KdPrintLastError(x)
+
+#else
+
+#define KdPrint(x)          DbgPrintF          x
+#define KdPrintLastError(x) DbgPrintLastError  x
+
+BOOL
+DbgPrintF(LPCSTR Message, ...)
+{
+  va_list param_list;
+  LPSTR lpBuf = NULL;
+
+  va_start(param_list, Message);
+
+  if (!FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+		      FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		      FORMAT_MESSAGE_FROM_STRING, Message, 0, 0,
+		      (LPSTR) &lpBuf, 0, &param_list))
+    return FALSE;
+
+  OutputDebugStringA(lpBuf);
+  LocalFree(lpBuf);
+  return TRUE;
+}
+
+void
+DbgPrintLastError(LPCSTR Prefix)
+{
+  LPWSTR MsgBuf;
+
+  FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+		 FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		 FORMAT_MESSAGE_FROM_SYSTEM |
+		 FORMAT_MESSAGE_IGNORE_INSERTS,
+		 NULL, GetLastError(), 0, (LPSTR) &MsgBuf, 0, NULL);
+
+  DbgPrintF("ImDskSvc: %1: %2%n", Prefix, MsgBuf);
+
+  LocalFree(MsgBuf);
+}
+#endif
+
+class ImDiskSvcServerSession
+{
+  HANDLE hPipe;
+  WOverlapped Overlapped;
+
+  DWORD
+  CALLBACK
+  Thread()
+  {
+    IMDPROXY_CONNECT_REQ ConnectReq;
+
+    KdPrint(("ImDskSvc: Thread created.%n"));
+
+    if (Overlapped.BufRecv(hPipe, &ConnectReq.request_code,
+			   sizeof ConnectReq.request_code) !=
+	sizeof ConnectReq.request_code)
+      {
+	KdPrintLastError(("Overlapped.BufRecv() failed"));
+
+	delete this;
+	return 0;
+      }
+
+    if (ConnectReq.request_code != IMDPROXY_REQ_CONNECT)
+      {
+	delete this;
+	return 0;
+      }
+
+    if (Overlapped.BufRecv(hPipe,
+			   ((PUCHAR) &ConnectReq) +
+			   sizeof(ConnectReq.request_code),
+			   sizeof(ConnectReq) -
+			   sizeof(ConnectReq.request_code)) !=
+	sizeof(ConnectReq) -
+	sizeof(ConnectReq.request_code))
+      {
+	KdPrintLastError(("Overlapped.BufRecv() failed"));
+
+	delete this;
+	return 0;
+      }
+
+    if ((ConnectReq.length == 0) | (ConnectReq.length > 520))
+      {
+	KdPrint(("ImDskSvc: Bad connection string length received (%1!u!).%n",
+		 ConnectReq.length));
+
+	delete this;
+	return 0;
+      }
+
+    LPWSTR ConnectionString = (LPWSTR) malloc((size_t) ConnectReq.length + 2);
+    if (ConnectionString == NULL)
+      {
+	KdPrintLastError(("malloc() failed"));
+
+	delete this;
+	return 0;
+      }
+
+    if (Overlapped.BufRecv(hPipe, ConnectionString,
+			   (DWORD) ConnectReq.length) !=
+	ConnectReq.length)
+      {
+	KdPrintLastError(("Overlapped.BufRecv() failed"));
+
+	delete this;
+	return 0;
+      }
+
+    ConnectionString[ConnectReq.length / sizeof *ConnectionString] = 0;
+
+    HANDLE hTarget;
+    DWORD dwInBufferSize;
+    DWORD dwOutBufferSize;
+    switch (IMDISK_PROXY_TYPE(ConnectReq.flags))
+      {
+      case IMDISK_PROXY_TYPE_COMM:
+	{
+	  dwInBufferSize = 1;
+	  dwOutBufferSize = IMDPROXY_SWITCH_BUFFER_SIZE;
+
+	  LPWSTR FileName = wcstok(ConnectionString, L": ");
+
+	  KdPrint(("ImDskSvc: Connecting to '%1!ws!'.%n", FileName));
+
+	  hTarget = CreateFile(FileName,
+			       GENERIC_READ | GENERIC_WRITE,
+			       0,
+			       NULL,
+			       OPEN_EXISTING,
+			       0,
+			       NULL);
+
+	  if (hTarget == INVALID_HANDLE_VALUE)
+	    {
+	      KdPrintLastError(("CreateFile() failed"));
+	      free(ConnectionString);
+	      delete this;
+	      return 0;
+	    }
+
+	  LPWSTR DCBAndTimeouts = wcstok(NULL, L"");
+	  if (DCBAndTimeouts != NULL)
+	    {
+	      DCB dcb = { 0 };
+	      COMMTIMEOUTS timeouts = { 0 };
+
+	      if (DCBAndTimeouts[0] == L' ')
+		++DCBAndTimeouts;
+
+	      KdPrint(("ImDskSvc: Configuring '%1!ws!'.%n", DCBAndTimeouts));
+
+	      GetCommState(hTarget, &dcb);
+	      GetCommTimeouts(hTarget, &timeouts);
+	      BuildCommDCBAndTimeouts(DCBAndTimeouts, &dcb, &timeouts);
+	      SetCommState(hTarget, &dcb);
+	      SetCommTimeouts(hTarget, &timeouts);
+	    }
+
+	  break;
+	}
+
+      case IMDISK_PROXY_TYPE_TCP:
+	{
+	  dwInBufferSize = IMDPROXY_SWITCH_BUFFER_SIZE;
+	  dwOutBufferSize = IMDPROXY_SWITCH_BUFFER_SIZE;
+
+	  LPWSTR ServerName = wcstok(ConnectionString, L":");
+	  LPWSTR PortName = wcstok(NULL, L"");
+
+	  if (PortName == NULL)
+	    PortName = L"9000";
+
+	  KdPrint(("ImDskSvc: Connecting to '%1!ws!:%2!ws!'.%n",
+		   ServerName, PortName));
+
+	  hTarget = (HANDLE) ConnectTCP(ServerName, PortName);
+	  if (hTarget == INVALID_HANDLE_VALUE)
+	    {
+	      KdPrintLastError(("ConnectTCP() failed"));
+	      free(ConnectionString);
+	      delete this;
+	      return 0;
+	    }
+
+	  bool b = true;
+	  setsockopt((SOCKET) hTarget, IPPROTO_TCP, TCP_NODELAY, (LPCSTR) &b,
+		     sizeof b);
+
+	  break;
+	}
+
+      default:
+	KdPrint(("ImDskSvc: Unsupported connection type (%1!#x!).%n",
+		 IMDISK_PROXY_TYPE(ConnectReq.flags)));
+
+	free(ConnectionString);
+	delete this;
+	return 0;
+      }
+
+    free(ConnectionString);
+
+    ULONGLONG req = IMDPROXY_REQ_INFO;
+    if (!Overlapped.BufSend(hTarget, &req, sizeof req))
+      {
+	KdPrintLastError(("Overlapped.BufSend() failed"));
+
+	CloseHandle(hTarget);
+	delete this;
+	return 0;
+      }
+
+    WOverlapped DriverRead;
+    WOverlapped TargetRead;
+    if (!DriverRead | !TargetRead)
+      {
+	KdPrintLastError(("CreateEvent() failed"));
+
+	CloseHandle(hTarget);
+	delete this;
+	return 0;
+      }
+
+    KdPrint(("The input buffer size is set to %1!u! bytes.%n",
+	     dwInBufferSize));
+
+    KdPrint(("The output buffer size is set to %1!u! bytes.%n",
+	     dwOutBufferSize));
+
+    LPVOID OutBuffer = malloc(dwOutBufferSize);
+    if (OutBuffer == NULL)
+      {
+	KdPrintLastError(("malloc() output buffer failed"));
+
+	CloseHandle(hTarget);
+	delete this;
+	return 0;
+      }
+
+    LPVOID InBuffer = malloc(dwInBufferSize);
+    if (InBuffer == NULL)
+      {
+	KdPrintLastError(("malloc() input buffer failed"));
+
+	free(OutBuffer);
+	CloseHandle(hTarget);
+	delete this;
+	return 0;
+      }
+
+    HANDLE hWait[] =
+      {
+	TargetRead.hEvent,
+	DriverRead.hEvent
+      };
+
+    bool bNewReadDriver = true;
+    bool bNewReadTarget = true;
+
+    for (;;)
+      {
+	if (bNewReadDriver)
+	  {
+	    if (!DriverRead.Read(hPipe, OutBuffer, dwOutBufferSize))
+	      if (GetLastError() != ERROR_IO_PENDING)
+		{
+		  KdPrintLastError(("DriverRead.Read() failed"));
+		  break;
+		}
+
+	    bNewReadDriver = false;
+	  }
+
+	if (bNewReadTarget)
+	  {
+	    if (!TargetRead.Read(hTarget, InBuffer, dwInBufferSize))
+	      if (GetLastError() != ERROR_IO_PENDING)
+		{
+		  KdPrintLastError(("TargetRead.Read() failed"));
+		  break;
+		}
+
+	    bNewReadTarget = false;
+	  }
+
+	if (WaitForMultipleObjects(sizeof(hWait) / sizeof(*hWait),
+				   hWait, FALSE, INFINITE) ==
+	    WAIT_FAILED)
+	  {
+	    KdPrintLastError(("WaitForMultipleObjects failed"));
+	    return 0;
+	  }
+
+	DWORD dwBytes;
+	if (DriverRead.GetResult(hPipe, &dwBytes, FALSE))
+	  {
+	    if (dwBytes == 0)
+	      {
+		KdPrint(("ImDskSvc: Driver disconnected.%n"));
+		break;
+	      }
+
+	    if (!Overlapped.BufSend(hTarget, OutBuffer, dwBytes))
+	      {
+		KdPrintLastError(("Overlapped.BufSend() failed"));
+		break;
+	      }
+
+	    bNewReadDriver = true;
+	  }
+	else if (GetLastError() != ERROR_IO_INCOMPLETE)
+	  {
+	    KdPrintLastError(("DriverRead.GetResult() failed"));
+	    break;
+	  }
+
+	if (TargetRead.GetResult(hTarget, &dwBytes, FALSE))
+	  {
+	    if (dwBytes == 0)
+	      {
+		KdPrint(("ImDskSvc: Target disconnected.%n"));
+		break;
+	      }
+
+	    if (!Overlapped.BufSend(hPipe, InBuffer, dwBytes))
+	      {
+		KdPrintLastError(("Overlapped.BufSend() failed"));
+		break;
+	      }
+
+	    bNewReadTarget = true;
+	  }
+	else if (GetLastError() != ERROR_IO_INCOMPLETE)
+	  {
+	    KdPrintLastError(("TargetRead.GetResult() failed"));
+	    break;
+	  }
+      }
+
+    KdPrint(("ImDskSvc: Cleaning up.%n"));
+
+    CloseHandle(hTarget);
+    CloseHandle(hPipe);
+    hPipe = INVALID_HANDLE_VALUE;
+
+    if (!bNewReadDriver)
+      DriverRead.Wait();
+
+    if (!bNewReadTarget)
+      TargetRead.Wait();
+
+    free(OutBuffer);
+    free(InBuffer);
+
+    delete this;
+    return 1;
+  }
+
+  ~ImDiskSvcServerSession()
+  {
+    if (hPipe != INVALID_HANDLE_VALUE)
+      CloseHandle(hPipe);
+  }
+
+public:
+  bool
+  Connect()
+  {
+    if (!ConnectNamedPipe(hPipe, &Overlapped))
+      if (GetLastError() != ERROR_IO_PENDING)
+	{
+	  ImDiskSvcStatus.dwWin32ExitCode = GetLastError();
+	  delete this;
+	  return false;
+	}
+
+    HANDLE hWaitObjects[] =
+      {
+	Overlapped.hEvent,
+	ImDiskSvcStopEvent
+      };
+
+    switch (WaitForMultipleObjects(sizeof(hWaitObjects) /
+				   sizeof(*hWaitObjects),
+				   hWaitObjects,
+				   FALSE,
+				   INFINITE))
+      {
+      case WAIT_OBJECT_0:
+	{
+	  union
+	  {
+	    DWORD (CALLBACK ImDiskSvcServerSession::*Member)();
+	    UINT (CALLBACK *Static)(LPVOID);
+	  } ThreadFunction;
+	  ThreadFunction.Member = &ImDiskSvcServerSession::Thread;
+
+	  KdPrint(("ImDskSvc: Creating thread.%n"));
+
+	  UINT id;
+	  HANDLE hThread = (HANDLE)
+	    _beginthreadex(NULL, 0, ThreadFunction.Static, this, 0, &id);
+	  if (hThread == NULL)
+	    {
+	      ImDiskSvcStatus.dwWin32ExitCode = GetLastError();
+	      delete this;
+	      return false;
+	    }
+
+	  CloseHandle(hThread);
+	  ImDiskSvcStatus.dwWin32ExitCode = NO_ERROR;
+	  return true;
+	}
+
+      case WAIT_OBJECT_0 + 1:
+	ImDiskSvcStatus.dwWin32ExitCode = NO_ERROR;
+	delete this;
+	return false;
+
+      default:
+	ImDiskSvcStatus.dwWin32ExitCode = GetLastError();
+	delete this;
+	return false;
+      }
+  }
+
+  ImDiskSvcServerSession()
+  {
+    hPipe = CreateNamedPipe(IMDPROXY_SVC_PIPE_DOSDEV_NAME,
+			    PIPE_ACCESS_DUPLEX |
+			    FILE_FLAG_WRITE_THROUGH |
+			    FILE_FLAG_OVERLAPPED,
+			    0,
+			    PIPE_UNLIMITED_INSTANCES,
+			    0,
+			    0,
+			    0,
+			    NULL);
+  }
+
+  bool
+  IsOk()
+  {
+    if (this == NULL)
+      return false;
+
+    return 
+      (hPipe != NULL) &
+      (hPipe != INVALID_HANDLE_VALUE) &
+      (Overlapped.hEvent != NULL);
+  }
+};
+
+VOID
+CALLBACK
+ImDiskSvcCtrlHandler(DWORD Opcode)  
+{ 
+  if (Opcode == SERVICE_CONTROL_STOP)
+    {
+      SetEvent(ImDiskSvcStopEvent);
+
+      ImDiskSvcStatus.dwWin32ExitCode = NO_ERROR;
+      ImDiskSvcStatus.dwCurrentState = SERVICE_STOP_PENDING;
+      ImDiskSvcStatus.dwCheckPoint = 0;
+      ImDiskSvcStatus.dwWaitHint = 0;
+
+      if (!SetServiceStatus(ImDiskSvcStatusHandle, &ImDiskSvcStatus))
+	{
+	  KdPrintLastError(("SetServiceStatus() failed"));
+	}
+
+      return;
+    }
+
+  SetServiceStatus(ImDiskSvcStatusHandle, &ImDiskSvcStatus);
+} 
+
+VOID
+CALLBACK
+ImDiskSvcStart(DWORD, LPWSTR *)
+{
+  ImDiskSvcStatus.dwServiceType = SERVICE_WIN32;
+  ImDiskSvcStatus.dwCurrentState = SERVICE_START_PENDING;
+  ImDiskSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+  ImDiskSvcStatus.dwWin32ExitCode = NO_ERROR;
+  ImDiskSvcStatus.dwServiceSpecificExitCode = 0;
+  ImDiskSvcStatus.dwCheckPoint = 0;
+  ImDiskSvcStatus.dwWaitHint = 0;
+ 
+  ImDiskSvcStatusHandle = RegisterServiceCtrlHandler(IMDPROXY_SVC,
+						     ImDiskSvcCtrlHandler);
+  if (ImDiskSvcStatusHandle == (SERVICE_STATUS_HANDLE) 0)
+    { 
+      KdPrintLastError(("RegisterServiceCtrlHandler() failed"));
+      return; 
+    } 
+
+  ImDiskSvcStatus.dwCurrentState = SERVICE_RUNNING;
+  SetServiceStatus(ImDiskSvcStatusHandle, &ImDiskSvcStatus);
+
+  for (;;)
+    {
+      if (WaitForSingleObject(ImDiskSvcStopEvent, 0) != WAIT_TIMEOUT)
+	{
+	  ImDiskSvcStatus.dwWin32ExitCode = NO_ERROR;
+	  break;
+	}
+
+      ImDiskSvcServerSession *ServerSession = new ImDiskSvcServerSession;
+      if (!ServerSession->IsOk())
+	{
+	  KdPrintLastError(("Pipe initialization failed"));
+	  break;
+	}
+
+      if (!ServerSession->Connect())
+	{
+	  if (ImDiskSvcStatus.dwWin32ExitCode != NO_ERROR)
+	    {	 
+	      KdPrintLastError(("Pipe connect failed"));
+	    }
+	  break;
+	}
+    }
+
+  ImDiskSvcStatus.dwCurrentState = SERVICE_STOPPED;
+  ImDiskSvcStatus.dwControlsAccepted = 0;
+  SetServiceStatus(ImDiskSvcStatusHandle, &ImDiskSvcStatus);
+}
+
+extern "C"
+void
+__declspec(noreturn)
+Entry()
+{
+  WSADATA wsadata;
+  WSAStartup(0x0101, &wsadata);
+
+  SERVICE_TABLE_ENTRY ServiceTable[] =
+    {
+      { IMDPROXY_SVC, ImDiskSvcStart },
+      { NULL, NULL }
+    };
+
+  ImDiskSvcStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+  if (ImDiskSvcStopEvent == NULL)
+    {
+      KdPrintLastError(("CreateEvent() failed"));
+      ExitProcess(0);
+    }
+
+  if (!StartServiceCtrlDispatcher(ServiceTable))
+    {
+      MessageBoxA(NULL, "This program can only run as a Windows NT service.",
+		  "ImDisk Service",
+		  MB_ICONSTOP | MB_TASKMODAL);
+
+      ExitProcess(0);
+    }
+
+  SetEvent(ImDiskSvcStopEvent);
+  ExitThread(1);
+}

@@ -1,0 +1,5 @@
+TARGETNAME=imdisk
+TARGETPATH=.
+TARGETTYPE=DRIVER
+SOURCES=imdisk.c imdisk.rc
+LINKER_FLAGS=llmath.lib

@@ -1,0 +1,82 @@
+[Version]
+signature = "$Windows NT$"
+Provider = "Olof Lagerkvist"
+DriverVer = 02/22/2006,1,00,00,0001
+
+
+[SourceDisksNames]
+1 = "ImDisk Virtual Disk Driver Installation disk"
+
+
+[SourceDisksFiles]
+imdisk.sys = 1,sys\i386
+imdsksvc.exe = 1,svc
+imdisk.exe = 1,cli
+imdisk.inf = 1
+
+
+[DestinationDirs]
+ImDiskExeFiles = 11
+ImDiskSysFiles = 12
+ImDiskInfFiles = 17
+ 
+
+[DefaultInstall.NT]
+CopyFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles
+AddReg = ImDiskAddReg
+
+
+[DefaultUninstall.NT]
+DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles
+DelReg = ImDiskDelReg
+
+
+[DefaultInstall.NT.Services]
+AddService = ImDisk, , ImDskDrv
+AddService = ImDskSvc, , ImDskSvc
+
+
+[DefaultUninstall.NT.Services]
+DelService = ImDisk
+DelService = ImDskSvc
+
+
+[ImDiskExeFiles]
+imdisk.exe
+imdsksvc.exe
+
+
+[ImDiskSysFiles]
+imdisk.sys
+
+
+[ImDiskInfFiles]
+imdisk.inf
+
+
+[ImDiskAddReg]
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayName", 0, "ImDisk Virtual Disk Driver"
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "UninstallString", 0, "rundll32 setupapi.dll,InstallHinfSection DefaultUninstall 132 %17%\imdisk.inf"
+
+
+[ImDiskDelReg]
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk"
+
+
+[ImDskDrv]
+DisplayName = "ImDisk Virtual Disk Driver"
+Description = "Disk emulation driver"
+ServiceType = 1
+StartType = 3
+ErrorControl = 0
+ServiceBinary = %12%\imdisk.sys
+
+
+[ImDskSvc]
+DisplayName = "ImDisk I/O Packet Forwarder"
+Description = "Helper service to forward I/O requests to virtual disks to other computers."
+ServiceType = 16
+StartType = 3
+ErrorControl = 0
+ServiceBinary = %11%\imdsksvc.exe
+

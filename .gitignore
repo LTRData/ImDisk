@@ -351,3 +351,14 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+*/obj*
+*.exe
+*.dll
+*.cpl
+*.sys
+*.cmd
+*.mac
+*.wrn
+*.bak
+*#*
+devio/devio

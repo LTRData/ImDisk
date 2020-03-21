@@ -1,0 +1,5 @@
+;!@Install@!UTF-8!
+Title="ImDisk Virtual Disk Driver"
+BeginPrompt="This will install the ImDisk Virtual Disk Driver, the ImDisk I/O Packet Forwarder Service and the imdisk.exe command line tool. Continue?"
+RunProgram="install.cmd"
+;!@InstallEnd@!
