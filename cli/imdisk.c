@@ -232,7 +232,7 @@ ImDiskSyntaxHelp()
      "        removable devices and that cannot be changed.\r\n"
      "\n"
      "cd      Creates a virtual CD-ROM/DVD-ROM. This is the default if the file\r\n"
-     "        name specified with the -f option ends with either .iso or .bin\r\n"
+     "        name specified with the -f option ends with either .iso, .nrg or .bin\r\n"
      "        extensions.\r\n"
      "\n"
      "fd      Creates a virtual floppy disk. This is the default if the size of the\r\n"

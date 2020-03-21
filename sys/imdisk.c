@@ -897,14 +897,15 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
       RtlCopyMemory(file_name.Buffer, CreateData->FileName,
 		    CreateData->FileNameLength);
-      // If no device-type specified, check if filename ends with .iso or .bin.
-      // In that case, set device-type automatically to FILE_DEVICE_CDROM
+      // If no device-type specified, check if filename ends with .iso, .nrg or
+      // .bin. In that case, set device-type automatically to FILE_DEVICE_CDROM
       if ((IMDISK_DEVICE_TYPE(CreateData->Flags) == 0) &
 	  (CreateData->FileNameLength >= (4 * sizeof(*CreateData->FileName))))
 	{
 	  LPWSTR name = CreateData->FileName +
 	    (CreateData->FileNameLength / sizeof(*CreateData->FileName)) - 4;
 	  if ((_wcsnicmp(name, L".iso", 4) == 0) |
+	      (_wcsnicmp(name, L".nrg", 4) == 0) |
 	      (_wcsnicmp(name, L".bin", 4) == 0))
 	    CreateData->Flags |= IMDISK_DEVICE_TYPE_CD | IMDISK_OPTION_RO;
 	}
