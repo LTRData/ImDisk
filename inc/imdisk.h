@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0141
+#define IMDISK_VERSION                 0x0142
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -386,8 +386,7 @@ ImDiskOpenDeviceByName(IN PUNICODE_STRING FileName,
 /**
    Opens an ImDisk device by the device number.
 
-   DeviceNumber Number of the ImDisk Device. For example, number 2 opens
-                \Device\ImDisk2.
+   FileName     Native path to ImDisk device, such as "\Device\ImDisk2".
 
    AccessMode   Access mode to request.
 */
@@ -472,6 +471,7 @@ ImDiskQueryDevice(IN DWORD DeviceNumber,
                    The function will send WM_SETTEXT messages to this window.
 		   If this parameter is NULL no WM_SETTEXT messages are sent
 		   and the function acts non-interactive.
+
    DiskGeometry    The virtual geometry of the new virtual disk. Note that the
                    Cylinders member does not specify the number of Cylinders
 		   but the total size in bytes of the new virtual disk. The
@@ -515,6 +515,67 @@ ImDiskCreateDevice(IN HWND hWndStatusText OPTIONAL,
 		   IN LPCWSTR FileName OPTIONAL,
 		   IN BOOL NativePath,
 		   IN LPWSTR MountPoint OPTIONAL);
+
+/**
+   This function creates a new ImDisk virtual disk device.
+
+   hWndStatusText  A handle to a window that can display status message text.
+                   The function will send WM_SETTEXT messages to this window.
+		   If this parameter is NULL no WM_SETTEXT messages are sent
+		   and the function acts non-interactive.
+
+   DeviceNumber    In: Device number for device to create. Device number must
+                   not be in use by an existing virtual disk. For automatic
+                   allocation of device number, use IMDISK_AUTO_DEVICE_NUMBER
+                   constant or specify a NULL pointer.
+
+                   Out: If DeviceNumber parameter is not NULL, device number
+		   for created device is returned in DWORD variable pointed to.
+
+   DiskGeometry    The virtual geometry of the new virtual disk. Note that the
+                   Cylinders member does not specify the number of Cylinders
+		   but the total size in bytes of the new virtual disk. The
+		   actual number of cylinders are then automatically
+		   calculated and rounded down if necessary.
+
+		   The Cylinders member can be zero if the device is backed by
+		   an image file or a proxy device, but not if it is virtual
+		   memory only device.
+
+		   All or some of the other members of this structure can be
+		   zero in which case they are automatically filled in with
+		   most reasonable values by the driver.
+
+   Flags           Bitwise or-ed combination of one of the IMDISK_TYPE_xxx
+                   flags, one of the IMDISK_DEVICE_TYPE_xxx flags and any
+		   number of IMDISK_OPTION_xxx flags. The flags can often be
+		   left zero and left to the driver to automatically select.
+		   For example, if a virtual disk size is specified to 1440 KB
+		   and an image file name is not specified, the driver
+		   automatically selects IMDISK_TYPE_VM|IMDISK_DEVICE_TYPE_FD
+		   for this parameter.
+
+   FileName        Name of disk image file. In case IMDISK_TYPE_VM is
+                   specified in the Flags parameter, this file will be loaded
+		   into the virtual memory-backed disk when created.
+
+   NativePath      Set to TRUE if the FileName parameter specifies an NT
+                   native path, such as \??\C:\imagefile.img or FALSE if it
+		   specifies a Win32/DOS-style path such as C:\imagefile.img.
+
+   MountPoint      Drive letter to assign to the new virtual device. It can be
+                   specified on the form F: or F:\.
+*/
+BOOL
+WINAPI
+ImDiskCreateDeviceEx(IN HWND hWndStatusText OPTIONAL,
+		     IN OUT LPDWORD DeviceNumber OPTIONAL,
+		     IN OUT PDISK_GEOMETRY DiskGeometry OPTIONAL,
+		     IN PLARGE_INTEGER ImageOffset OPTIONAL,
+		     IN DWORD Flags OPTIONAL,
+		     IN LPCWSTR FileName OPTIONAL,
+		     IN BOOL NativePath,
+		     IN LPWSTR MountPoint OPTIONAL);
 
 /**
    This function removes (unmounts) an existing ImDisk virtual disk device.
@@ -788,7 +849,8 @@ ImDiskNativePathToWin32(IN OUT LPWSTR *Path);
                    be automatically determined this function will ask user for
 		   a .iso suffixed image file name.
 */
-EXTERN_C VOID WINAPI
+VOID
+WINAPI
 ImDiskSaveImageFileInteractive(IN HANDLE DeviceHandle,
 			       IN HWND WindowHandle OPTIONAL,
 			       IN DWORD BufferSize OPTIONAL,

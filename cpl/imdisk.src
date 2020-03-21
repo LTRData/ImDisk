@@ -27,6 +27,7 @@ EXPORTS
 	_ImDiskGetDeviceList@0
 	_ImDiskQueryDevice@12
 	_ImDiskCreateDevice@28
+	_ImDiskCreateDeviceEx@32
 	_ImDiskForceRemoveDevice@8
 	_ImDiskRemoveDevice@12
 	_ImDiskChangeFlags@20
@@ -65,6 +66,7 @@ EXPORTS
 	ImDiskGetDeviceList
 	ImDiskQueryDevice
 	ImDiskCreateDevice
+	ImDiskCreateDeviceEx
 	ImDiskForceRemoveDevice
 	ImDiskRemoveDevice
 	ImDiskChangeFlags

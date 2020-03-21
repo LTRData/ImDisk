@@ -765,6 +765,27 @@ ImDiskCreateDevice(HWND hWnd,
 		   BOOL NativePath,
 		   LPWSTR MountPoint)
 {
+  return ImDiskCreateDeviceEx(hWnd,
+			      NULL,
+			      DiskGeometry,
+			      ImageOffset,
+			      Flags,
+			      FileName,
+			      NativePath,
+			      MountPoint);
+}
+
+BOOL
+WINAPI
+ImDiskCreateDeviceEx(HWND hWnd,
+		     LPDWORD DeviceNumber,
+		     PDISK_GEOMETRY DiskGeometry,
+		     PLARGE_INTEGER ImageOffset,
+		     DWORD Flags,
+		     LPCWSTR FileName,
+		     BOOL NativePath,
+		     LPWSTR MountPoint)
+{
   PIMDISK_CREATE_DATA create_data;
   UNICODE_STRING file_name;
   HANDLE driver;
@@ -959,6 +980,9 @@ ImDiskCreateDevice(HWND hWnd,
     if ((wcslen(MountPoint) == 2) ? MountPoint[1] == L':' : FALSE)
       create_data->DriveLetter = MountPoint[0];
 
+  if (DeviceNumber != NULL)
+    create_data->DeviceNumber = *DeviceNumber;
+
   if (ImageOffset != NULL)
     create_data->ImageOffset = *ImageOffset;
 
@@ -991,6 +1015,9 @@ ImDiskCreateDevice(HWND hWnd,
     }
 
   NtClose(driver);
+
+  if (DeviceNumber != NULL)
+    *DeviceNumber = create_data->DeviceNumber;
 
   if (MountPoint != NULL)
     {
@@ -1038,6 +1065,14 @@ ImDiskCreateDevice(HWND hWnd,
 			     WM_DEVICECHANGE,
 			     DBT_DEVICEARRIVAL,
 			     (LPARAM)&dev_broadcast_volume,
+			     SMTO_BLOCK,
+			     4000,
+			     &dwp);
+
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVNODES_CHANGED,
+			     (LPARAM)0,
 			     SMTO_BLOCK,
 			     4000,
 			     &dwp);
@@ -1454,6 +1489,8 @@ ImDiskRemoveDevice(HWND hWnd,
 
   if (MountPoint != NULL)
     {
+      DWORD_PTR dwp;
+
       WCHAR reg_key[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints\\ ";
       WCHAR reg_key2[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\ ";
 
@@ -1469,6 +1506,14 @@ ImDiskRemoveDevice(HWND hWnd,
 
       RegDeleteKey(HKEY_CURRENT_USER, reg_key);
       RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
+
+      SendMessageTimeout(HWND_BROADCAST,
+			 WM_DEVICECHANGE,
+			 DBT_DEVNODES_CHANGED,
+			 (LPARAM)0,
+			 SMTO_BLOCK,
+			 4000,
+			 &dwp);
     }
 
   if (hWnd != NULL)

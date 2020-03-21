@@ -909,6 +909,8 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	  (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
 	  FALSE)
 	{
+	  DWORD_PTR dwp;
+
 	  WCHAR drive_mount_point[3] = L" :";
 	  WCHAR reg_key[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints\\ ";
 	  WCHAR reg_key2[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\ ";
@@ -923,6 +925,16 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 
 	  RegDeleteKey(HKEY_CURRENT_USER, reg_key);
 	  RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
+
+	  DbgOemPrintF((stdout, "Sending DBT_DEVNODES_CHANGED...\n"));
+
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVNODES_CHANGED,
+			     0,
+			     SMTO_BLOCK,
+			     4000,
+			     &dwp);
 	}
       else
 	{
@@ -2077,6 +2089,14 @@ wmain(int argc, LPWSTR argv[])
 				 WM_DEVICECHANGE,
 				 DBT_DEVICEARRIVAL,
 				 (LPARAM)&dev_broadcast_volume,
+				 SMTO_BLOCK,
+				 4000,
+				 &dwp);
+
+	      SendMessageTimeout(HWND_BROADCAST,
+				 WM_DEVICECHANGE,
+				 DBT_DEVNODES_CHANGED,
+				 (LPARAM)0,
 				 SMTO_BLOCK,
 				 4000,
 				 &dwp);
