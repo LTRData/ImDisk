@@ -129,7 +129,6 @@ int
 		*dllread_ptr = dllread;
 		*dllwrite_ptr = dllwrite;
 		*dllclose_ptr = dllclose;
-		dllopen_proc dllopen_ptr = dllopen;
 
 		array<String^> ^delimiters = gcnew array<String^>(1);
 		delimiters[0] = "::";

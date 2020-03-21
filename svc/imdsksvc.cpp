@@ -177,15 +177,10 @@ class ImDiskSvcServerSession
     ConnectionString[ConnectReq.length / sizeof *ConnectionString] = 0;
 
     HANDLE hTarget;
-    DWORD dwInBufferSize;
-    DWORD dwOutBufferSize;
     switch (IMDISK_PROXY_TYPE(ConnectReq.flags))
       {
       case IMDISK_PROXY_TYPE_COMM:
 	{
-	  dwInBufferSize = 1;
-	  dwOutBufferSize = IMDPROXY_SWITCH_BUFFER_SIZE;
-
 	  LPWSTR FileName = wcstok(ConnectionString, L": ");
 
 	  KdPrint(("ImDskSvc: Connecting to '%1!ws!'.%n", FileName));
@@ -237,9 +232,6 @@ class ImDiskSvcServerSession
 
       case IMDISK_PROXY_TYPE_TCP:
 	{
-	  dwInBufferSize = IMDPROXY_SWITCH_BUFFER_SIZE;
-	  dwOutBufferSize = IMDPROXY_SWITCH_BUFFER_SIZE;
-
 	  LPWSTR ServerName = wcstok(ConnectionString, L":");
 	  LPWSTR PortName = wcstok(NULL, L"");
 

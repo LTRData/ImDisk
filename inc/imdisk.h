@@ -25,8 +25,8 @@
     OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef _IMDISK_H
-#define _IMDISK_H
+#ifndef _INC_IMDISK_
+#define _INC_IMDISK_
 
 #ifndef __T
 #if defined(_NTDDK_) || defined(UNICODE) || defined(_UNICODE)
@@ -868,4 +868,4 @@ ImDiskSaveImageFileInteractive(IN HANDLE DeviceHandle,
 
 #endif
 
-#endif
+#endif // _INC_IMDISK_

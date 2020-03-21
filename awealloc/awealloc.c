@@ -204,7 +204,12 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
   device_object->Flags |= DO_DIRECT_IO;
 
   RtlInitUnicodeString(&sym_link, AWEALLOC_SYMLINK_NAME);
-  IoCreateUnprotectedSymbolicLink(&sym_link, &ctl_device_name);
+  status = IoCreateUnprotectedSymbolicLink(&sym_link, &ctl_device_name);
+  if (!NT_SUCCESS(status))
+    {
+      IoDeleteDevice(device_object);
+      return status;
+    }
 
   DriverObject->MajorFunction[IRP_MJ_CREATE] = AWEAllocCreate;
   DriverObject->MajorFunction[IRP_MJ_CLOSE] = AWEAllocClose;

@@ -25,8 +25,8 @@
     OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef _IMDPROXY_H
-#define _IMDPROXY_H
+#ifndef _INC_IMDPROXY_
+#define _INC_IMDPROXY_
 
 #if !defined(_WIN32) && !defined(_NTDDK_)
 typedef long LONG;
@@ -41,8 +41,6 @@ typedef unsigned short WCHAR;
 #define IMDPROXY_SVC_PIPE_NATIVE_NAME   L"\\Device\\NamedPipe\\" IMDPROXY_SVC
 
 #define IMDPROXY_FLAG_RO                0x1
-
-#define IMDPROXY_SWITCH_BUFFER_SIZE     0x100000
 
 typedef enum _IMDPROXY_REQ
   {
@@ -104,4 +102,4 @@ typedef struct _IMDPROXY_WRITE_RESP
 // shared memory.
 #define IMDPROXY_HEADER_SIZE 4096
 
-#endif
+#endif // _INC_IMDPROXY_

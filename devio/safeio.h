@@ -25,8 +25,8 @@
     OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef _SAFEIO_H
-#define _SAFEIO_H
+#ifndef _INC_SAFEIO_
+#define _INC_SAFEIO_
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,4 +64,4 @@ pwrite(int d, const void *buf, size_t nbytes, __int64 offset)
 }
 #endif
 
-#endif
+#endif // _INC_SAFEIO_

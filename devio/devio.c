@@ -838,6 +838,7 @@ main(int argc, char **argv)
   int partition_number = 0;
   char mbr[512];
   int retval;
+  char *comm_device = NULL;
 
 #ifdef _WIN32
   WSADATA wsadata;
@@ -1013,6 +1014,8 @@ main(int argc, char **argv)
 	      DEF_BUFFER_SIZE);
       return -1;
     }
+
+  comm_device = argv[1];
 
   if (dll_mode && (devio_info.flags & IMDPROXY_FLAG_RO))
     fd = dll_open(argv[2], 1, &dll_read, &dll_write, &dll_close,
@@ -1314,7 +1317,7 @@ main(int argc, char **argv)
 	 "Required alignment: " ULL_FMT " bytes.\n",
 	 current_size, devio_info.file_size, offset, devio_info.req_alignment);
 
-  retval = do_comm(argv[1]);
+  retval = do_comm(comm_device);
 
   printf("Image close result: %i\n", physical_close(fd));
 
