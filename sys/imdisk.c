@@ -2022,7 +2022,7 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
   if (device_extension->terminate_thread)
     {
-      KdPrint(("ImDisk: Read/write attempt on device %i with no media.\n",
+      KdPrint(("ImDisk: Read/write attempt on device %i while removing.\n",
 	       device_extension->device_number));
 
       Irp->IoStatus.Status = STATUS_NO_MEDIA_IN_DEVICE;
@@ -2134,6 +2134,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
       {
       case IOCTL_IMDISK_QUERY_VERSION:
       case IOCTL_IMDISK_CREATE_DEVICE:
+      case IOCTL_IMDISK_REMOVE_DEVICE:
       case IOCTL_IMDISK_QUERY_DRIVER:
       case IOCTL_IMDISK_REFERENCE_HANDLE:
 	break;
@@ -2154,7 +2155,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
       {
 	// Invalid IOCTL codes for this driver's disk devices.
       case IOCTL_IMDISK_CREATE_DEVICE:
-      case IOCTL_IMDISK_QUERY_DRIVER:
+      case IOCTL_IMDISK_REMOVE_DEVICE:
       case IOCTL_IMDISK_REFERENCE_HANDLE:
 	KdPrint(("ImDisk: Invalid IOCTL %#x for disk device.\n",
 		 io_stack->Parameters.DeviceIoControl.IoControlCode));
@@ -2364,6 +2365,53 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    io_stack->Parameters.DeviceIoControl.OutputBufferLength;
 	else
 	  Irp->IoStatus.Information = 0;
+	break;
+      }
+
+    case IOCTL_IMDISK_REMOVE_DEVICE:
+      {
+	PDEVICE_OBJECT device_object =
+	  ImDiskCtlDevice->DriverObject->DeviceObject;
+
+	ULONG device_number;
+
+	KdPrint(("ImDisk: IOCTL_IMDISK_REMOVE_DEVICE.\n"));
+
+	if (io_stack->Parameters.DeviceIoControl.InputBufferLength <
+	    sizeof(ULONG))
+	  {
+	    KdPrint(("ImDisk: Invalid input buffer size (1). "
+		     "Got: %u Expected at least: %u.\n",
+		     io_stack->Parameters.DeviceIoControl.InputBufferLength,
+		     sizeof(ULONG)));
+
+	    status = STATUS_INVALID_PARAMETER;
+	    Irp->IoStatus.Information = 0;
+	    break;
+	  }
+
+	device_number = *(PULONG) Irp->AssociatedIrp.SystemBuffer;
+
+	KdPrint(("ImDisk: IOCTL_IMDISK_REMOVE_DEVICE for device %i.\n",
+		 device_number));
+
+	status = STATUS_OBJECT_NAME_NOT_FOUND;
+
+	while (device_object != NULL)
+	  {
+	    PDEVICE_EXTENSION device_extension =
+	      (PDEVICE_EXTENSION) device_object->DeviceExtension;
+
+	    if (device_extension->device_number == device_number)
+	      {
+		ImDiskRemoveVirtualDisk(device_object);
+		status = STATUS_SUCCESS;
+	      }
+
+	    device_object = device_object->NextDevice;
+	  }
+
+	Irp->IoStatus.Information = 0;
 	break;
       }
 
@@ -3291,26 +3339,11 @@ ImDiskDeviceThread(IN PVOID Context)
 	  KdPrint(("ImDisk: Device %i thread is shutting down.\n",
 		   device_extension->device_number));
 
-	  // If ReferenceCount is not zero, this device may have outstanding
-	  // IRP-s or otherwise unfinished things to do. Let IRP-s be done by
-	  // continuing this dispatch loop until ReferenceCount is zero.
-	  if (device_object->ReferenceCount != 0)
-	    {
-	      KdPrint(("ImDisk: Device %i has %i references. Waiting.\n",
-		       device_extension->device_number,
-		       device_object->ReferenceCount));
-
-	      KeDelayExecutionThread(KernelMode, FALSE, &time_out);
-
-	      time_out.LowPart <<= 4;
-	      continue;
-	    }
-
-	  KdPrint(("ImDisk: Freeing resources for device %i.\n",
-		   device_extension->device_number));
-
 	  if (device_extension->proxy_device != NULL)
-	    ObDereferenceObject(device_extension->proxy_device);
+	    {
+	      ObDereferenceObject(device_extension->proxy_device);
+	      device_extension->proxy_device = NULL;
+	    }
 
 	  if (device_extension->vm_disk)
 	    {
@@ -3338,10 +3371,25 @@ ImDiskDeviceThread(IN PVOID Context)
 	      device_extension->file_name.MaximumLength = 0;
 	    }
 
-	  DeviceList &= ~(1 << device_extension->device_number);
+	  // If ReferenceCount is not zero, this device may have outstanding
+	  // IRP-s or otherwise unfinished things to do. Let IRP-s be done by
+	  // continuing this dispatch loop until ReferenceCount is zero.
+	  if (device_object->ReferenceCount != 0)
+	    {
+	      KdPrint(("ImDisk: Device %i has %i references. Waiting.\n",
+		       device_extension->device_number,
+		       device_object->ReferenceCount));
+
+	      KeDelayExecutionThread(KernelMode, FALSE, &time_out);
+
+	      time_out.LowPart <<= 4;
+	      continue;
+	    }
 
 	  KdPrint(("ImDisk: Deleting device object %i.\n",
 		   device_extension->device_number));
+
+	  DeviceList &= ~(1 << device_extension->device_number);
 
 	  IoDeleteDevice(device_object);
 

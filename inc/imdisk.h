@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0115
+#define IMDISK_VERSION                 0x0116
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -85,7 +85,8 @@
 #define IOCTL_IMDISK_QUERY_DEVICE      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x802, METHOD_BUFFERED, 0))
 #define IOCTL_IMDISK_QUERY_DRIVER      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x803, METHOD_BUFFERED, 0))
 #define IOCTL_IMDISK_REFERENCE_HANDLE  ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x804, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
-#define IOCTL_IMDISK_SET_DEVICE_FLAGS  ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x805, METHOD_BUFFERED, 0)) // Not yet supported
+#define IOCTL_IMDISK_SET_DEVICE_FLAGS  ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x805, METHOD_BUFFERED, 0))
+#define IOCTL_IMDISK_REMOVE_DEVICE     ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x806, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
 
 ///
 /// Bit constants for the Flags field in IMDISK_CREATE_DATA
@@ -515,7 +516,7 @@ ImDiskCreateDevice(IN HWND hWndStatusText OPTIONAL,
 		   IN LPWSTR MountPoint OPTIONAL);
 
 /**
-   This function removes (unounts) an existing ImDisk virtual disk device.
+   This function removes (unmounts) an existing ImDisk virtual disk device.
 
    hWndStatusText  A handle to a window that can display status message text.
                    The function will send WM_SETTEXT messages to this window.
@@ -533,6 +534,23 @@ WINAPI
 ImDiskRemoveDevice(IN HWND hWndStatusText OPTIONAL,
 		   IN DWORD DeviceNumber OPTIONAL,
 		   IN LPCWSTR MountPoint OPTIONAL);
+
+/**
+   This function forcefully removes (unmounts) an existing ImDisk virtual disk
+   device. Any unsaved data will be lost.
+
+   Device          Handle to open device. If not NULL, it is used to query
+                   device number to find out which device to remove. If this
+		   parameter is NULL the DeviceNumber parameter is used
+		   instead.
+
+   DeviceNumber    Number of the ImDisk device to remove. This parameter is
+                   only used if Device parameter is NULL.
+*/
+BOOL
+WINAPI
+ImDiskForceRemoveDevice(IN HANDLE Device OPTIONAL,
+			IN DWORD DeviceNumber OPTIONAL);
 
 /**
    This function changes the device characteristics of an existing ImDisk

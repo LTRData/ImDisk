@@ -1032,12 +1032,68 @@ ImDiskCreateDevice(HWND hWnd,
 
 BOOL
 WINAPI
+ImDiskForceRemoveDevice(HANDLE Device,
+			DWORD DeviceNumber)
+{
+  UNICODE_STRING file_name;
+  HANDLE driver;
+  DWORD dw;
+
+  if (Device != NULL)
+    {
+      DWORD create_data_size = sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2);
+      PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
+	_alloca(create_data_size);
+
+      if (create_data == NULL)
+	return FALSE;
+
+      if (!DeviceIoControl(Device,
+			   IOCTL_IMDISK_QUERY_DEVICE,
+			   NULL,
+			   0,
+			   create_data,
+			   create_data_size,
+			   &dw, NULL))
+	return FALSE;
+
+      DeviceNumber = create_data->DeviceNumber;
+    }
+
+  RtlInitUnicodeString(&file_name, IMDISK_CTL_DEVICE_NAME);
+  driver = ImDiskOpenDeviceByName(&file_name,
+				  GENERIC_READ | GENERIC_WRITE);
+  if (driver == NULL)
+    return FALSE;
+
+  if (!DeviceIoControl(driver,
+                       IOCTL_IMDISK_REMOVE_DEVICE,
+                       &DeviceNumber,
+		       sizeof DeviceNumber,
+		       NULL,
+		       0,
+		       &dw,
+		       NULL))
+    {
+      DWORD dwLastError = GetLastError();
+      NtClose(driver);
+      SetLastError(dwLastError);
+      return FALSE;
+    }
+
+  NtClose(driver);
+  return TRUE;
+}
+
+BOOL
+WINAPI
 ImDiskRemoveDevice(HWND hWnd,
 		   DWORD DeviceNumber,
 		   LPCWSTR MountPoint)
 {
   HANDLE device;
   DWORD dw;
+  BOOL force_dismount = FALSE;
 
   if (MountPoint == NULL)
     {
@@ -1046,9 +1102,14 @@ ImDiskRemoveDevice(HWND hWnd,
 
       device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					GENERIC_READ | GENERIC_WRITE);
+
       if (device == INVALID_HANDLE_VALUE)
 	device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					  GENERIC_READ);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = ImDiskOpenDeviceByNumber(DeviceNumber,
+					  FILE_READ_ATTRIBUTES);
     }
   else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
 	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
@@ -1101,6 +1162,12 @@ ImDiskRemoveDevice(HWND hWnd,
       if (device == INVALID_HANDLE_VALUE)
 	device = CreateFile(drive_letter_path,
 			    GENERIC_READ,
+			    FILE_SHARE_READ | FILE_SHARE_WRITE,
+			    NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = CreateFile(drive_letter_path,
+			    FILE_READ_ATTRIBUTES,
 			    FILE_SHARE_READ | FILE_SHARE_WRITE,
 			    NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
     }
@@ -1164,6 +1231,8 @@ ImDiskRemoveDevice(HWND hWnd,
 	  NtClose(device);
 	  return FALSE;
 	}
+      else
+	force_dismount = TRUE;
 
   if (hWnd != NULL)
     SetWindowText(hWnd, L"Dismounting filesystem...");
@@ -1176,6 +1245,16 @@ ImDiskRemoveDevice(HWND hWnd,
 		  0,
 		  &dw,
 		  NULL);
+
+  if (force_dismount)
+    DeviceIoControl(device,
+		    FSCTL_LOCK_VOLUME,
+		    NULL,
+		    0,
+		    NULL,
+		    0,
+		    &dw,
+		    NULL);
 
   if (hWnd != NULL)
     SetWindowText(hWnd, L"");
@@ -1314,12 +1393,13 @@ ImDiskRemoveDevice(HWND hWnd,
 		       0,
 		       &dw,
 		       NULL))
-    {
-      if (hWnd != NULL)
-	MsgBoxLastError(hWnd, L"Error removing device:");
-      NtClose(device);
-      return FALSE;
-    }
+    if (force_dismount ? !ImDiskForceRemoveDevice(device, 0) : FALSE)
+      {
+	if (hWnd != NULL)
+	  MsgBoxLastError(hWnd, L"Error removing device:");
+	NtClose(device);
+	return FALSE;
+      }
 
   DeviceIoControl(device,
 		  FSCTL_UNLOCK_VOLUME,

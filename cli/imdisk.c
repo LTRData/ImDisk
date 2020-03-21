@@ -508,6 +508,8 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 
   ZeroMemory(create_data, sizeof(IMDISK_CREATE_DATA) + file_name.Length);
 
+  puts("Creating device...");
+
   // Check if mount point is a drive letter or junction point
   if (MountPoint != NULL)
     if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
@@ -600,36 +602,7 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 	    }
 	}
       else
-	if (DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
-	  // Notify processes that new device has arrived.
-	  {
-	    DEV_BROADCAST_VOLUME dev_broadcast_volume = {
-	      sizeof(DEV_BROADCAST_VOLUME),
-	      DBT_DEVTYP_VOLUME
-	    };
-	    DWORD_PTR dwp;
-
-	    dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
-
-	    SendMessageTimeout(HWND_BROADCAST,
-			       WM_DEVICECHANGE,
-			       DBT_DEVICEARRIVAL,
-			       (LPARAM)&dev_broadcast_volume,
-			       SMTO_BLOCK,
-			       2000,
-			       &dwp);
-
-	    dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
-
-	    SendMessageTimeout(HWND_BROADCAST,
-			       WM_DEVICECHANGE,
-			       DBT_DEVICEARRIVAL,
-			       (LPARAM)&dev_broadcast_volume,
-			       SMTO_BLOCK,
-			       2000,
-			       &dwp);
-	  }
-	else
+	if (!DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
 	  PrintLastError(L"Error creating mount point:");
     }
 
@@ -647,6 +620,8 @@ ImDiskCliFormatDisk(LPWSTR MountPoint, LPWSTR FormatOptions)
 
   STARTUPINFO startup_info = { sizeof(startup_info) };
   PROCESS_INFORMATION process_info;
+
+  puts("Formatting disk...");
 
   wcscpy(format_cmd, format_cmd_prefix);
   wcscat(format_cmd, MountPoint);
@@ -682,9 +657,14 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
     {
       device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					GENERIC_READ | GENERIC_WRITE);
+
       if (device == INVALID_HANDLE_VALUE)
 	device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					  GENERIC_READ);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = ImDiskOpenDeviceByNumber(DeviceNumber,
+					  FILE_READ_ATTRIBUTES);
     }
   else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
 	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
@@ -702,7 +682,7 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	  };
 	  DWORD_PTR dwp;
 
-	  puts("Sending device removal notifications...");
+	  puts("Notifying applications...");
 
 	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
 
@@ -739,14 +719,25 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 			    GENERIC_READ,
 			    FILE_SHARE_READ | FILE_SHARE_WRITE,
 			    NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = CreateFile(drive_letter_path,
+			    FILE_READ_ATTRIBUTES,
+			    FILE_SHARE_READ | FILE_SHARE_WRITE,
+			    NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
     }
   else
     {
       device = ImDiskOpenDeviceByMountPoint(MountPoint,
 					    GENERIC_READ | GENERIC_WRITE);
+
       if (device == INVALID_HANDLE_VALUE)
 	device = ImDiskOpenDeviceByMountPoint(MountPoint,
 					      GENERIC_READ);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = ImDiskOpenDeviceByMountPoint(MountPoint,
+					      FILE_READ_ATTRIBUTES);
 
       if (device == INVALID_HANDLE_VALUE)
 	switch (GetLastError())
@@ -893,10 +884,11 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 		       0,
 		       &dw,
 		       NULL))
-    {
-      PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-    }
+    if (ForceDismount ? !ImDiskForceRemoveDevice(device, 0) : FALSE)
+      {
+	PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+      }
 
   DeviceIoControl(device,
 		  FSCTL_UNLOCK_VOLUME,
@@ -964,7 +956,7 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	}
     }
 
-  puts("OK.");
+  puts("Done.");
 
   return 0;
 }
@@ -1112,6 +1104,8 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
       CloseHandle(device);
       return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
     }
+
+  CloseHandle(device);
 
   _snprintf(message_buffer, sizeof message_buffer,
 	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s%s%s.",
@@ -2032,29 +2026,65 @@ wmain(int argc, LPWSTR argv[])
 				    &image_offset, flags, file_name,
 				    native_path, mount_point);
 
-	if (ret == 0)
-	  {
-	    if (numeric_print)
-	      printf("%u\n", device_number);
-	    else
-	      ImDiskOemPrintF
-		(stdout,
-		 "Created device %1!u!: %2!ws! -> %3!ws!",
-		 device_number,
-		 mount_point == NULL ? L"No mountpoint" : mount_point,
-		 file_name == NULL ? L"VM image" : file_name);
+	if (ret != 0)
+	  return ret;
 
-	    if (format_options != NULL)
-	      if (mount_point != NULL)
-		ImDiskCliFormatDisk(mount_point, format_options);
-	      else
-		fputs
-		  ("Formatting is not supported without a mount point.\r\n"
-		   "The virtual disk has been created without formatting.\r\n",
-		   stderr);
-	  }
+	if (numeric_print)
+	  printf("%u\n", device_number);
+	else
+	  ImDiskOemPrintF(stdout,
+			  "Created device %1!u!: %2!ws! -> %3!ws!",
+			  device_number,
+			  mount_point == NULL ? L"No mountpoint" : mount_point,
+			  file_name == NULL ? L"VM image" : file_name);
 
-	return ret;
+	if (format_options != NULL)
+	  if (mount_point != NULL)
+	    ImDiskCliFormatDisk(mount_point, format_options);
+	  else
+	    fputs("Formatting is not supported without a mount point.\r\n"
+		  "The virtual disk has been created without formatting.\r\n",
+		  stderr);
+
+	// Notify processes that new device has arrived.
+	if (mount_point != NULL)
+	  if ((wcslen(mount_point) == 2) ? mount_point[1] == ':' : 
+	      (wcslen(mount_point) == 3) ?
+	      wcscmp(mount_point + 1, L":\\") == 0 : FALSE)
+	    {
+	      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+		sizeof(DEV_BROADCAST_VOLUME),
+		DBT_DEVTYP_VOLUME
+	      };
+	      DWORD_PTR dwp;
+
+	      puts("Notifying applications...");
+
+	      dev_broadcast_volume.dbcv_unitmask =
+		1 << (mount_point[0] - L'A');
+
+	      SendMessageTimeout(HWND_BROADCAST,
+				 WM_DEVICECHANGE,
+				 DBT_DEVICEARRIVAL,
+				 (LPARAM)&dev_broadcast_volume,
+				 SMTO_BLOCK,
+				 2000,
+				 &dwp);
+
+	      dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
+
+	      SendMessageTimeout(HWND_BROADCAST,
+				 WM_DEVICECHANGE,
+				 DBT_DEVICEARRIVAL,
+				 (LPARAM)&dev_broadcast_volume,
+				 SMTO_BLOCK,
+				 2000,
+				 &dwp);
+	    }
+
+	puts("Done.");
+
+	return 0;
       }
 
     case OP_MODE_REMOVE:

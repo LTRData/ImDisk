@@ -14,7 +14,7 @@ DLLDEF=$O\imdisk.def
 MSC_OPTIMIZATION=/Ox /GFS-
 DLLENTRY=DllMain@12 /subsystem:windows,4.00
 _NT_TARGET_VERSION=0x500
-LINKER_FLAGS=/osversion:4.00 /LARGEADDRESSAWARE
+LINKER_FLAGS=/osversion:4.00 /LARGEADDRESSAWARE /DELAYLOAD:COMCTL32.DLL /DELAYLOAD:COMDLG32.DLL
 TARGETLIBS=crthlp.lib \
            $(SDK_LIB_PATH)\kernel32.lib \
            $(SDK_LIB_PATH)\advapi32.lib \
@@ -22,7 +22,8 @@ TARGETLIBS=crthlp.lib \
            $(SDK_LIB_PATH)\shell32.lib \
            $(SDK_LIB_PATH)\comctl32.lib \
            $(SDK_LIB_PATH)\comdlg32.lib \
-           $(SDK_LIB_PATH)\ntdll.lib
+           $(SDK_LIB_PATH)\ntdll.lib \
+           $(SDK_LIB_PATH)\delayimp.lib
 
 !ELSE
 
@@ -33,7 +34,8 @@ TARGETLIBS=$(SDK_LIB_PATH)\kernel32.lib \
            $(SDK_LIB_PATH)\shell32.lib \
            $(SDK_LIB_PATH)\comctl32.lib \
            $(SDK_LIB_PATH)\comdlg32.lib \
-           $(SDK_LIB_PATH)\ntdll.lib
+           $(SDK_LIB_PATH)\ntdll.lib \
+           $(SDK_LIB_PATH)\delayimp.lib
 
 !ENDIF
 
