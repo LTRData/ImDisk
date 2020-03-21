@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0128
+#define IMDISK_VERSION                 0x0130
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -67,13 +67,14 @@
 /// Registry settings. It is possible to specify devices to be mounted
 /// automatically when the driver loads.
 ///
-#define IMDISK_CFG_PARAMETER_KEY       _T("\\Parameters")
-#define IMDISK_CFG_MAX_DEVICES_VALUE   _T("MaxDevices")
-#define IMDISK_CFG_LOAD_DEVICES_VALUE  _T("LoadDevices")
-#define IMDISK_CFG_IMAGE_FILE_PREFIX   _T("FileName")
-#define IMDISK_CFG_SIZE_PREFIX         _T("Size")
-#define IMDISK_CFG_FLAGS_PREFIX        _T("Flags")
-#define IMDISK_CFG_DRIVE_LETTER_PREFIX _T("DriveLetter")
+#define IMDISK_CFG_PARAMETER_KEY                  _T("\\Parameters")
+#define IMDISK_CFG_MAX_DEVICES_VALUE              _T("MaxDevices")
+#define IMDISK_CFG_LOAD_DEVICES_VALUE             _T("LoadDevices")
+#define IMDISK_CFG_DISALLOWED_DRIVE_LETTERS_VALUE _T("DisallowedDriveLetters")
+#define IMDISK_CFG_IMAGE_FILE_PREFIX              _T("FileName")
+#define IMDISK_CFG_SIZE_PREFIX                    _T("Size")
+#define IMDISK_CFG_FLAGS_PREFIX                   _T("Flags")
+#define IMDISK_CFG_DRIVE_LETTER_PREFIX            _T("DriveLetter")
 
 ///
 /// Base value for the IOCTL's.
