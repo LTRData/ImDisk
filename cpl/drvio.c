@@ -1055,7 +1055,7 @@ ImDiskCreateDeviceEx(HWND hWnd,
 			     WM_DEVICECHANGE,
 			     DBT_DEVICEARRIVAL,
 			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK,
+			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
 			     4000,
 			     &dwp);
 
@@ -1065,7 +1065,7 @@ ImDiskCreateDeviceEx(HWND hWnd,
 			     WM_DEVICECHANGE,
 			     DBT_DEVICEARRIVAL,
 			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK,
+			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
 			     4000,
 			     &dwp);
 
@@ -1073,7 +1073,7 @@ ImDiskCreateDeviceEx(HWND hWnd,
 			     WM_DEVICECHANGE,
 			     DBT_DEVNODES_CHANGED,
 			     (LPARAM)0,
-			     SMTO_BLOCK,
+			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
 			     4000,
 			     &dwp);
 
@@ -1204,7 +1204,7 @@ ImDiskRemoveDevice(HWND hWnd,
 			     WM_DEVICECHANGE,
 			     DBT_DEVICEQUERYREMOVE,
 			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK,
+			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
 			     4000,
 			     &dwp);
 
@@ -1212,7 +1212,7 @@ ImDiskRemoveDevice(HWND hWnd,
 			     WM_DEVICECHANGE,
 			     DBT_DEVICEREMOVEPENDING,
 			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK,
+			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
 			     4000,
 			     &dwp);
 	}
@@ -1511,7 +1511,7 @@ ImDiskRemoveDevice(HWND hWnd,
 			 WM_DEVICECHANGE,
 			 DBT_DEVNODES_CHANGED,
 			 (LPARAM)0,
-			 SMTO_BLOCK,
+			 SMTO_BLOCK | SMTO_ABORTIFHUNG,
 			 4000,
 			 &dwp);
     }
