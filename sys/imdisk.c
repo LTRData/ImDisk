@@ -5,7 +5,7 @@
     requests somewhere else, possibly to another machine, through a
     co-operating user-mode service, ImDskSvc.
 
-    Copyright (C) 2005-2007 Olof Lagerkvist.
+    Copyright (C) 2005-2009 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -195,6 +195,7 @@ typedef struct _DEVICE_EXTENSION
   BOOLEAN vm_disk;             // TRUE if this device is a virtual memory disk
   BOOLEAN use_proxy;           // TRUE if this device uses proxy device for I/O
   BOOLEAN image_modified;      // TRUE if this device has been written to
+  LONG special_file_count;     // Number of swapfiles/hiberfiles on device
   PKTHREAD device_thread;      // Pointer to the dispatch thread object
 } DEVICE_EXTENSION, *PDEVICE_EXTENSION;
 
@@ -231,6 +232,10 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
 NTSTATUS
 ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 		    IN PIRP Irp);
+
+NTSTATUS
+ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
+		  IN PIRP Irp);
 
 VOID
 ImDiskDeviceThread(IN PVOID Context);
@@ -452,6 +457,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
   DriverObject->MajorFunction[IRP_MJ_READ] = ImDiskReadWrite;
   DriverObject->MajorFunction[IRP_MJ_WRITE] = ImDiskReadWrite;
   DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = ImDiskDeviceControl;
+  DriverObject->MajorFunction[IRP_MJ_PNP] = ImDiskDispatchPnP;
 
   DriverObject->DriverUnload = ImDiskUnload;
 
@@ -1011,7 +1017,10 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
       InitializeObjectAttributes(&object_attributes,
 				 &real_file_name,
-				 OBJ_CASE_INSENSITIVE, NULL, NULL);
+				 OBJ_CASE_INSENSITIVE |
+				 OBJ_FORCE_ACCESS_CHECK,
+				 NULL,
+				 NULL);
 
       KdPrint(("ImDisk: Passing WriteMode=%#x and WriteShare=%#x\n",
 	       (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) |
@@ -1048,6 +1057,45 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		     FILE_SYNCHRONOUS_IO_NONALERT,
 		     NULL,
 		     0);
+      if (status == STATUS_INVALID_PARAMETER)
+	{
+	  InitializeObjectAttributes(&object_attributes,
+				     &real_file_name,
+				     OBJ_CASE_INSENSITIVE,
+				     NULL,
+				     NULL);
+
+	  status =
+	    ZwCreateFile(&file_handle,
+			 GENERIC_READ |
+			 ((IMDISK_TYPE(CreateData->Flags) ==
+			   IMDISK_TYPE_PROXY) |
+			  !((IMDISK_TYPE(CreateData->Flags) ==
+			     IMDISK_TYPE_VM) |
+			    IMDISK_READONLY(CreateData->Flags)) ?
+			  GENERIC_WRITE : 0),
+			 &object_attributes,
+			 &io_status,
+			 NULL,
+			 FILE_ATTRIBUTE_NORMAL,
+			 FILE_SHARE_READ |
+			 FILE_SHARE_DELETE |
+			 (IMDISK_READONLY(CreateData->Flags) |
+			  (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) ?
+			  FILE_SHARE_WRITE : 0),
+			 FILE_OPEN,
+			 IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY ?
+			 FILE_NON_DIRECTORY_FILE |
+			 FILE_SEQUENTIAL_ONLY |
+			 FILE_NO_INTERMEDIATE_BUFFERING |
+			 FILE_SYNCHRONOUS_IO_NONALERT :
+			 FILE_NON_DIRECTORY_FILE |
+			 FILE_RANDOM_ACCESS |
+			 FILE_NO_INTERMEDIATE_BUFFERING |
+			 FILE_SYNCHRONOUS_IO_NONALERT,
+			 NULL,
+			 0);
+	}
 
       // If not found we will create the file if a new non-zero size is
       // specified, read-only virtual disk is not specified and we are
@@ -2196,7 +2244,8 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	if (IMDISK_READONLY(device_flags->FlagsToChange))
 	  if (DeviceObject->DeviceType == FILE_DEVICE_DISK)
 	    {
-	      if (IMDISK_READONLY(device_flags->FlagValues))
+	      if ((IMDISK_READONLY(device_flags->FlagValues) != 0) &
+		  (device_extension->special_file_count <= 0))
 		{
 		  DeviceObject->Characteristics |= FILE_READ_ONLY_DEVICE;
 		  device_extension->read_only = TRUE;
@@ -2260,8 +2309,22 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
       // not by the worker thread so therefore this check is done. Also, the
       // control device does not have a worker thread so that is another
       // reason.
-      if (KeGetCurrentIrql() >= DISPATCH_LEVEL)
+      if (KeGetCurrentIrql() > PASSIVE_LEVEL)
 	{
+	  KdPrint(("ImDisk: IOCTL_IMDISK_REFERENCE_HANDLE not accessible "
+		   "on current IRQL (%i).", KeGetCurrentIrql()));
+
+	  status = STATUS_ACCESS_DENIED;
+	  Irp->IoStatus.Information = 0;
+	  break;
+	}
+
+      if (!SeSinglePrivilegeCheck(RtlConvertLongToLuid(SE_TCB_PRIVILEGE),
+				  UserMode))
+	{
+	  KdPrint(("ImDisk: IOCTL_IMDISK_REFERENCE_HANDLE not accessible, "
+		   "privilege not held by calling thread.\n"));
+
 	  status = STATUS_ACCESS_DENIED;
 	  Irp->IoStatus.Information = 0;
 	  break;
@@ -2403,10 +2466,13 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	      (PDEVICE_EXTENSION) device_object->DeviceExtension;
 
 	    if (device_extension->device_number == device_number)
-	      {
-		ImDiskRemoveVirtualDisk(device_object);
-		status = STATUS_SUCCESS;
-	      }
+	      if (device_extension->special_file_count > 0)
+		status = STATUS_ACCESS_DENIED;
+	      else
+		{
+		  ImDiskRemoveVirtualDisk(device_object);
+		  status = STATUS_SUCCESS;
+		}
 
 	    device_object = device_object->NextDevice;
 	  }
@@ -2420,10 +2486,19 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: IOCTL_DISK/STORAGE_EJECT_MEDIA for device %i.\n",
 	       device_extension->device_number));
 
-      ImDiskRemoveVirtualDisk(DeviceObject);
+      if (device_extension->special_file_count > 0)
+	{
+	  Irp->IoStatus.Information = 0;
+	  status = STATUS_ACCESS_DENIED;
+	}
+      else
+	{
+	  ImDiskRemoveVirtualDisk(DeviceObject);
 
-      Irp->IoStatus.Information = 0;
-      status = STATUS_SUCCESS;
+	  Irp->IoStatus.Information = 0;
+	  status = STATUS_SUCCESS;
+	}
+
       break;
 
     case IOCTL_IMDISK_QUERY_DRIVER:
@@ -3192,6 +3267,107 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	status = STATUS_INVALID_DEVICE_REQUEST;
 	Irp->IoStatus.Information = 0;
       }
+    }
+
+  if (status == STATUS_PENDING)
+    {
+      IoMarkIrpPending(Irp);
+
+      ExInterlockedInsertTailList(&device_extension->list_head,
+				  &Irp->Tail.Overlay.ListEntry,
+				  &device_extension->list_lock);
+
+      KeSetEvent(&device_extension->request_event, (KPRIORITY) 0, FALSE);
+    }
+  else
+    {
+      Irp->IoStatus.Status = status;
+
+      IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
+
+  return status;
+}
+
+NTSTATUS
+ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
+		  IN PIRP Irp)
+{
+  PDEVICE_EXTENSION device_extension;
+  PIO_STACK_LOCATION io_stack;
+  NTSTATUS status;
+
+  ASSERT(DeviceObject != NULL);
+  ASSERT(Irp != NULL);
+
+  device_extension = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
+
+  io_stack = IoGetCurrentIrpStackLocation(Irp);
+
+  KdPrint(("ImDisk: Device %i received PnP function %#x IRP %#x.\n",
+	   device_extension->device_number,
+	   io_stack->MinorFunction,
+	   Irp));
+
+  if (device_extension->terminate_thread)
+    {
+      KdPrint(("ImDisk: PnP dispatch on device %i that is being removed.\n",
+	       device_extension->device_number));
+
+      Irp->IoStatus.Status = STATUS_DELETE_PENDING;
+      Irp->IoStatus.Information = 0;
+
+      IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+      return Irp->IoStatus.Status;
+    }
+
+  // The control device cannot receive PnP dispatch.
+  if (DeviceObject == ImDiskCtlDevice)
+    {
+      KdPrint(("ImDisk: PnP function %#x invalid for control device.\n",
+	       io_stack->MinorFunction));
+
+      Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+      Irp->IoStatus.Information = 0;
+
+      return Irp->IoStatus.Status;
+    }
+
+  switch (io_stack->MinorFunction)
+    {
+    case IRP_MN_DEVICE_USAGE_NOTIFICATION:
+      KdPrint(("ImDisk: Device %i got IRP_MN_DEVICE_USAGE_NOTIFICATION.\n",
+	       device_extension->device_number,
+	       io_stack->MinorFunction,
+	       Irp));
+
+      switch (io_stack->Parameters.UsageNotification.Type)
+	{
+	case DeviceUsageTypePaging:
+	case DeviceUsageTypeDumpFile:
+	  if (device_extension->read_only)
+	    status = STATUS_MEDIA_WRITE_PROTECTED;
+	  else
+	    IoAdjustPagingPathCount
+	      (&device_extension->special_file_count,
+	       io_stack->Parameters.UsageNotification.InPath);
+	    status = STATUS_SUCCESS;
+
+	  break;
+
+	default:
+	  status = STATUS_NOT_SUPPORTED;
+	}
+
+      break;
+
+    default:
+      KdPrint(("ImDisk: Unknown PnP function %#x.\n",
+	       io_stack->MinorFunction));
+
+      status = STATUS_INVALID_DEVICE_REQUEST;
+      Irp->IoStatus.Information = 0;
     }
 
   if (status == STATUS_PENDING)

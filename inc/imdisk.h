@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0116
+#define IMDISK_VERSION                 0x0120
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///

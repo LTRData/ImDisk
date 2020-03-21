@@ -1,7 +1,7 @@
 /*
     Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2004-2008 Olof Lagerkvist.
+    Copyright (C) 2004-2009 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -1504,7 +1504,7 @@ wmain(int argc, LPWSTR argv[])
 	  ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\n"
 	   "Version %i.%i.%i - (Compiled " __TIMESTAMP__ ")\n"
 	   "\n"
-	   "Copyright (C) 2004-2008 Olof Lagerkvist.\r\n"
+	   "Copyright (C) 2004-2009 Olof Lagerkvist.\r\n"
 "\n"
 	   "http://www.ltr-data.se     olof@ltr-data.se\r\n"
 	   "\n"
