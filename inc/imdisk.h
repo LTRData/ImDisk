@@ -41,7 +41,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0100
+#define IMDISK_VERSION                 0x0101
 
 ///
 /// The base names for the device objects created in \Device

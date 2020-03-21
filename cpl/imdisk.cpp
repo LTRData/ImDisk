@@ -204,15 +204,11 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
 
   ListView_SetItem(hWnd, &lvi);
 
-  LONGLONG file_size =
-    create_data->DiskGeometry.Cylinders.QuadPart *
-    create_data->DiskGeometry.TracksPerCylinder *
-    create_data->DiskGeometry.SectorsPerTrack *
-    create_data->DiskGeometry.BytesPerSector;
-
   WCHAR wcBuffer[128];
   _snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer),
-	     L"%.4g %s", _h(file_size), _p(file_size));
+	     L"%.4g %s",
+	     _h(create_data->DiskGeometry.Cylinders.QuadPart),
+	     _p(create_data->DiskGeometry.Cylinders.QuadPart));
   wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer)] = 0;
 
   lvi.iSubItem = 2;

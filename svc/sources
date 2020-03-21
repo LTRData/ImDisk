@@ -1,0 +1,20 @@
+TARGETNAME=imdsksvc
+TARGETPATH=.
+TARGETTYPE=PROGRAM
+SOURCES=imdsksvc.cpp imdsksvc.rc
+
+MSC_OPTIMIZATION=/Ox /GFS-
+MSC_WARNING_LEVEL=/W4 /WX /wd4201
+
+UMTYPE=windows
+UMENTRYABS=Entry /subsystem:console,4.00
+USE_MSVCRT=1
+
+C_DEFINES = $(C_DEFINES) /DUNICODE /D_UNICODE
+
+LINKER_FLAGS=/osversion:4.00
+
+TARGETLIBS=$(SDK_LIB_PATH)\kernel32.lib \
+           $(SDK_LIB_PATH)\advapi32.lib \
+           $(SDK_LIB_PATH)\user32.lib \
+           $(SDK_LIB_PATH)\wsock32.lib

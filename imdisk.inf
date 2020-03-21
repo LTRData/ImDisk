@@ -10,8 +10,9 @@ DriverVer = 02/22/2006,1,00,00,0001
 
 [SourceDisksFiles]
 imdisk.sys = 1,sys\i386
-imdsksvc.exe = 1,svc
-imdisk.exe = 1,cli
+imdsksvc.exe = 1,svc\i386
+imdisk.cpl = 1,cpl\i386
+imdisk.exe = 1,cli\i386
 imdisk.inf = 1
 
 
@@ -43,6 +44,7 @@ DelService = ImDskSvc
 
 [ImDiskExeFiles]
 imdisk.exe
+imdisk.cpl
 imdsksvc.exe
 
 

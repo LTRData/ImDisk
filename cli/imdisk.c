@@ -612,7 +612,9 @@ ImDiskCreate(LPDWORD DeviceNumber,
 
   // Check if mount point is a drive letter or junction point
   if (MountPoint != NULL)
-    if ((wcslen(MountPoint) == 2) ? MountPoint[1] == L':' : FALSE)
+    if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
+	(wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
+	FALSE)
       create_data->DriveLetter = MountPoint[0];
 
   create_data->DeviceNumber   = *DeviceNumber;
@@ -723,7 +725,9 @@ ImDiskRemove(DWORD DeviceNumber, LPCWSTR MountPoint)
 	device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					  GENERIC_READ);
     }
-  else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : FALSE)
+  else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
+	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
+	   FALSE)
     {
       WCHAR drive_letter_path[] = L"\\\\.\\ :";
 
@@ -894,7 +898,17 @@ ImDiskRemove(DWORD DeviceNumber, LPCWSTR MountPoint)
     {
       puts("Removing mountpoint...");
 
-      if ((wcslen(MountPoint) == 2) ? MountPoint[1] != ':' : TRUE)
+      if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
+	  (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
+	  FALSE)
+	{
+	  WCHAR drive_mount_point[3] = L" :";
+	  drive_mount_point[0] = MountPoint[0];
+
+	  if (!DefineDosDevice(DDD_REMOVE_DEFINITION, drive_mount_point, NULL))
+	    PrintLastError(MountPoint);
+	}
+      else
 	{
 	  if (!ImDiskRemoveMountPoint(MountPoint))
 	    switch (GetLastError())
@@ -924,9 +938,6 @@ ImDiskRemove(DWORD DeviceNumber, LPCWSTR MountPoint)
 		PrintLastError(MountPoint);
 	      }
 	}
-      else
-	if (!DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL))
-	  PrintLastError(MountPoint);
     }
 
   puts("OK.");
@@ -990,7 +1001,6 @@ ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
   DWORD dw;
   PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
     _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
-  LONGLONG file_size;
   char message_buffer[MAX_PATH];
 
   if (create_data == NULL)
@@ -1004,7 +1014,9 @@ ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
       device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					GENERIC_READ);
     }
-  else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : FALSE)
+  else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
+	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
+	   FALSE)
     {
       WCHAR drive_letter_path[] = L"\\\\.\\ :";
 
@@ -1095,12 +1107,6 @@ ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
       return -1;
     }
 
-  file_size =
-    create_data->DiskGeometry.Cylinders.QuadPart *
-    create_data->DiskGeometry.TracksPerCylinder *
-    create_data->DiskGeometry.SectorsPerTrack *
-    create_data->DiskGeometry.BytesPerSector;
-
   _snprintf(message_buffer, sizeof message_buffer,
 	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s.",
 	    create_data->DriveLetter == 0 ?
@@ -1112,8 +1118,9 @@ ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 	    (int)(create_data->FileNameLength /
 		  sizeof(*create_data->FileName)),
 	    create_data->FileName,
-	    file_size,
-	    _h(file_size), _p(file_size),
+	    create_data->DiskGeometry.Cylinders.QuadPart,
+	    _h(create_data->DiskGeometry.Cylinders.QuadPart),
+	    _p(create_data->DiskGeometry.Cylinders.QuadPart),
 	    IMDISK_READONLY(create_data->Flags) ?
 	    ", ReadOnly" : "",
 	    IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM ?
@@ -1301,10 +1308,7 @@ wmain(int argc, LPWSTR argv[])
 	  case L's':
 	    if ((op_mode != OP_MODE_CREATE) |
 		(argc < 2) |
-		(disk_geometry.Cylinders.QuadPart != 0) |
-		(disk_geometry.BytesPerSector != 0) |
-		(disk_geometry.SectorsPerTrack != 0) |
-		(disk_geometry.TracksPerCylinder != 0))
+		(disk_geometry.Cylinders.QuadPart != 0))
 	      ImDiskSyntaxHelp();
 
 	    {
@@ -1356,7 +1360,6 @@ wmain(int argc, LPWSTR argv[])
 	      ImDiskSyntaxHelp();
 
 	    disk_geometry.BytesPerSector = wcstoul(argv[1], NULL, 0);
-	    disk_geometry.Cylinders.QuadPart /= disk_geometry.BytesPerSector;
 
 	    argc--;
 	    argv++;
@@ -1369,7 +1372,6 @@ wmain(int argc, LPWSTR argv[])
 	      ImDiskSyntaxHelp();
 
 	    disk_geometry.SectorsPerTrack = wcstoul(argv[1], NULL, 0);
-	    disk_geometry.Cylinders.QuadPart /= disk_geometry.SectorsPerTrack;
 
 	    argc--;
 	    argv++;
@@ -1382,8 +1384,6 @@ wmain(int argc, LPWSTR argv[])
 	      ImDiskSyntaxHelp();
 
 	    disk_geometry.TracksPerCylinder = wcstoul(argv[1], NULL, 0);
-	    disk_geometry.Cylinders.QuadPart /=
-	      disk_geometry.TracksPerCylinder;
 
 	    argc--;
 	    argv++;

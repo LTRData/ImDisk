@@ -1,0 +1,21 @@
+TARGETNAME=imdisk
+TARGETPATH=.
+TARGETTYPE=PROGRAM
+SOURCES=imdisk.c imdisk.rc
+
+MSC_OPTIMIZATION=/Ox /GFS-
+MSC_WARNING_LEVEL=/W4 /WX /wd4201
+
+UMTYPE=console
+UMENTRYABS=wmainCRTStartup /subsystem:console,4.00
+USE_MSVCRT=1
+
+C_DEFINES = $(C_DEFINES) /DUNICODE /D_UNICODE
+
+_NT_TARGET_VERSION=0x500
+
+TARGETLIBS=$(SDK_LIB_PATH)\kernel32.lib \
+           $(SDK_LIB_PATH)\advapi32.lib \
+           $(SDK_LIB_PATH)\user32.lib \
+           $(SDK_LIB_PATH)\shell32.lib \
+           $(SDK_LIB_PATH)\ntdll.lib

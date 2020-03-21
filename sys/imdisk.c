@@ -34,6 +34,7 @@
 #include <ntdddisk.h>
 #include <ntddcdrm.h>
 #include <ntverp.h>
+#include <mountmgr.h>
 #include <stdio.h>
 
 ///
@@ -41,7 +42,9 @@
 /// build utility.
 ///
 
+#ifndef DEBUG_LEVEL
 #define DEBUG_LEVEL 0
+#endif
 
 #if DEBUG_LEVEL >= 2
 #define KdPrint2(x) DbgPrint x
@@ -661,7 +664,6 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   PDEVICE_EXTENSION device_extension;
   DEVICE_TYPE device_type;
   ULONG device_characteristics;
-  LARGE_INTEGER file_size;
   HANDLE file_handle = NULL;
   PUCHAR image_buffer = NULL;
   ULONG alignment_requirement;
@@ -681,7 +683,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       "  .B/S         = %u\n"
       "Flags          = %#x\n"
       "FileNameLength = %u\n"
-      "FileName       = '%.*ws'\n",
+      "FileName       = '%.*ws'\n"
+      "DriveLetter    = %wc\n",
       CreateData->DeviceNumber,
       CreateData->DiskGeometry.Cylinders.HighPart,
       CreateData->DiskGeometry.Cylinders.LowPart,
@@ -692,15 +695,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       CreateData->Flags,
       CreateData->FileNameLength,
       (int)(CreateData->FileNameLength / sizeof(*CreateData->FileName)),
-      CreateData->FileName));
-
-  file_size = CreateData->DiskGeometry.Cylinders;
-  if (CreateData->DiskGeometry.TracksPerCylinder != 0)
-    file_size.QuadPart *= CreateData->DiskGeometry.TracksPerCylinder;
-  if (CreateData->DiskGeometry.SectorsPerTrack != 0)
-    file_size.QuadPart *= CreateData->DiskGeometry.SectorsPerTrack;
-  if (CreateData->DiskGeometry.BytesPerSector != 0)
-    file_size.QuadPart *= CreateData->DiskGeometry.BytesPerSector;
+      CreateData->FileName,
+      CreateData->DriveLetter));
 
   // Auto-select type if not specified.
   if (IMDISK_TYPE(CreateData->Flags) == 0)
@@ -714,7 +710,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
        (IMDISK_TYPE(CreateData->Flags) != IMDISK_TYPE_VM)) |
       ((CreateData->FileNameLength == 0) &
        (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
-       (file_size.QuadPart == 0)))
+       (CreateData->DiskGeometry.Cylinders.QuadPart == 0)))
     {
       KdPrint(("ImDisk: Blank filenames only supported for non-zero length "
 	       "vm type disks.\n"));
@@ -724,7 +720,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   // Cannot create >= 2 GB VM disk in 32 bit version.
   if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
-      ((file_size.QuadPart & 0xFFFFFFFF80000000) != 0))
+      ((CreateData->DiskGeometry.Cylinders.QuadPart & 0xFFFFFFFF80000000) !=
+       0))
     {
       KdPrint(("ImDisk: Cannot create >= 2GB vm disks on 32-bit system.\n"));
 
@@ -807,7 +804,6 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 				 &security_client_context);
 
 	  SeImpersonateClient(&security_client_context, NULL);
-	  KdPrint(("ImDisk: Impersonation status: %#x.\n", status));
 
 	  SeDeleteClientSecurity(&security_client_context);
 	}
@@ -866,7 +862,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       if ((status == STATUS_OBJECT_NAME_NOT_FOUND) |
 	  (status == STATUS_NO_SUCH_FILE))
 	{
-	  if ((file_size.QuadPart == 0) |
+	  if ((CreateData->DiskGeometry.Cylinders.QuadPart == 0) |
 	      IMDISK_READONLY(CreateData->Flags) |
 	      (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM))
 	    {
@@ -886,7 +882,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			 GENERIC_WRITE,
 			 &object_attributes,
 			 &io_status,
-			 &file_size,
+			 &CreateData->DiskGeometry.Cylinders,
 			 FILE_ATTRIBUTE_NORMAL,
 			 FILE_SHARE_READ |
 			 FILE_SHARE_DELETE,
@@ -926,13 +922,13 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	       real_file_name.Buffer));
 
       // Adjust the file length to the requested virtual disk size.
-      if ((file_size.QuadPart != 0) &
+      if ((CreateData->DiskGeometry.Cylinders.QuadPart != 0) &
 	  (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
 	  !IMDISK_READONLY(CreateData->Flags))
 	{
 	  status = ZwSetInformationFile(file_handle,
 					&io_status,
-					&file_size,
+					&CreateData->DiskGeometry.Cylinders,
 					sizeof
 					(FILE_END_OF_FILE_INFORMATION),
 					FileEndOfFileInformation);
@@ -1006,7 +1002,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      ULONG max_size;
 
 	      // Check that file size < 2 GB.
-	      if (file_size.QuadPart == 0)
+	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
 		if (file_standard.EndOfFile.QuadPart & 0xFFFFFFFF80000000)
 		  {
 		    ZwClose(file_handle);
@@ -1017,9 +1013,9 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		    return STATUS_INSUFFICIENT_RESOURCES;
 		  }
 		else
-		  file_size = file_standard.EndOfFile;
+		  CreateData->DiskGeometry.Cylinders = file_standard.EndOfFile;
 
-	      max_size = file_size.LowPart;
+	      max_size = CreateData->DiskGeometry.Cylinders.LowPart;
 	      image_buffer = NULL;
 	      status =
 		ZwAllocateVirtualMemory(NtCurrentProcess(),
@@ -1045,11 +1041,12 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
 	      // Failure to read pre-load image is now considered a fatal error
 	      byte_offset.QuadPart = 0;
-	      status = ImDiskSafeReadFile(file_handle,
-					  &io_status,
-					  image_buffer,
-					  file_size.LowPart,
-					  &byte_offset);
+	      status =
+		ImDiskSafeReadFile(file_handle,
+				   &io_status,
+				   image_buffer,
+				   CreateData->DiskGeometry.Cylinders.LowPart,
+				   &byte_offset);
 
 	      ZwClose(file_handle);
 
@@ -1093,7 +1090,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		  return status;
 		}
 
-	      file_size = file_standard.EndOfFile;
+	      CreateData->DiskGeometry.Cylinders = file_standard.EndOfFile;
 
 	      alignment_requirement = file_alignment.AlignmentRequirement;
 	    }
@@ -1127,11 +1124,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      return status;
 	    }
 
-	  if (file_size.QuadPart == 0)
-	    file_size.QuadPart = proxy_info.file_size;
+	  if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
+	    CreateData->DiskGeometry.Cylinders.QuadPart = proxy_info.file_size;
 
 	  if ((proxy_info.req_alignment - 1 > FILE_512_BYTE_ALIGNMENT) |
-	      (file_size.QuadPart == 0))
+	      (CreateData->DiskGeometry.Cylinders.QuadPart == 0))
 	    {
 	      ZwClose(file_handle);
 	      ExFreePool(file_name.Buffer);
@@ -1150,23 +1147,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	    CreateData->Flags |= IMDISK_OPTION_RO;
 
 	  KdPrint(("ImDisk: Got from proxy: Siz=%p%p Flg=%#x Alg=%#x.\n",
-		   file_size.HighPart, file_size.LowPart,
+		   CreateData->DiskGeometry.Cylinders.HighPart,
+		   CreateData->DiskGeometry.Cylinders.LowPart,
 		   (ULONG) proxy_info.flags,
 		   (ULONG) proxy_info.req_alignment));
 	}
-
-      // The file_size variable may have been adjusted by routines above.
-      // Adjust the geometry to reflect this.
-      CreateData->DiskGeometry.Cylinders = file_size;
-      if (CreateData->DiskGeometry.TracksPerCylinder != 0)
-	CreateData->DiskGeometry.Cylinders.QuadPart /=
-	  CreateData->DiskGeometry.TracksPerCylinder;
-      if (CreateData->DiskGeometry.SectorsPerTrack != 0)
-	CreateData->DiskGeometry.Cylinders.QuadPart /=
-	  CreateData->DiskGeometry.SectorsPerTrack;
-      if (CreateData->DiskGeometry.BytesPerSector != 0)
-	CreateData->DiskGeometry.Cylinders.QuadPart /=
-	  CreateData->DiskGeometry.BytesPerSector;
 
       if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
 	{
@@ -1190,7 +1175,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   else
     {
       ULONG max_size;
-      max_size = file_size.LowPart;
+      max_size = CreateData->DiskGeometry.Cylinders.LowPart;
 
       image_buffer = NULL;
       status =
@@ -1219,20 +1204,21 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   // FILE_REMOVABLE_MEDIA.
   // If still no device-type specified, specify FILE_DEVICE_DISK with no
   // particular characteristics. This will emulate a hard disk partition.
-  switch (file_size.QuadPart)
-    {
-    case MEDIA_SIZE_2P88MB:
-    case MEDIA_SIZE_1P44MB:
-    case MEDIA_SIZE_720KB:
-    case MEDIA_SIZE_1P20MB:
-    case MEDIA_SIZE_640KB:
-    case MEDIA_SIZE_320KB:
-      CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
-      break;
+  if (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)
+    switch (CreateData->DiskGeometry.Cylinders.QuadPart)
+      {
+      case MEDIA_SIZE_2P88MB:
+      case MEDIA_SIZE_1P44MB:
+      case MEDIA_SIZE_720KB:
+      case MEDIA_SIZE_1P20MB:
+      case MEDIA_SIZE_640KB:
+      case MEDIA_SIZE_320KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	break;
 
-    default:
-      CreateData->Flags |= IMDISK_DEVICE_TYPE_HD;
-    }
+      default:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_HD;
+      }
 	  
   KdPrint(("ImDisk: Done with device type selection for floppy sizes.\n"));
 
@@ -1240,45 +1226,39 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   // typical values for this type of disk.
   if (IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_CD)
     {
+      LONGLONG calccyl = CreateData->DiskGeometry.Cylinders.QuadPart;
+
       if (CreateData->DiskGeometry.BytesPerSector == 0)
 	{
-	  if (CreateData->DiskGeometry.Cylinders.QuadPart /
-	      SECTOR_SIZE_CD_ROM * SECTOR_SIZE_CD_ROM ==
-	      CreateData->DiskGeometry.Cylinders.QuadPart)
+	  if (calccyl / SECTOR_SIZE_CD_ROM * SECTOR_SIZE_CD_ROM == calccyl)
 	    CreateData->DiskGeometry.BytesPerSector = SECTOR_SIZE_CD_ROM;
 	  else
 	    CreateData->DiskGeometry.BytesPerSector = 1;
-
-	  CreateData->DiskGeometry.Cylinders.QuadPart /=
-	    CreateData->DiskGeometry.BytesPerSector;
 	}
+
+      calccyl /= CreateData->DiskGeometry.BytesPerSector;
 
       if (CreateData->DiskGeometry.SectorsPerTrack == 0)
 	{
-	  if (CreateData->DiskGeometry.Cylinders.QuadPart /
-	      SECTORS_PER_TRACK_CD_ROM * SECTORS_PER_TRACK_CD_ROM ==
-	      CreateData->DiskGeometry.Cylinders.QuadPart)
+	  if (calccyl / SECTORS_PER_TRACK_CD_ROM * SECTORS_PER_TRACK_CD_ROM ==
+	      calccyl)
 	    CreateData->DiskGeometry.SectorsPerTrack =
 	      SECTORS_PER_TRACK_CD_ROM;
 	  else
 	    CreateData->DiskGeometry.SectorsPerTrack = 1;
-
-	  CreateData->DiskGeometry.Cylinders.QuadPart /=
-	    CreateData->DiskGeometry.SectorsPerTrack;
 	}
+
+      calccyl /= CreateData->DiskGeometry.SectorsPerTrack;
 
       if (CreateData->DiskGeometry.TracksPerCylinder == 0)
 	{
-	  if (CreateData->DiskGeometry.Cylinders.QuadPart /
+	  if (calccyl /
 	      TRACKS_PER_CYLINDER_CD_ROM * TRACKS_PER_CYLINDER_CD_ROM ==
-	      CreateData->DiskGeometry.Cylinders.QuadPart)
+	      calccyl)
 	    CreateData->DiskGeometry.TracksPerCylinder =
 	      TRACKS_PER_CYLINDER_CD_ROM;
 	  else
 	    CreateData->DiskGeometry.TracksPerCylinder = 1;
-
-	  CreateData->DiskGeometry.Cylinders.QuadPart /=
-	    CreateData->DiskGeometry.TracksPerCylinder;
 	}
 
       if (CreateData->DiskGeometry.MediaType == Unknown)
@@ -1287,12 +1267,14 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   // Common floppy sizes geometries.
   else
     {
+      LONGLONG calccyl = CreateData->DiskGeometry.Cylinders.QuadPart;
+
       if ((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) &
 	  (CreateData->DiskGeometry.BytesPerSector == 0) &
 	  (CreateData->DiskGeometry.SectorsPerTrack == 0) &
 	  (CreateData->DiskGeometry.TracksPerCylinder == 0) &
 	  (CreateData->DiskGeometry.MediaType == Unknown))
-	switch (file_size.QuadPart)
+	switch (calccyl)
 	  {
 	  case MEDIA_SIZE_2P88MB:
 	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_288];
@@ -1319,85 +1301,80 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	    break;
 	  }
 
+      CreateData->DiskGeometry.Cylinders.QuadPart = calccyl;
+
       if (CreateData->DiskGeometry.BytesPerSector == 0)
 	{
-	  if (CreateData->DiskGeometry.Cylinders.QuadPart /
-	      SECTOR_SIZE_HDD * SECTOR_SIZE_HDD ==
-	      CreateData->DiskGeometry.Cylinders.QuadPart)
+	  if (calccyl / SECTOR_SIZE_HDD * SECTOR_SIZE_HDD == calccyl)
 	    CreateData->DiskGeometry.BytesPerSector = SECTOR_SIZE_HDD;
 	  else
 	    CreateData->DiskGeometry.BytesPerSector = 1;
-
-	  CreateData->DiskGeometry.Cylinders.QuadPart /=
-	    CreateData->DiskGeometry.BytesPerSector;
 	}
+
+      calccyl /= CreateData->DiskGeometry.BytesPerSector;
 
       if (CreateData->DiskGeometry.SectorsPerTrack == 0)
 	{
 	  CreateData->DiskGeometry.SectorsPerTrack = 1;
 
-	  if ((CreateData->DiskGeometry.Cylinders.QuadPart / 7 * 7 ==
-	       CreateData->DiskGeometry.Cylinders.QuadPart) &
+	  if ((calccyl / 7 * 7 == calccyl) &
 	      (CreateData->DiskGeometry.SectorsPerTrack * 7 < 64))
 	    {
 	      CreateData->DiskGeometry.SectorsPerTrack *= 7;
-	      CreateData->DiskGeometry.Cylinders.QuadPart /= 7;
+	      calccyl /= 7;
 	    }
 
-	  if ((CreateData->DiskGeometry.Cylinders.QuadPart / 3 * 3 ==
-	       CreateData->DiskGeometry.Cylinders.QuadPart) &
+	  if ((calccyl / 3 * 3 == calccyl) &
 	      (CreateData->DiskGeometry.SectorsPerTrack * 3 < 64))
 	    {
 	      CreateData->DiskGeometry.SectorsPerTrack *= 3;
-	      CreateData->DiskGeometry.Cylinders.QuadPart /= 3;
+	      calccyl /= 3;
 	    }
 
-	  if ((CreateData->DiskGeometry.Cylinders.QuadPart / 3 * 3 ==
-	       CreateData->DiskGeometry.Cylinders.QuadPart) &
+	  if ((calccyl / 3 * 3 == calccyl) &
 	      (CreateData->DiskGeometry.SectorsPerTrack * 3 < 64))
 	    {
 	      CreateData->DiskGeometry.SectorsPerTrack *= 3;
-	      CreateData->DiskGeometry.Cylinders.QuadPart /= 3;
+	      calccyl /= 3;
 	    }
 
-	  while (((CreateData->DiskGeometry.Cylinders.QuadPart & 1) == 0) &
+	  while (((calccyl & 1) == 0) &
 		 (CreateData->DiskGeometry.SectorsPerTrack <= 16))
 	    {
 	      CreateData->DiskGeometry.SectorsPerTrack <<= 1;
-	      CreateData->DiskGeometry.Cylinders.QuadPart >>= 1;
+	      calccyl >>= 1;
 	    }
 	}
+      else
+	calccyl /= CreateData->DiskGeometry.SectorsPerTrack;
 
       if (CreateData->DiskGeometry.TracksPerCylinder == 0)
 	{
 	  CreateData->DiskGeometry.TracksPerCylinder = 1;
 
-	  if (CreateData->DiskGeometry.Cylinders.QuadPart / 17 * 17 ==
-	      CreateData->DiskGeometry.Cylinders.QuadPart)
+	  if (calccyl / 17 * 17 == calccyl)
 	    {
 	      CreateData->DiskGeometry.TracksPerCylinder *= 17;
-	      CreateData->DiskGeometry.Cylinders.QuadPart /= 17;
+	      calccyl /= 17;
 	    }
 
-	  if (CreateData->DiskGeometry.Cylinders.QuadPart / 5 * 5 ==
-	      CreateData->DiskGeometry.Cylinders.QuadPart)
+	  if (calccyl / 5 * 5 == calccyl)
 	    {
 	      CreateData->DiskGeometry.TracksPerCylinder *= 5;
-	      CreateData->DiskGeometry.Cylinders.QuadPart /= 5;
+	      calccyl /= 5;
 	    }
 
-	  if (CreateData->DiskGeometry.Cylinders.QuadPart / 3 * 3 ==
-	      CreateData->DiskGeometry.Cylinders.QuadPart)
+	  if (calccyl / 3 * 3 == calccyl)
 	    {
 	      CreateData->DiskGeometry.TracksPerCylinder *= 3;
-	      CreateData->DiskGeometry.Cylinders.QuadPart /= 3;
+	      calccyl /= 3;
 	    }
 
-	  while (((CreateData->DiskGeometry.Cylinders.QuadPart & 1) == 0) &
+	  while (((calccyl & 1) == 0) &
 		 (CreateData->DiskGeometry.TracksPerCylinder <= 64))
 	    {
 	      CreateData->DiskGeometry.TracksPerCylinder <<= 1;
-	      CreateData->DiskGeometry.Cylinders.QuadPart >>= 1;
+	      calccyl >>= 1;
 	    }
 	}
 
@@ -1421,7 +1398,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       "  .B/S         = %u\n"
       "Flags          = %#x\n"
       "FileNameLength = %u\n"
-      "FileName       = '%.*ws'\n",
+      "FileName       = '%.*ws'\n"
+      "DriveLetter    = %wc\n",
       CreateData->DeviceNumber,
       CreateData->DiskGeometry.Cylinders.HighPart,
       CreateData->DiskGeometry.Cylinders.LowPart,
@@ -1432,7 +1410,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       CreateData->Flags,
       CreateData->FileNameLength,
       (int)(CreateData->FileNameLength / sizeof(*CreateData->FileName)),
-      CreateData->FileName));
+      CreateData->FileName,
+      CreateData->DriveLetter));
 
   // Now build real DeviceType and DeviceCharacteristics parameters.
   if (IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_CD)
@@ -1807,10 +1786,7 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
   if ((io_stack->Parameters.Read.ByteOffset.QuadPart +
        io_stack->Parameters.Read.Length) >
-      (device_extension->disk_geometry.Cylinders.QuadPart *
-       device_extension->disk_geometry.TracksPerCylinder *
-       device_extension->disk_geometry.SectorsPerTrack *
-       device_extension->disk_geometry.BytesPerSector))
+      (device_extension->disk_geometry.Cylinders.QuadPart))
     {
       KdPrint(("ImDisk: Read/write beyond eof on device %i.\n",
 	       device_extension->device_number));
@@ -2142,7 +2118,6 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
       {
 	PFORMAT_PARAMETERS param;
 	PDISK_GEOMETRY geometry;
-	LONGLONG file_size;
 
 	KdPrint(("ImDisk: IOCTL_DISK_FORMAT_TRACKS for device %i.\n",
 		 device_extension->device_number));
@@ -2180,7 +2155,20 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	//	Input parameter sanity check
 
 	param = (PFORMAT_PARAMETERS) Irp->AssociatedIrp.SystemBuffer;
-	geometry = &device_extension->disk_geometry;
+	geometry = ExAllocatePool(NonPagedPool, sizeof(DISK_GEOMETRY));
+	if (geometry == NULL)
+	  {
+	    Irp->IoStatus.Information = 0;
+	    status = STATUS_INSUFFICIENT_RESOURCES;
+	    break;
+	  }
+
+	RtlCopyMemory(geometry, &device_extension->disk_geometry,
+		      sizeof(DISK_GEOMETRY));
+
+	geometry->Cylinders.QuadPart /= geometry->TracksPerCylinder;
+	geometry->Cylinders.QuadPart /= geometry->SectorsPerTrack;
+	geometry->Cylinders.QuadPart /= geometry->BytesPerSector;
 
 	if ((param->StartHeadNumber > geometry->TracksPerCylinder - 1) ||
 	    (param->EndHeadNumber   > geometry->TracksPerCylinder - 1) ||
@@ -2190,24 +2178,24 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	     geometry->Cylinders.QuadPart) ||
 	    (param->EndCylinderNumber	< param->StartCylinderNumber))
 	  {
+	    ExFreePool(geometry);
 	    Irp->IoStatus.Information = 0;
 	    status = STATUS_INVALID_PARAMETER;
 	    break;
 	  }
 
-	file_size =
-	  geometry->Cylinders.QuadPart * geometry->TracksPerCylinder *
-	  geometry->SectorsPerTrack * geometry->BytesPerSector;
-
 	if ((param->StartCylinderNumber * geometry->TracksPerCylinder *
 	     geometry->BytesPerSector * geometry->SectorsPerTrack +
 	     param->StartHeadNumber * geometry->BytesPerSector *
-	     geometry->SectorsPerTrack >= file_size) |
+	     geometry->SectorsPerTrack >=
+	     device_extension->disk_geometry.Cylinders.QuadPart) |
 	    (param->EndCylinderNumber * geometry->TracksPerCylinder *
 	     geometry->BytesPerSector * geometry->SectorsPerTrack +
 	     param->EndHeadNumber * geometry->BytesPerSector *
-	     geometry->SectorsPerTrack >= file_size))
+	     geometry->SectorsPerTrack >=
+	     device_extension->disk_geometry.Cylinders.QuadPart))
 	  {
+	    ExFreePool(geometry);
 	    Irp->IoStatus.Information = 0;
 	    status = STATUS_INVALID_PARAMETER;
 	    break;
@@ -2227,6 +2215,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    if (io_stack->Parameters.DeviceIoControl.InputBufferLength <
 		sizeof(FORMAT_EX_PARAMETERS))
 	      {
+		ExFreePool(geometry);
 		Irp->IoStatus.Information = 0;
 		status = STATUS_INVALID_PARAMETER;
 		break;
@@ -2243,12 +2232,14 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 		exparam->FormatGapLength > geometry->SectorsPerTrack ||
 		exparam->SectorsPerTrack != geometry->SectorsPerTrack)
 	      {
+		ExFreePool(geometry);
 		Irp->IoStatus.Information = 0;
 		status = STATUS_INVALID_PARAMETER;
 		break;
 	      }
 	  }
 
+	ExFreePool(geometry);
 	status = STATUS_PENDING;
 	break;
       }
@@ -2258,6 +2249,8 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     case IOCTL_DISK_GET_DRIVE_GEOMETRY:
     case IOCTL_CDROM_GET_DRIVE_GEOMETRY:
       {
+	PDISK_GEOMETRY geometry;
+
 	KdPrint(("ImDisk: IOCTL_DISK/STORAGE_GET_MEDIA_TYPES/DRIVE_GEOMETRY "
 		 "for device %i.\n", device_extension->device_number));
 
@@ -2269,11 +2262,14 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    break;
 	  }
 
-	*(PDISK_GEOMETRY) Irp->AssociatedIrp.SystemBuffer =
-	  device_extension->disk_geometry;
+	geometry = (PDISK_GEOMETRY) Irp->AssociatedIrp.SystemBuffer;
+	*geometry = device_extension->disk_geometry;
+	geometry->Cylinders.QuadPart /= geometry->TracksPerCylinder;
+	geometry->Cylinders.QuadPart /= geometry->SectorsPerTrack;
+	geometry->Cylinders.QuadPart /= geometry->BytesPerSector;
 
 	status = STATUS_SUCCESS;
-	Irp->IoStatus.Information = sizeof(device_extension->disk_geometry);
+	Irp->IoStatus.Information = sizeof(DISK_GEOMETRY);
 	break;
       }
 
@@ -2292,10 +2288,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 	((PGET_LENGTH_INFORMATION) Irp->AssociatedIrp.SystemBuffer)->
 	  Length.QuadPart =
-	  device_extension->disk_geometry.Cylinders.QuadPart *
-	  device_extension->disk_geometry.TracksPerCylinder *
-	  device_extension->disk_geometry.SectorsPerTrack *
-	  device_extension->disk_geometry.BytesPerSector;
+	  device_extension->disk_geometry.Cylinders.QuadPart;
 
 	status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = sizeof(GET_LENGTH_INFORMATION);
@@ -2306,7 +2299,6 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     case IOCTL_DISK_GET_PARTITION_INFO:
       {
 	PPARTITION_INFORMATION partition_information;
-	LONGLONG length;
 
 	KdPrint(("ImDisk: IOCTL_DISK_GET_PARTITION_INFO for device %i.\n",
 		 device_extension->device_number));
@@ -2322,14 +2314,9 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	partition_information =
 	  (PPARTITION_INFORMATION) Irp->AssociatedIrp.SystemBuffer;
 
-	length =
-	  device_extension->disk_geometry.Cylinders.QuadPart *
-	  device_extension->disk_geometry.TracksPerCylinder *
-	  device_extension->disk_geometry.SectorsPerTrack *
-	  device_extension->disk_geometry.BytesPerSector;
-
 	partition_information->StartingOffset.QuadPart = 0;
-	partition_information->PartitionLength.QuadPart = length;
+	partition_information->PartitionLength =
+	  device_extension->disk_geometry.Cylinders;
 	partition_information->HiddenSectors =
 	  device_extension->disk_geometry.SectorsPerTrack;
 	partition_information->PartitionNumber = 0;
@@ -2347,7 +2334,6 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     case IOCTL_DISK_GET_PARTITION_INFO_EX:
       {
 	PPARTITION_INFORMATION_EX partition_information_ex;
-	LONGLONG length;
 
 	KdPrint(("ImDisk: IOCTL_DISK_GET_PARTITION_INFO_EX for device %i.\n",
 		 device_extension->device_number));
@@ -2363,15 +2349,10 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	partition_information_ex =
 	  (PPARTITION_INFORMATION_EX) Irp->AssociatedIrp.SystemBuffer;
 
-	length =
-	  device_extension->disk_geometry.Cylinders.QuadPart *
-	  device_extension->disk_geometry.TracksPerCylinder *
-	  device_extension->disk_geometry.SectorsPerTrack *
-	  device_extension->disk_geometry.BytesPerSector;
-
 	partition_information_ex->PartitionStyle = PARTITION_STYLE_MBR;
 	partition_information_ex->StartingOffset.QuadPart = 0;
-	partition_information_ex->PartitionLength.QuadPart = length;
+	partition_information_ex->PartitionLength =
+	  device_extension->disk_geometry.Cylinders;
 	partition_information_ex->PartitionNumber = 0;
 	partition_information_ex->RewritePartition = FALSE;
 	partition_information_ex->Mbr.PartitionType = PARTITION_HUGE;
@@ -2546,10 +2527,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 	if (verify_information->StartingOffset.QuadPart +
 	    verify_information->Length >
-	    device_extension->disk_geometry.Cylinders.QuadPart *
-	    device_extension->disk_geometry.TracksPerCylinder *
-	    device_extension->disk_geometry.SectorsPerTrack *
-	    device_extension->disk_geometry.BytesPerSector)
+	    device_extension->disk_geometry.Cylinders.QuadPart)
 	  {
 	    KdPrint(("ImDisk: Attempt to verify beyond image size.\n"));
 
@@ -2618,6 +2596,62 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 	status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = sizeof(STORAGE_HOTPLUG_INFO);
+
+	break;
+      }
+
+    case IOCTL_MOUNTDEV_QUERY_DEVICE_NAME:
+      {
+	PMOUNTDEV_NAME mountdev_name = Irp->AssociatedIrp.SystemBuffer;
+	int chars;
+
+	KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME for device %i.\n",
+		 device_extension->device_number));
+
+	if (device_extension->drive_letter == 0)
+	  chars =
+	    _snwprintf(mountdev_name->Name,
+		       (io_stack->
+			Parameters.DeviceIoControl.OutputBufferLength -
+			FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1,
+		       IMDISK_DEVICE_BASE_NAME L"%u",
+		       device_extension->device_number);
+	else
+	  chars =
+	    _snwprintf(mountdev_name->Name,
+		       (io_stack->
+			Parameters.DeviceIoControl.OutputBufferLength -
+			FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1,
+		       L"\\DosDevices\\%wc:",
+		       device_extension->drive_letter);
+
+	if (chars < 0)
+	  {
+	    if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+		sizeof(mountdev_name->NameLength))
+	      mountdev_name->NameLength = sizeof(IMDISK_DEVICE_BASE_NAME) +
+		20;
+
+	    KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME overflow, "
+		     "buffer length %u, returned %i.\n",
+		     io_stack->Parameters.DeviceIoControl.OutputBufferLength,
+		     chars));
+
+	    status = STATUS_BUFFER_OVERFLOW;
+	    Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
+	    break;
+	  }
+
+	mountdev_name->NameLength = (USHORT)chars << 1;
+
+	status = STATUS_SUCCESS;
+	Irp->IoStatus.Information =
+	  FIELD_OFFSET(MOUNTDEV_NAME, Name) + mountdev_name->NameLength;
+
+	KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME returning %ws, "
+		 "length %u total %u.\n",
+		 mountdev_name->Name, mountdev_name->NameLength,
+		 Irp->IoStatus.Information));
 
 	break;
       }
@@ -3661,7 +3695,6 @@ ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
 		   IN PIRP Irp)
 {
   PFORMAT_PARAMETERS	param;
-  DISK_GEOMETRY	        geometry;
   ULONG			track_length;
   PUCHAR		format_buffer;
   LARGE_INTEGER		start_offset;
@@ -3675,17 +3708,17 @@ ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
 
   param = (PFORMAT_PARAMETERS) Irp->AssociatedIrp.SystemBuffer;
 
-  geometry = Extension->disk_geometry;
-
-  track_length = geometry.BytesPerSector * geometry.SectorsPerTrack;
+  track_length =
+    Extension->disk_geometry.BytesPerSector *
+    Extension->disk_geometry.SectorsPerTrack;
 
   start_offset.QuadPart =
-    param->StartCylinderNumber * geometry.TracksPerCylinder * track_length +
-    param->StartHeadNumber * track_length;
+    param->StartCylinderNumber * Extension->disk_geometry.TracksPerCylinder *
+    track_length + param->StartHeadNumber * track_length;
 
   end_offset.QuadPart =
-    param->EndCylinderNumber * geometry.TracksPerCylinder * track_length +
-    param->EndHeadNumber * track_length;
+    param->EndCylinderNumber * Extension->disk_geometry.TracksPerCylinder *
+    track_length + param->EndHeadNumber * track_length;
 
   if (Extension->vm_disk)
     {
@@ -3702,7 +3735,7 @@ ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
       return STATUS_SUCCESS;
     }
 
-  format_buffer = ExAllocatePool(NonPagedPool, track_length);
+  format_buffer = ExAllocatePool(PagedPool, track_length);
 
   if (format_buffer == NULL)
     {
