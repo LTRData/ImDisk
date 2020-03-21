@@ -66,6 +66,9 @@
 #if DEBUG_LEVEL >= 1
 #undef KdPrint
 #define KdPrint(x)  DbgPrint x
+#define ImDiskLogError(x) ImDiskLogDbgError x
+#else
+#define ImDiskLogError(x)
 #endif
 
 #include "..\inc\ntkmapi.h"
@@ -133,6 +136,8 @@ enum {
   MEDIA_TYPE_180K,
   MEDIA_TYPE_160K
 };
+
+LARGE_INTEGER large_int_zero = { 0 };
 
 DISK_GEOMETRY media_table[] = {
   // 3.5" UHD
@@ -207,6 +212,21 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
 VOID
 ImDiskUnload(IN PDRIVER_OBJECT DriverObject);
+
+VOID
+ImDiskLogDbgError(IN PVOID Object,
+		  IN UCHAR MajorFunctionCode,
+		  IN UCHAR RetryCount,
+		  IN PULONG DumpData,
+		  IN USHORT DumpDataSize,
+		  IN USHORT EventCategory,
+		  IN NTSTATUS ErrorCode,
+		  IN ULONG UniqueErrorValue,
+		  IN NTSTATUS FinalStatus,
+		  IN ULONG SequenceNumber,
+		  IN ULONG IoControlCode,
+		  IN LARGE_INTEGER DeviceOffset,
+		  IN PWCHAR Message);
 
 NTSTATUS
 ImDiskAddVirtualDisk(IN PDRIVER_OBJECT DriverObject,
@@ -379,6 +399,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	{
 	  KdPrint(("ImDisk: Using default value for '%ws'.\n",
 		   IMDISK_CFG_LOAD_DEVICES_VALUE));
+
 	  n_devices = IMDISK_DEFAULT_LOAD_DEVICES;
 	}
       else if (value_info->Type == REG_DWORD)
@@ -392,7 +413,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
       RtlInitUnicodeString(&number_of_devices_value,
 			   IMDISK_CFG_MAX_DEVICES_VALUE);
-      
+
       status = ZwQueryValueKey(key_handle, &number_of_devices_value,
 			       KeyValuePartialInformation, value_info,
 			       sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
@@ -402,6 +423,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	{
 	  KdPrint(("ImDisk: Using default value for '%ws'.\n",
 		   IMDISK_CFG_MAX_DEVICES_VALUE));
+
 	  MaxDevices = IMDISK_DEFAULT_MAX_DEVICES;
 	}
       else if (value_info->Type == REG_DWORD)
@@ -445,6 +467,22 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
       KdPrint(("ImDisk: Cannot create control device (%#x).\n", status));
       if (key_handle != NULL)
 	ZwClose(key_handle);
+
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      status,
+		      101,
+		      status,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating device '"
+		      IMDISK_CTL_DEVICE_NAME
+		      L"'"));
 
       return status;
     }
@@ -515,6 +553,20 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
 	       DeviceNumber));
 
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      101,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating disk device."));
+
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -525,10 +577,25 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   if (value_info_size == NULL)
     {
+      ExFreePool(value_info_image_file);
+
       KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
 	       DeviceNumber));
 
-      ExFreePool(value_info_image_file);
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      101,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating disk device."));
+
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -538,11 +605,26 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   if (value_info_flags == NULL)
     {
+      ExFreePool(value_info_image_file);
+      ExFreePool(value_info_size);
+
       KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
 	       DeviceNumber));
 
-      ExFreePool(value_info_image_file);
-      ExFreePool(value_info_size);
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      101,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating disk device."));
+
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -552,12 +634,27 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   if (value_info_drive_letter == NULL)
     {
-      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
-	       DeviceNumber));
-
       ExFreePool(value_info_image_file);
       ExFreePool(value_info_size);
       ExFreePool(value_info_flags);
+
+      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
+	       DeviceNumber));
+
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      101,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating disk device."));
+
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -566,13 +663,28 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   if (value_name_buffer == NULL)
     {
-      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
-	       DeviceNumber));
-      
       ExFreePool(value_info_image_file);
       ExFreePool(value_info_size);
       ExFreePool(value_info_flags);
       ExFreePool(value_info_drive_letter);
+
+      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
+	       DeviceNumber));
+      
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      101,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating disk device."));
+
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -595,6 +707,22 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
     {
       KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
 	       value_name_buffer, DeviceNumber));
+
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      status,
+		      101,
+		      status,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Missing or bad '"
+		      IMDISK_CFG_IMAGE_FILE_PREFIX
+		      L"'"));
 
       *(PWCHAR) value_info_image_file->Data = 0;
       value_info_image_file->DataLength = sizeof(WCHAR);
@@ -645,6 +773,22 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
 	       value_name_buffer, DeviceNumber));
 
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      status,
+		      101,
+		      status,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Missing or bad '"
+		      IMDISK_CFG_FLAGS_PREFIX
+		      L"'"));
+
       *(PULONG) value_info_flags->Data = 0;
     }
 
@@ -667,6 +811,22 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
 	       value_name_buffer, DeviceNumber));
 
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      status,
+		      101,
+		      status,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Missing or bad '"
+		      IMDISK_CFG_DRIVE_LETTER_PREFIX
+		      L"'"));
+
       *(PWCHAR) value_info_drive_letter->Data = 0;
     }
 
@@ -679,13 +839,28 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   if (create_data == NULL)
     {
-      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
-	       DeviceNumber));
-
       ExFreePool(value_info_image_file);
       ExFreePool(value_info_size);
       ExFreePool(value_info_flags);
       ExFreePool(value_info_drive_letter);
+
+      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
+	       DeviceNumber));
+
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      101,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating disk device."));
+
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -715,7 +890,28 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   device_thread_data = ExAllocatePool(PagedPool, sizeof(DEVICE_THREAD_DATA));
   if (device_thread_data == NULL)
-    return STATUS_INSUFFICIENT_RESOURCES;
+    {
+      ExFreePool(create_data);
+
+      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
+	       DeviceNumber));
+
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      101,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating disk device."));
+
+      return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
   device_thread_data->driver_object = DriverObject;
   device_thread_data->create_data = create_data;
@@ -732,10 +928,24 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   if (!NT_SUCCESS(status))
     {
-      KdPrint(("ImDisk: Cannot create device thread. (%#x)\n", status));
-
       ExFreePool(device_thread_data);
       ExFreePool(create_data);
+
+      KdPrint(("ImDisk: Cannot create device thread. (%#x)\n", status));
+
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      status,
+		      101,
+		      status,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating service thread"));
 
       return status;
     }
@@ -934,6 +1144,21 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       KdPrint(("ImDisk: Blank filenames only supported for non-zero length "
 	       "vm type disks.\n"));
 
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INVALID_PARAMETER,
+		      102,
+		      STATUS_INVALID_PARAMETER,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Blank filenames only supported for non-zero length "
+		      L"vm type disks."));
+
       return STATUS_INVALID_PARAMETER;
     }
 
@@ -958,7 +1183,23 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	break;
 
   if (CreateData->DeviceNumber >= MaxDevices)
-    return STATUS_INVALID_PARAMETER;
+    {
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INVALID_PARAMETER,
+		      102,
+		      STATUS_INVALID_PARAMETER,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Device number too high."));
+
+      return STATUS_INVALID_PARAMETER;
+    }
 
   file_name.Length = CreateData->FileNameLength;
   file_name.MaximumLength = CreateData->FileNameLength;
@@ -978,6 +1219,21 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       if (file_name.Buffer == NULL)
 	{
 	  KdPrint(("ImDisk: Error allocating buffer for filename.\n"));
+
+	  ImDiskLogError((DriverObject,
+			  0,
+			  0,
+			  NULL,
+			  0,
+			  1000,
+			  STATUS_INSUFFICIENT_RESOURCES,
+			  102,
+			  STATUS_INSUFFICIENT_RESOURCES,
+			  0,
+			  0,
+			  large_int_zero,
+			  L"Memory allocation error."));
+
 	  return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
@@ -1135,6 +1391,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	    {
 	      ExFreePool(file_name.Buffer);
 
+	      ImDiskLogError((DriverObject,
+			      0,
+			      0,
+			      NULL,
+			      0,
+			      1000,
+			      status,
+			      102,
+			      status,
+			      0,
+			      0,
+			      large_int_zero,
+			      L"Image file not found."));
+
 	      KdPrint(("ImDisk: File '%.*ws' not found. (%#x)\n",
 		       (int) real_file_name.Length / sizeof(WCHAR),
 		       real_file_name.Buffer,
@@ -1163,6 +1433,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	    {
 	      ExFreePool(file_name.Buffer);
 
+	      ImDiskLogError((DriverObject,
+			      0,
+			      0,
+			      NULL,
+			      0,
+			      1000,
+			      status,
+			      102,
+			      status,
+			      0,
+			      0,
+			      large_int_zero,
+			      L"Cannot create image file."));
+
 	      KdPrint(("ImDisk: Cannot create '%.*ws'. (%#x)\n",
 		       (int)(CreateData->FileNameLength /
 			     sizeof(*CreateData->FileName)),
@@ -1176,6 +1460,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	{
 	  ExFreePool(file_name.Buffer);
 	  
+	  ImDiskLogError((DriverObject,
+			  0,
+			  0,
+			  NULL,
+			  0,
+			  1000,
+			  status,
+			  102,
+			  status,
+			  0,
+			  0,
+			  large_int_zero,
+			  L"Cannot open image file."));
+
 	  KdPrint(("ImDisk: Cannot open file '%.*ws'. Status: %#x\n",
 		   (int)(real_file_name.Length / sizeof(WCHAR)),
 		   real_file_name.Buffer,
@@ -1205,6 +1503,21 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	    {
 	      ZwClose(file_handle);
 	      ExFreePool(file_name.Buffer);
+
+	      ImDiskLogError((DriverObject,
+			      0,
+			      0,
+			      NULL,
+			      0,
+			      1000,
+			      status,
+			      102,
+			      status,
+			      0,
+			      0,
+			      large_int_zero,
+			      L"Error setting file size."));
+
 	      KdPrint(("ImDisk: Error setting eof (%#x).\n", status));
 	      return status;
 	    }
@@ -1226,6 +1539,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      ZwClose(file_handle);
 	      ExFreePool(file_name.Buffer);
 
+	      ImDiskLogError((DriverObject,
+			      0,
+			      0,
+			      NULL,
+			      0,
+			      1000,
+			      status,
+			      102,
+			      status,
+			      0,
+			      0,
+			      large_int_zero,
+			      L"Error getting FILE_STANDARD_INFORMATION."));
+
 	      KdPrint
 		(("ImDisk: Error getting FILE_STANDARD_INFORMATION (%#x).\n",
 		  status));
@@ -1238,11 +1565,19 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	    {
 	      SIZE_T max_size;
 
+	      // If no size given for VM disk, use size of pre-load image file.
+	      // This code is somewhat easier for 64 bit architectures.
+
 #ifdef _WIN64
+	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
+		CreateData->DiskGeometry.Cylinders.QuadPart =
+		  file_standard.EndOfFile.QuadPart -
+		  CreateData->ImageOffset.QuadPart;
+
 	      max_size = CreateData->DiskGeometry.Cylinders.QuadPart;
 #else
-	      // Check that file size < 2 GB.
 	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
+		// Check that file size < 2 GB.
 		if ((file_standard.EndOfFile.QuadPart -
 		     CreateData->ImageOffset.QuadPart) & 0xFFFFFFFF80000000)
 		  {
@@ -1273,6 +1608,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		  ZwClose(file_handle);
 		  ExFreePool(file_name.Buffer);
 
+		  ImDiskLogError((DriverObject,
+				  0,
+				  0,
+				  NULL,
+				  0,
+				  1000,
+				  status,
+				  102,
+				  status,
+				  0,
+				  0,
+				  large_int_zero,
+				  L"Not enough memory for VM disk."));
+
 		  KdPrint(("ImDisk: Error allocating vm for image. (%#x)\n",
 			   status));
 		  
@@ -1299,6 +1648,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		{
 		  ZwClose(file_handle);
 		  ExFreePool(file_name.Buffer);
+
+		  ImDiskLogError((DriverObject,
+				  0,
+				  0,
+				  NULL,
+				  0,
+				  1000,
+				  status,
+				  102,
+				  status,
+				  0,
+				  0,
+				  large_int_zero,
+				  L"Error getting alignment information."));
 
 		  KdPrint(("ImDisk: Error querying file alignment (%#x).\n",
 			   status));
@@ -1334,6 +1697,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      ZwClose(file_handle);
 	      ExFreePool(file_name.Buffer);
 
+	      ImDiskLogError((DriverObject,
+			      0,
+			      0,
+			      NULL,
+			      0,
+			      1000,
+			      status,
+			      102,
+			      status,
+			      0,
+			      0,
+			      large_int_zero,
+			      L"Error referencing proxy device."));
+
 	      KdPrint(("ImDisk: Error referencing proxy device (%#x).\n",
 		       status));
 
@@ -1356,6 +1733,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      ZwClose(file_handle);
 	      ExFreePool(file_name.Buffer);
 
+	      ImDiskLogError((DriverObject,
+			      0,
+			      0,
+			      NULL,
+			      0,
+			      1000,
+			      status,
+			      102,
+			      status,
+			      0,
+			      0,
+			      large_int_zero,
+			      L"Error connecting proxy."));
+
 	      KdPrint(("ImDisk: Error connecting proxy (%#x).\n", status));
 
 	      return status;
@@ -1372,6 +1763,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      ZwClose(file_handle);
 	      ExFreePool(file_name.Buffer);
 
+	      ImDiskLogError((DriverObject,
+			      0,
+			      0,
+			      NULL,
+			      0,
+			      1000,
+			      status,
+			      102,
+			      status,
+			      0,
+			      0,
+			      large_int_zero,
+			      L"Error querying proxy."));
+
 	      KdPrint(("ImDisk: Error querying proxy (%#x).\n", status));
 
 	      return status;
@@ -1386,6 +1791,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      ObDereferenceObject(proxy_device);
 	      ZwClose(file_handle);
 	      ExFreePool(file_name.Buffer);
+
+	      ImDiskLogError((DriverObject,
+			      0,
+			      0,
+			      NULL,
+			      0,
+			      1000,
+			      status,
+			      102,
+			      status,
+			      0,
+			      0,
+			      large_int_zero,
+			      L"Unsupported sizes."));
 
 	      KdPrint(("ImDisk: Unsupported sizes. "
 		       "Got %p%p size and %p%p alignment.\n",
@@ -1411,6 +1830,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	{
 	  ULONG free_size = 0;
       
+	  ImDiskLogError((DriverObject,
+			  0,
+			  0,
+			  NULL,
+			  0,
+			  1000,
+			  status,
+			  102,
+			  status,
+			  0,
+			  0,
+			  large_int_zero,
+			  L"Number of cylinders equals zero."));
+
 	  KdPrint(("ImDisk: Fatal error: Number of cylinders equals zero.\n"));
 
 	  if (proxy_device != NULL)
@@ -1450,6 +1883,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	  KdPrint
 	    (("ImDisk: Error allocating virtual memory for vm disk (%#x).\n",
 	      status));
+
+	  ImDiskLogError((DriverObject,
+			  0,
+			  0,
+			  NULL,
+			  0,
+			  1000,
+			  status,
+			  102,
+			  status,
+			  0,
+			  0,
+			  large_int_zero,
+			  L"Not enough free memory for VM disk."));
 
 	  return STATUS_NO_MEMORY;
 	}
@@ -1749,6 +2196,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			    &image_buffer,
 			    &free_size, MEM_RELEASE);
 
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      102,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Memory allocation error."));
+
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -1790,6 +2251,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	ZwFreeVirtualMemory(NtCurrentProcess(),
 			    &image_buffer,
 			    &free_size, MEM_RELEASE);
+
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      status,
+		      102,
+		      status,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating device object."));
 
       KdPrint(("ImDisk: Cannot create device. (%#x)\n", status));
 
@@ -1963,6 +2438,79 @@ ImDiskUnload(IN PDRIVER_OBJECT DriverObject)
 }
 
 #pragma code_seg()
+
+#if DEBUG_LEVEL >= 1
+VOID
+ImDiskLogDbgError(IN PVOID Object,
+		  IN UCHAR MajorFunctionCode,
+		  IN UCHAR RetryCount,
+		  IN PULONG DumpData,
+		  IN USHORT DumpDataSize,
+		  IN USHORT EventCategory,
+		  IN NTSTATUS ErrorCode,
+		  IN ULONG UniqueErrorValue,
+		  IN NTSTATUS FinalStatus,
+		  IN ULONG SequenceNumber,
+		  IN ULONG IoControlCode,
+		  IN LARGE_INTEGER DeviceOffset,
+		  IN PWCHAR Message)
+{
+  ULONG_PTR string_byte_size;
+  ULONG_PTR packet_size;
+  PIO_ERROR_LOG_PACKET error_log_packet;
+
+  if (KeGetCurrentIrql() > DISPATCH_LEVEL)
+    return;
+
+  string_byte_size = (wcslen(Message) + 1) << 1;
+
+  packet_size =
+    sizeof(IO_ERROR_LOG_PACKET) + DumpDataSize + string_byte_size;
+
+  if (packet_size > ERROR_LOG_MAXIMUM_SIZE)
+    {
+      KdPrint(("ImDisk: Warning: Too large error log packet.\n"));
+      return;
+    }
+
+  error_log_packet =
+    (PIO_ERROR_LOG_PACKET) IoAllocateErrorLogEntry(Object,
+						   (UCHAR) packet_size);
+
+  if (error_log_packet == NULL)
+    {
+      KdPrint(("ImDisk: Warning: IoAllocateErrorLogEntry() returned NULL.\n"));
+      return;
+    }
+
+  error_log_packet->MajorFunctionCode = MajorFunctionCode;
+  error_log_packet->RetryCount = RetryCount;
+  error_log_packet->StringOffset = sizeof(IO_ERROR_LOG_PACKET) + DumpDataSize;
+  error_log_packet->EventCategory = EventCategory;
+  error_log_packet->ErrorCode = ErrorCode;
+  error_log_packet->UniqueErrorValue = UniqueErrorValue;
+  error_log_packet->FinalStatus = FinalStatus;
+  error_log_packet->SequenceNumber = SequenceNumber;
+  error_log_packet->IoControlCode = IoControlCode;
+  error_log_packet->DeviceOffset = DeviceOffset;
+  error_log_packet->DumpDataSize = DumpDataSize;
+
+  if (DumpDataSize != 0)
+    memcpy(error_log_packet->DumpData, DumpData, DumpDataSize);
+
+  if (Message == NULL)
+    error_log_packet->NumberOfStrings = 0;
+  else
+    {
+      error_log_packet->NumberOfStrings = 1;
+      memcpy((PUCHAR)error_log_packet + error_log_packet->StringOffset,
+	     Message,
+	     string_byte_size);
+    }
+
+  IoWriteErrorLogEntry(error_log_packet);
+}
+#endif
 
 VOID
 ImDiskRemoveVirtualDisk(IN PDEVICE_OBJECT DeviceObject)
@@ -3488,6 +4036,20 @@ ImDiskDeviceThread(IN PVOID Context)
 	  ExFreePool(device_thread_data->create_data);
 	  ExFreePool(device_thread_data);
 	}
+
+      ImDiskLogError((device_thread_data->driver_object,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      device_thread_data->status,
+		      102,
+		      device_thread_data->status,
+		      0,
+		      0,
+		      large_int_zero,
+		      L"Error creating virtual disk."));
 
       PsTerminateSystemThread(STATUS_SUCCESS);
     }

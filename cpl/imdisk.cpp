@@ -75,7 +75,7 @@ extern "C" HINSTANCE hInstance = NULL;
 
 #else
 
-#define KdPrint(x)          DbgPrintF          x
+#define KdPrint(x)          DbgPrintF x
 
 BOOL
 DbgPrintF(LPCSTR Message, ...)
@@ -1425,7 +1425,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 }
 
 EXTERN_C LONG APIENTRY
-CPlApplet(HWND hwndCPl,	// handle to Control Panel window
+CPlApplet(HWND hwndCPl,	        // handle to Control Panel window
 	  UINT uMsg,	        // message
 	  LPARAM /*lParam1*/,	// first message parameter
 	  LPARAM lParam2 	// second message parameter
@@ -1434,13 +1434,12 @@ CPlApplet(HWND hwndCPl,	// handle to Control Panel window
   switch (uMsg)
     {
     case CPL_DBLCLK:
-      {
-	if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_CPLAPPLET), hwndCPl,
-		      CPlAppletDlgProc) == -1)
-	  MessageBox(hwndCPl, L"Error loading dialog box.", L"ImDisk",
-		     MB_ICONSTOP);
-	return 0;
-      }
+      if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_CPLAPPLET), hwndCPl,
+		    CPlAppletDlgProc) == -1)
+	MsgBoxLastError(hwndCPl,
+			L"Error loading dialog box:");
+
+      return 0;
 
     case CPL_EXIT:
       return 0;
