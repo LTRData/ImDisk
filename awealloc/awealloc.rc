@@ -8,8 +8,8 @@
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,2,6,31
-PRODUCTVERSION 1,2,6,31
+FILEVERSION 1,2,6,2
+PRODUCTVERSION 1,2,6,2
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -25,13 +25,13 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", "Olof Lagerkvist\0"
-            VALUE "FileDescription", "ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", "1.2.6.31\0"
-            VALUE "InternalName", "imdisk\0"
-            VALUE "LegalCopyright", "Copyright © 2005-2010 Olof Lagerkvist etc.\0"
-            VALUE "OriginalFilename", "imdisk.sys\0"
+            VALUE "FileDescription", "AWE Allocation Driver\0"
+            VALUE "FileVersion", "1.2.6.2\0"
+            VALUE "InternalName", "awealloc\0"
+            VALUE "LegalCopyright", "Copyright © 2009-2010 Olof Lagerkvist.\0"
+            VALUE "OriginalFilename", "awealloc.sys\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", "1.2.6.31\0"
+            VALUE "ProductVersion", "1.2.6.2\0"
         END
     END
     BLOCK "VarFileInfo"

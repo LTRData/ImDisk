@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0125
+#define IMDISK_VERSION                 0x0126
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -636,6 +636,19 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		    IN HANDLE FileHandle,
 		    IN DWORD BufferSize,
 		    IN LPBOOL CancelFlag OPTIONAL);
+
+/**
+   This function gets the size of a disk volume.
+
+   Handle          Handle to a disk volume device.
+
+   Size            Pointer to a 64 bit variable that upon successful completion
+                   receives disk volume size as a signed integer.
+*/
+BOOL
+WINAPI
+ImDiskGetVolumeSize(IN HANDLE Handle,
+		    OUT PLONGLONG Size);
 
 #ifdef __cplusplus
 }

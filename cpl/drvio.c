@@ -1303,6 +1303,7 @@ ImDiskRemoveDevice(HWND hWnd,
 	    {
 	      OPENFILENAME_NT4 ofn = { sizeof ofn };
 	      HANDLE image = INVALID_HANDLE_VALUE;
+	      ULARGE_INTEGER file_size = { 0 };
 
 	      ofn.hwndOwner = hWnd;
 	      ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
@@ -1347,7 +1348,8 @@ ImDiskRemoveDevice(HWND hWnd,
 		{
 		  MsgBoxLastError(hWnd, L"Error saving image:");
 
-		  if (GetFileSize(image, NULL) == 0)
+		  file_size.LowPart = GetFileSize(image, &file_size.HighPart);
+		  if (file_size.QuadPart == 0)
 		    DeleteFile(ofn.lpstrFile);
 
 		  CloseHandle(image);
@@ -1355,7 +1357,8 @@ ImDiskRemoveDevice(HWND hWnd,
 		  return FALSE;
 		}
 
-	      if (GetFileSize(image, NULL) == 0)
+	      file_size.LowPart = GetFileSize(image, &file_size.HighPart);
+	      if (file_size.QuadPart == 0)
 		{
 		  DeleteFile(ofn.lpstrFile);
 		  CloseHandle(image);
@@ -1708,6 +1711,7 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 {
   LPBYTE buffer;
   IMDISK_SET_DEVICE_FLAGS device_flags = { 0 };
+  LONGLONG disk_size = 0;
   DWORD dwReadSize;
   DWORD dwWriteSize;
 
@@ -1777,5 +1781,69 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		  &dwReadSize,
 		  NULL);
 
+  // This piece of code compares size of created image file with that of the
+  // original disk volume and possibly adjusts image file size to fill out to
+  // same size.
+  if (ImDiskGetVolumeSize(DeviceHandle, &disk_size))
+    {
+      ULARGE_INTEGER image_size = { 0 };
+      image_size.LowPart = GetFileSize(FileHandle, &image_size.HighPart);
+      if (image_size.QuadPart != 0)
+	{
+	  DWORD ptr = SetFilePointer(FileHandle,
+				     image_size.LowPart,
+				     (LPLONG) &image_size.HighPart,
+				     FILE_BEGIN);
+	  if (ptr == INVALID_SET_FILE_POINTER)
+	    if (GetLastError() == NO_ERROR)
+	      ptr = 0;
+
+	  if (ptr != INVALID_SET_FILE_POINTER)
+	    SetEndOfFile(FileHandle);
+	}
+    }
+
   return TRUE;
+}
+
+BOOL
+WINAPI
+ImDiskGetVolumeSize(IN HANDLE Handle,
+		    OUT PLONGLONG Size)
+{
+  PARTITION_INFORMATION partition_info = { 0 };
+  DISK_GEOMETRY disk_geometry = { 0 };
+  DWORD dwBytesReturned;
+
+  if (DeviceIoControl(Handle,
+		      IOCTL_DISK_GET_PARTITION_INFO,
+		      NULL,
+		      0,
+		      &partition_info,
+		      sizeof(partition_info),
+		      &dwBytesReturned,
+		      NULL))
+    {
+      *Size = partition_info.PartitionLength.QuadPart;
+      return TRUE;
+    }
+
+  if (DeviceIoControl(Handle,
+		      IOCTL_DISK_GET_DRIVE_GEOMETRY,
+		      NULL,
+		      0,
+		      &disk_geometry,
+		      sizeof(disk_geometry),
+		      &dwBytesReturned,
+		      NULL))
+    {
+      *Size =
+	disk_geometry.Cylinders.QuadPart *
+	disk_geometry.TracksPerCylinder *
+	disk_geometry.SectorsPerTrack *
+	disk_geometry.BytesPerSector;
+      return TRUE;
+    }
+
+  return FALSE;
 }
