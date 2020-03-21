@@ -52,9 +52,14 @@
   <PropertyGroup>
     <OptionInfer>On</OptionInfer>
   </PropertyGroup>
+  <PropertyGroup>
+    <SignAssembly>true</SignAssembly>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AssemblyOriginatorKeyFile>ImDiskNet.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
-    <Reference Include="System.ServiceProcess" />
   </ItemGroup>
   <ItemGroup>
     <Import Include="Microsoft.Win32.SafeHandles" />
@@ -64,7 +69,6 @@
     <Import Include="System.Diagnostics" />
     <Import Include="System.IO" />
     <Import Include="System.Runtime.InteropServices" />
-    <Import Include="System.ServiceProcess" />
     <Import Include="System.Text" />
   </ItemGroup>
   <ItemGroup>
@@ -102,6 +106,7 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <None Include="ImDiskNet.snk" />
     <None Include="My Project\Application.myapp">
       <Generator>MyApplicationCodeGenerator</Generator>
       <LastGenOutput>Application.Designer.vb</LastGenOutput>

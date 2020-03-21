@@ -33,9 +33,7 @@
     ''' </summary>
     Public Shared Sub LoadDriver()
 
-      Using ServiceController As New ServiceController("ImDisk")
-        ServiceController.Start()
-      End Using
+      NativeFileIO.Win32Try(DLL.ImDiskStartService("ImDisk"))
 
     End Sub
 
@@ -47,9 +45,7 @@
     ''' <remarks></remarks>
     Public Shared Sub LoadHelperService()
 
-      Using ServiceController As New ServiceController("ImDskSvc")
-        ServiceController.Start()
-      End Using
+      NativeFileIO.Win32Try(DLL.ImDiskStartService("ImDskSvc"))
 
     End Sub
 

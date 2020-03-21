@@ -98,21 +98,24 @@ typedef struct _OBJECT_CONTEXT
 //
 // Default page size 2 MB
 //
-#define ALLOC_PAGE_SIZE (2UL << 20)
+#define ALLOC_PAGE_SIZE (2ULL << 20)
 
 //
 // Macros for easier page/offset calculation
 //
 #define ALLOC_PAGE_BASE_MASK   (~(ALLOC_PAGE_SIZE-1))
-#define AWEAllocGetPageBaseFromAbsOffset(OFFSET) \
-  ((OFFSET) & ALLOC_PAGE_BASE_MASK)
+#define AWEAllocGetPageBaseFromAbsOffset(absolute_offset) \
+  ((absolute_offset) & ALLOC_PAGE_BASE_MASK)
 #define ALLOC_PAGE_OFFSET_MASK (ALLOC_PAGE_SIZE-1)
-#define AWEAllocGetPageOffsetFromAbsOffset(OFFSET) \
-  ((ULONG)((OFFSET) & ALLOC_PAGE_OFFSET_MASK))
-#define AWEAllocGetRequiredPagesForSize(SIZE) \
-  (((SIZE) + ALLOC_PAGE_OFFSET_MASK) & ALLOC_PAGE_BASE_MASK)
+#define AWEAllocGetPageOffsetFromAbsOffset(absolute_offset) \
+  ((ULONG)((absolute_offset) & ALLOC_PAGE_OFFSET_MASK))
+#define AWEAllocGetRequiredPagesForSize(size) \
+  (((size) + ALLOC_PAGE_OFFSET_MASK) & ALLOC_PAGE_BASE_MASK)
+#define MAX_BLOCK_SIZE (ULONG_MAX - ALLOC_PAGE_OFFSET_MASK)
 
+//
 // Prototypes for functions defined in this driver
+//
 
 NTSTATUS
 DriverEntry(IN PDRIVER_OBJECT DriverObject,
@@ -784,6 +787,7 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 
 #ifndef _WIN64
 
+	/*
 	if (feof_info->EndOfFile.HighPart != 0)
 	  {
 	    Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
@@ -791,6 +795,7 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	    return STATUS_INVALID_PARAMETER;
 	  }
+	*/
 
 #endif // ! _WIN64
 
@@ -848,8 +853,8 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 	    RtlZeroMemory(block, sizeof(BLOCK_DESCRIPTOR));
 
 	    if ((feof_info->EndOfFile.QuadPart - context->TotalSize) >
-		SIZE_T_MAX)
-	      bytes_to_allocate = SIZE_T_MAX;
+		MAX_BLOCK_SIZE)
+	      bytes_to_allocate = MAX_BLOCK_SIZE;
 	    else
 	      bytes_to_allocate = (SIZE_T)
 		AWEAllocGetRequiredPagesForSize(feof_info->EndOfFile.QuadPart -

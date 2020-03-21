@@ -12,6 +12,11 @@
         Handle As IntPtr
       ) As UInt32
 
+    Public Declare Unicode Function ImDiskStartService _
+      Lib "imdisk.cpl" (
+        ServiceName As String
+      ) As Boolean
+
     Public Declare Unicode Function ImDiskGetOffsetByFileExt _
       Lib "imdisk.cpl" (
         ImageFileName As String,

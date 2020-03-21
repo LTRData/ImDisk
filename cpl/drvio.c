@@ -401,7 +401,11 @@ ImDiskStartService(LPWSTR ServiceName)
       CloseServiceHandle(hService);
       CloseServiceHandle(hSCManager);
       SetLastError(dwLastError);
-      return FALSE;
+
+      if (dwLastError == ERROR_SERVICE_ALREADY_RUNNING)
+	return TRUE;
+      else
+	return FALSE;
     }
 
   CloseServiceHandle(hService);

@@ -51,6 +51,7 @@ enum
     IMDISK_CLI_ERROR_BAD_SYNTAX = 10,
     IMDISK_CLI_ERROR_NOT_ENOUGH_MEMORY = 11,
     IMDISK_CLI_ERROR_PARTITION_NOT_FOUND = 12,
+    IMDISK_CLI_ERROR_WRONG_SYNTAX = 13,
     IMDISK_CLI_ERROR_FATAL = -1
   };
 
@@ -77,7 +78,7 @@ enum
 void __declspec(noreturn)
 ImDiskSyntaxHelp()
 {
-  fputs
+  int rc = fputs
     ("Control program for the ImDisk Virtual Disk Driver.\r\n"
      "For copyrights and credits, type imdisk --version\r\n"
      "\n"
@@ -286,7 +287,10 @@ ImDiskSyntaxHelp()
      "        first unused drive letter is automatically used.\r\n",
      stderr);
 
-  exit(1);
+  if (rc > 0)
+    exit(IMDISK_CLI_ERROR_WRONG_SYNTAX);
+  else
+    exit(IMDISK_CLI_ERROR_FATAL);
 }
 
 BOOL
@@ -449,7 +453,7 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 	    {
 	      while (!WaitNamedPipe(IMDPROXY_SVC_PIPE_DOSDEV_NAME, 0))
 		if (GetLastError() == ERROR_FILE_NOT_FOUND)
-		  Sleep(500);
+		  Sleep(200);
 		else
 		  break;
 
