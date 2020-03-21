@@ -1,16 +1,126 @@
+/*
+    Server end for ImDisk Virtual Disk Driver.
+
+    Copyright (C) 2005-2007 Olof Lagerkvist.
+
+    Permission is hereby granted, free of charge, to any person
+    obtaining a copy of this software and associated documentation
+    files (the "Software"), to deal in the Software without
+    restriction, including without limitation the rights to use,
+    copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following
+    conditions:
+
+    The above copyright notice and this permission notice shall be
+    included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+    OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+//#define DEBUG
+
+#define WIN32_LEAN_AND_MEAN
+
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <syslog.h>
 #include <sys/types.h>
+
+#ifdef _WIN32
+
+#include <windows.h>
+#include <winsock.h>
+#include <io.h>
+
+__inline
+BOOL
+OemPrintF(FILE *Stream, LPCSTR Message, ...)
+{
+  va_list param_list;
+  LPSTR lpBuf = NULL;
+
+  va_start(param_list, Message);
+
+  if (!FormatMessageA(78 |
+		      FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		      FORMAT_MESSAGE_FROM_STRING, Message, 0, 0,
+		      (LPSTR) &lpBuf, 0, &param_list))
+    return FALSE;
+
+  CharToOemA(lpBuf, lpBuf);
+  fprintf(Stream, "%s\n", lpBuf);
+  LocalFree(lpBuf);
+  return TRUE;
+}
+
+__inline
+void
+syslog(FILE *Stream, LPCSTR Message, ...)
+{
+  va_list param_list;
+  LPSTR MsgBuf = NULL;
+
+  va_start(param_list, Message);
+
+  if (strstr(Message, "%m") != NULL)
+    {
+      if (FormatMessage(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+			FORMAT_MESSAGE_ALLOCATE_BUFFER |
+			FORMAT_MESSAGE_FROM_SYSTEM |
+			FORMAT_MESSAGE_IGNORE_INSERTS,
+			NULL, GetLastError(), 0, (LPSTR) &MsgBuf, 0, NULL))
+	CharToOemA(MsgBuf, MsgBuf);
+    }
+
+  if (MsgBuf != NULL)
+    {
+      vfprintf(Stream, Message, param_list);
+      fprintf(Stream, "%s\n", MsgBuf);
+
+      LocalFree(MsgBuf);
+    }
+  else
+    vfprintf(Stream, Message, param_list);
+
+  return;
+}
+
+#define LOG_ERR   stderr
+
+typedef size_t ssize_t;
+typedef __int64 off_t_64;
+
+#define ULL_FMT   "%I64u"
+
+#else  // Unix
+
+#include <syslog.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+
+#define closesocket(s) close(s)
+#ifndef O_BINARY
+#define O_BINARY       0
+#endif
+#define ULL_FMT   "%llu"
+
+typedef off_t off_t_64;
+
+#endif
 
 #include "../inc/imdproxy.h"
 #include "safeio.h"
@@ -50,6 +160,8 @@ read_data()
 {
   IMDPROXY_READ_REQ req_block = { 0 };
   IMDPROXY_READ_RESP resp_block = { 0 };
+  size_t size;
+  ssize_t readdone;
 
   if (!safe_read(sd, &req_block.offset,
 		 sizeof(req_block) - sizeof(req_block.request_code)))
@@ -58,13 +170,16 @@ read_data()
       return 0;
     }
 
-  size_t size = req_block.length < buffer_size ?
-    req_block.length : buffer_size;
+  size = (size_t)
+    (req_block.length < buffer_size ? req_block.length : buffer_size);
 
-  dbglog((LOG_ERR, "read request %llu bytes at %llu.\n", req_block.length,
-	  req_block.offset));
+  dbglog((LOG_ERR, "read request " ULL_FMT " bytes at " ULL_FMT ".\n",
+	  req_block.length, req_block.offset));
 
-  ssize_t readdone = pread(fd, buf, size, offset + req_block.offset);
+  memset(buf, 0, size);
+
+  readdone =
+    pread(fd, buf, (size_t) size, (off_t_64) (offset + req_block.offset));
   if (readdone == -1)
     {
       resp_block.errorno = errno;
@@ -74,10 +189,15 @@ read_data()
   else
     {
       resp_block.errorno = 0;
-      resp_block.length = readdone;
+      resp_block.length = size;
+
+      if (req_block.length != readdone)
+	syslog(LOG_ERR,
+	       "Partial read at " ULL_FMT ": Got %u, req " ULL_FMT ".\n",
+	       (offset + req_block.offset), readdone, req_block.length);
     }
 
-  dbglog((LOG_ERR, "read done reporting/sending %llu bytes.\n",
+  dbglog((LOG_ERR, "read done reporting/sending " ULL_FMT " bytes.\n",
 	  resp_block.length));
 
   if (!safe_write(sd, &resp_block, sizeof resp_block))
@@ -87,7 +207,7 @@ read_data()
     }
 
   if (resp_block.errorno == 0)
-    if (!safe_write(sd, buf, resp_block.length))
+    if (!safe_write(sd, buf, (size_t) resp_block.length))
       {
 	syslog(LOG_ERR, "Error sending read response to caller.\n");
 	return 0;
@@ -106,8 +226,8 @@ write_data()
 		 sizeof(req_block) - sizeof(req_block.request_code)))
     return 0;
 
-  dbglog((LOG_ERR, "write request %llu bytes at %llu.\n", req_block.length,
-	  req_block.offset));
+  dbglog((LOG_ERR, "write request " ULL_FMT " bytes at %llu.\n",
+	  req_block.length, req_block.offset));
 
   if (req_block.length > buffer_size)
     {
@@ -116,7 +236,7 @@ write_data()
       return 0;
     }
 
-  if (!safe_read(sd, buf, req_block.length))
+  if (!safe_read(sd, buf, (size_t) req_block.length))
     {
       syslog(LOG_ERR, "Warning: I/O stream inconsistency.\n");
 
@@ -132,7 +252,8 @@ write_data()
   else
     {
       ssize_t writedone =
-	pwrite(fd, buf, req_block.length, offset + req_block.offset);
+	pwrite(fd, buf, (size_t) req_block.length,
+	       (off_t_64) (offset + req_block.offset));
       if (writedone == -1)
 	{
 	  resp_block.errorno = errno;
@@ -145,7 +266,12 @@ write_data()
 	  resp_block.length = writedone;
 	}
 
-      dbglog((LOG_ERR, "write done reporting/sending %llu bytes.\n",
+      if (req_block.length != resp_block.length)
+	syslog
+	  (LOG_ERR, "Partial write at " ULL_FMT ".\n",
+	   (offset + req_block.offset));
+
+      dbglog((LOG_ERR, "write done reporting/sending " ULL_FMT " bytes.\n",
 	      resp_block.length));
     }
 
@@ -166,6 +292,11 @@ main(int argc, char **argv)
   unsigned short port = 0;
   int i;
   struct sockaddr_in saddr = { 0 };
+
+#ifdef _WIN32
+  WSADATA wsadata;
+  WSAStartup(0x0101, &wsadata);
+#endif
 
   if (argc >= 4)
     if (strcmp(argv[1], "-r") == 0)
@@ -191,22 +322,24 @@ main(int argc, char **argv)
       return -1;
     }
 
-  port = strtoul(argv[1], NULL, 0);
+  port = (u_short) strtoul(argv[1], NULL, 0);
 
   if (devio_info.flags & IMDPROXY_FLAG_RO)
-    fd = open(argv[2], O_RDONLY | O_DIRECT | O_FSYNC);
+    fd = open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDONLY);
   else
-    fd = open(argv[2], O_RDWR | O_DIRECT | O_FSYNC);
+    fd = open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDWR);
   if (fd == -1)
     {
-      syslog(LOG_ERR, "Device open failed: %m\n");
+      syslog(LOG_ERR, "Device open failed on '%s': %m\n", argv[2]);
       return 1;
     }
+
+  dbglog((LOG_ERR, "Successfully opened device '%s'.\n", argv[2]));
 
   if (argc > 3)
     {
       char suf = 0;
-      if (sscanf(argv[3], "%llu%c", &devio_info.file_size, &suf) == 2)
+      if (sscanf(argv[3], ULL_FMT "%c", &devio_info.file_size, &suf) == 2)
 	switch (suf)
 	  {
 	  case 'T':
@@ -239,7 +372,7 @@ main(int argc, char **argv)
   if (argc > 4)
     {
       char suf = 0;
-      if (sscanf(argv[4], "%llu%c", &offset, &suf) == 2)
+      if (sscanf(argv[4], ULL_FMT "%c", &offset, &suf) == 2)
 	switch (suf)
 	  {
 	  case 'T':
@@ -270,7 +403,7 @@ main(int argc, char **argv)
     }
 
   if (argc > 5)
-    sscanf(argv[4], "%llu", &devio_info.req_alignment);
+    sscanf(argv[4], ULL_FMT, &devio_info.req_alignment);
   else
     devio_info.req_alignment = DEF_REQ_ALIGNMENT;
 
@@ -331,24 +464,36 @@ main(int argc, char **argv)
 	  return 2;
 	}
 
-      close(ssd);
+      closesocket(ssd);
 
       dbglog((LOG_ERR, "Got connection from %s:%u.\n",
 	      inet_ntoa(saddr.sin_addr),
 	      (unsigned int) ntohs(saddr.sin_port)));
+    }
+  else if (strcmp(argv[1], "-") == 0)
+    {
+#ifdef _WIN32
+      sd = (SOCKET) GetStdHandle(STD_INPUT_HANDLE);
+#else
+      sd = 0;
+#endif
+
+      dbglog((LOG_ERR, "Using stdin as comm device.\n"));
     }
   else
     {
       sd = open(argv[1], O_RDWR | O_DIRECT | O_FSYNC);
       if (sd == -1)
 	{
-	  syslog(LOG_ERR, "File open failed: %m\n");
+	  syslog(LOG_ERR, "File open failed on '%s': %m\n", argv[1]);
 	  return 1;
 	}
+
+      dbglog((LOG_ERR, "Successfully opened device '%s'.\n", argv[1]));
     }
 
   i = 1;
-  if (setsockopt(sd, IPPROTO_TCP, TCP_NODELAY, &i, sizeof i))
+  if (setsockopt(sd, IPPROTO_TCP, TCP_NODELAY, (const char*) &i, sizeof i))
     syslog(LOG_ERR, "setsockopt(..., TCP_NODELAY): %m\n");
 
   for (;;)

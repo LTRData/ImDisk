@@ -1,5 +1,5 @@
 /*
-    General I/O support routines for POSIX environments.
+    General I/O support routines for WIN32 environments.
 
     Copyright (C) 2005-2007 Olof Lagerkvist.
 
@@ -25,60 +25,25 @@
     OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include <unistd.h>
-#include <syslog.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <errno.h>
+#define WIN32_LEAN_AND_MEAN
+#include <stdlib.h>
+#include <windows.h>
+#include <winsock.h>
 
-#include "safeio.h"
+#include "..\inc\wio.hpp"
 
+WOverlapped Overlapped;
+
+extern "C"
 int
-safe_read(int fd, void *pdata, size_t size)
+safe_read(SOCKET fd, void *pdata, size_t size)
 {
-  char *data = (char*) pdata;
-  size_t sizeleft = size;
-
-  while (sizeleft > 0)
-    {
-      ssize_t sizedone = read(fd, data, sizeleft);
-      if (sizedone == -1)
-	{
-	  syslog(LOG_ERR, "safe_read(): %m\n");
-	  return 0;
-	}
-
-      if (sizedone == 0)
-	return 0;
-
-      sizeleft -= sizedone;
-      data += sizedone;
-    }
-
-  return 1;
+  return Overlapped.BufRecv((HANDLE) fd, pdata, size) == size;
 }
 
+extern "C"
 int
 safe_write(int fd, const void *pdata, size_t size)
 {
-  const char *data = (char*) pdata;
-  size_t sizeleft = size;
-
-  while (sizeleft > 0)
-    {
-      ssize_t sizedone = write(fd, data, sizeleft);
-      if (sizedone == -1)
-	{
-	  syslog(LOG_ERR, "safe_write(): %m\n");
-	  return 0;
-	}
-
-      if (sizedone == 0)
-	return 0;
-
-      sizeleft -= sizedone;
-      data += sizedone;
-    }
-
-  return 1;
+  return Overlapped.BufSend((HANDLE) fd, pdata, size);
 }

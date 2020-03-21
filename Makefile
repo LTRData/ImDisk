@@ -5,25 +5,30 @@ clean:
 
 publish: p:\utils\imdiskinst.exe p:\utils\imdisk_source.7z
 
-p:\utils\imdiskinst.exe: p:\utils\imdisk.7z p:\utils\7zSD.sfx 7zSDcfg.txt p:\utils\imdisk_source.7z
-	del p:\utils\imdisk.7z
-	7z a    p:\utils\imdisk.7z -m0=LZMA:a=2 *.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys imdisk.inf install.cmd
+p:\utils\imdiskinst.exe: p:\utils\imdisk.7z p:\utils\7zSD.sfx 7zSDcfg.txt
 	copy /y /b p:\utils\7zSD.sfx + 7zSDcfg.txt + p:\utils\imdisk.7z p:\utils\imdiskinst.exe
 	copy /y /b p:\utils\7zSD.sfx + 7zSDcfg.txt + p:\utils\imdisk.7z z:\ltr-website\files\imdiskinst.exe
 	start explorer ftp://ftp.ltr-data.se/ltr-data.se/public_html/files
 	start z:\ltr-website\files\
 
-p:\utils\imdisk_source.7z: *.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys deviotst\i386\deviotst.exe imdisk.inf install.cmd uninstall.cmd Makefile
+p:\utils\imdisk.7z: readme.txt gpl.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys imdisk.inf runwait.exe
+	del p:\utils\imdisk.7z
+	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys imdisk.inf runwait.exe
+
+p:\utils\imdisk_source.7z: *.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys deviotst\i386\deviotst.exe imdisk.inf runwait.exe uninstall.cmd Makefile
 	del p:\utils\imdisk_source.7z
-	7z a -r p:\utils\imdisk_source.7z -m0=PPMd *.txt *.c *.h *.cpp *.hpp *.rc *.lib Sources imdisk.inf install.cmd uninstall.cmd Makefile
+	7z a -r p:\utils\imdisk_source.7z -m0=PPMd *.txt *.c *.h *.cpp *.hpp *.rc *.lib Sources dirs imdisk.inf runwait.exe uninstall.cmd Makefile
 	xcopy p:\utils\imdisk_source.7z z:\ltr-website\files\ /d/y
 
-cli\i386\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h
+runwait.exe: p:\utils\runwait.exe
+	copy /y p:\utils\runwait.exe runwait.exe
+
+cli\i386\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\i386\imdisk.lib
 	cd cli
 	build -c
 	cd $(MAKEDIR)
 
-cpl\i386\imdisk.cpl: cpl\sources cpl\*.c cpl\*.cpp cpl\*.rc cpl\*.h inc\*.h
+cpl\i386\imdisk.cpl cpl\i386\imdisk.lib: cpl\sources cpl\*.c cpl\*.cpp cpl\*.rc cpl\*.def cpl\*.h inc\*.h
 	cd cpl
 	build -c
 	cd $(MAKEDIR)

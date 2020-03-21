@@ -3,27 +3,26 @@
 
     Copyright (C) 2005-2007 Olof Lagerkvist.
 
-    Some credits:
-    - Parts related to floppy emulation based on VFD by Ken Kato.
-      http://chitchat.at.infoseek.co.jp/vmware/vfd.html
-    - Parts related to CD-ROM emulation and impersonation to support remote
-      files based on FileDisk by Bo Brantén.
-      http://www.acc.umu.se/~bosse/
-    - Virtual memory image support, usermode storage backend support and some
-      code ported to NT from the FreeBSD md driver by Olof Lagerkvist.
-      http://www.ltr-data.se
+    Permission is hereby granted, free of charge, to any person
+    obtaining a copy of this software and associated documentation
+    files (the "Software"), to deal in the Software without
+    restriction, including without limitation the rights to use,
+    copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following
+    conditions:
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    The above copyright notice and this permission notice shall be
+    included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+    OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #include <windows.h>
@@ -69,12 +68,20 @@ ImDiskSyntaxHelp()
      "       [-s size] [-S sectorsize] [-u unit] [-x sectors/track]\r\n"
      "       [-y tracks/cylinder]\r\n"
      "imdisk -d [-u unit | -m mountpoint]\r\n"
-     "imdisk -l [-n] [-u unit | -m mountpoint]\r\n"
+     "imdisk -l [-u unit | -m mountpoint]\r\n"
+     "imdisk -e -s size [-u unit | -m mountpoint]\r\n"
      "\n"
      "-a      Attach a virtual disk. This will configure and attach a virtual disk\r\n"
      "        with the parameters specified and attach it to the system.\r\n"
      "\n"
      "-d      Detach a virtual disk from the system and release all resources.\r\n"
+     "\n"
+     "-e      Extends the size of an existing virtual disk if backed by a physical\r\n"
+     "        file or if it is accessed through an I/O proxy but not if it is backed\r\n"
+     "        by virtual memory. Note also that even if the disk can be extended\r\n"
+     "        successfully, the current filesystem on it can only be extended to fill\r\n"
+     "        the new size without re-formatting if you are running Windows 2000 or\r\n"
+     "        later and the current filesystem is NTFS.\r\n"
      "\n"
      "-t type\r\n"
      "        Select the backingstore for the virtual disk.\r\n"
@@ -114,13 +121,13 @@ ImDiskSyntaxHelp()
      "        Size of the virtual disk. Size is number of bytes unless suffixed with\r\n"
      "        a b, k, m, g, t, K, M, G or T which denotes number of 512-byte blocks,\r\n"
      "        thousand bytes, million bytes, billion bytes, trillion bytes,\r\n"
-     "        kilobytes megabytes, gigabytes and terabytes respectively. Size is\r\n"
-     "        optional the file used by a file type virtual disk does not already\r\n"
-     "        exists or when a vm type virtual disk is created without specifying an\r\n"
-     "        initialization file using the -f or -F options. If size is specified\r\n"
-     "        file type virtual disks, the size of the file used as backingstore for\r\n"
-     "        the virtual disk is adjusted to the new size specified with this size\r\n"
-     "        option.\r\n"
+     "        kilobytes, megabytes, gigabytes and terabytes respectively. Size is\r\n"
+     "        optional unless the file used by a file type virtual disk does not\r\n"
+     "        already exist or when a vm type virtual disk is created without\r\n"
+     "        specifying an initialization image file using the -f or -F. If size is\r\n"
+     "        specified when creating a file type virtual disk, the size of the file\r\n"
+     "        used as backingstore for the virtual disk is adjusted to the new size\r\n"
+     "        specified with this size option.\r\n"
      "\n"
      "-S sectorsize\r\n"
      "        Sectorsize to use for the virtual disk device. Default value is 512\r\n"
@@ -145,7 +152,7 @@ ImDiskSyntaxHelp()
      "        option can only be used if the -f option is also specified.\r\n"
      "\n"
      "cd      Creates a virtual CD-ROM/DVD-ROM. This is the default if the file\r\n"
-     "        name specified with the -f option ends with the .iso extension.\r\n"
+     "        name specified with the -f option ends with .iso or .bin extension.\r\n"
      "\n"
      "fd      Creates a virtual floppy disk. This is the default if the size of the\r\n"
      "        virtual disk is 320K, 640K, 720K, 1200K, 1440K or 2880K.\r\n"
@@ -167,6 +174,14 @@ ImDiskSyntaxHelp()
      "        a space, and then a device settings string with the same syntax as the\r\n"
      "        MODE command.\r\n"
      "\n"
+     "rem     Specifies that the device should be created with removable\r\n"
+     "        characteristics. This changes the device properties returned by the\r\n"
+     "        driver to the system. For example, this changes how some filesystems\r\n"
+     "        cache write operations.\r\n"
+     "\n"
+     "        Note that virtual floppy or CD/DVD-ROM drives are always created as\r\n"
+     "        removable devices.\r\n"
+     "\n"
      "-u unit\r\n"
      "        Along with -a, request a specific unit number for the ImDisk device\r\n"
      "        instead of automatic allocation. Along with -d or -l specifies the\r\n"
@@ -174,7 +189,9 @@ ImDiskSyntaxHelp()
      "\n"
      "-m mountpoint\r\n"
      "        Specifies a drive letter or mount point for the new virtual disk, the\r\n"
-     "        virtual disk to query or the virtual disk to remove.\r\n",
+     "        virtual disk to query or the virtual disk to remove. When creating a\r\n"
+     "        new virtual disk you can specify #: as mountpoint in which case the\r\n"
+     "        first unused drive letter is automatically used.\r\n",
      stderr);
 
   exit(1);
@@ -203,21 +220,23 @@ ImDiskOemPrintF(FILE *Stream, LPCSTR Message, ...)
 void
 PrintLastError(LPCWSTR Prefix)
 {
-  LPWSTR MsgBuf;
+  LPSTR MsgBuf;
 
-  FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
-		 FORMAT_MESSAGE_ALLOCATE_BUFFER |
-		 FORMAT_MESSAGE_FROM_SYSTEM |
-		 FORMAT_MESSAGE_IGNORE_INSERTS,
-		 NULL, GetLastError(), 0, (LPSTR) &MsgBuf, 0, NULL);
+  if (!FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+		      FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		      FORMAT_MESSAGE_FROM_SYSTEM |
+		      FORMAT_MESSAGE_IGNORE_INSERTS,
+		      NULL, GetLastError(), 0, (LPSTR) &MsgBuf, 0, NULL))
+    MsgBuf = NULL;
 
   ImDiskOemPrintF(stderr, "%1!ws! %2", Prefix, MsgBuf);
 
-  LocalFree(MsgBuf);
+  if (MsgBuf != NULL)
+    LocalFree(MsgBuf);
 }
 
 BOOL
-ImDiskCheckDriverVersion(HANDLE Device)
+ImDiskCliCheckDriverVersion(HANDLE Device)
 {
   DWORD VersionCheck;
   DWORD BytesReturned;
@@ -227,20 +246,24 @@ ImDiskCheckDriverVersion(HANDLE Device)
                        NULL, 0,
 		       &VersionCheck, sizeof VersionCheck,
                        &BytesReturned, NULL))
-    {
-      if (GetLastError() == ERROR_INVALID_FUNCTION)
+    switch (GetLastError())
+      {
+      case ERROR_INVALID_FUNCTION:
+      case ERROR_NOT_SUPPORTED:
 	fputs("Error: Not an ImDisk device.\r\n", stderr);
-      else
-	PrintLastError(L"Cannot control the ImDisk Virtual Disk Driver:");
+	return FALSE;
 
-      return FALSE;
-    }
+      default:
+	PrintLastError(L"Error opening device:");
+	return FALSE;
+      }
 
   if (BytesReturned < sizeof VersionCheck)
     {
       fprintf(stderr,
 	      "Wrong version of ImDisk Virtual Disk Driver.\n"
-	      "No current driver version information, expected: %u.%u.\n",
+	      "No current driver version information, expected: %u.%u.\n"
+	      "Please re-install ImDisk and reboot if this issue persists.\n",
 	      HIBYTE(IMDISK_VERSION), LOBYTE(IMDISK_VERSION),
 	      BytesReturned);
       return FALSE;
@@ -250,7 +273,8 @@ ImDiskCheckDriverVersion(HANDLE Device)
     {
       fprintf(stderr,
 	      "Wrong version of ImDisk Virtual Disk Driver.\n"
-	      "Expected: %u.%u Installed: %u.%u\n",
+	      "Expected: %u.%u Installed: %u.%u\n"
+	      "Please re-install ImDisk and reboot if this issue persists.\n",
 	      HIBYTE(IMDISK_VERSION), LOBYTE(IMDISK_VERSION),
 	      HIBYTE(VersionCheck), LOBYTE(VersionCheck));
       return FALSE;
@@ -259,222 +283,13 @@ ImDiskCheckDriverVersion(HANDLE Device)
   return TRUE;
 }
 
-BOOL
-ImDiskStartService(LPWSTR ServiceName)
-{
-  SC_HANDLE hSCManager;
-  SC_HANDLE hService;
-
-  hSCManager = OpenSCManager(NULL, NULL, 0);
-  if (hSCManager == NULL)
-    return FALSE;
-
-  hService = OpenService(hSCManager, ServiceName, SERVICE_START);
-  if (hService == NULL)
-    {
-      DWORD dwLastError = GetLastError();
-      CloseServiceHandle(hSCManager);
-      SetLastError(dwLastError);
-      return FALSE;
-    }
-
-  if (!StartService(hService, 0, NULL))
-    {
-      DWORD dwLastError = GetLastError();
-      CloseServiceHandle(hService);
-      CloseServiceHandle(hSCManager);
-      SetLastError(dwLastError);
-      return FALSE;
-    }
-
-  CloseServiceHandle(hService);
-  CloseServiceHandle(hSCManager);
-  return TRUE;
-}
-
-BOOL
-ImDiskCreateMountPoint(LPCWSTR Directory, LPCWSTR Target)
-{
-  int iSize = (wcslen(Target) + 1) << 1;
-  REPARSE_DATA_JUNCTION ReparseData = { 0 };
-  HANDLE hDir;
-  DWORD dw;
-
-  hDir = CreateFile(Directory, GENERIC_READ | GENERIC_WRITE,
-		    FILE_SHARE_READ, NULL, OPEN_EXISTING,
-		    FILE_FLAG_BACKUP_SEMANTICS |
-		    FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-
-  if (hDir == INVALID_HANDLE_VALUE)
-    return FALSE;
-
-  if ((iSize + 6 > sizeof(ReparseData.Data)) | (iSize == 0))
-    {
-      ImDiskOemPrintF(stderr, "Name is too long: '%1!ws!'\n", Target);
-      return 4;
-    }
-
-  ReparseData.ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
-  ReparseData.ReparseDataLength = (WORD) (8 + iSize + 2 + iSize + 2);
-  ReparseData.NameLength = (WORD) iSize;
-  ReparseData.DisplayNameOffset = (WORD) (iSize + 2);
-  ReparseData.DisplayNameLength = (WORD) iSize;
-  wcscpy((LPWSTR) ReparseData.Data, Target);
-  ((LPWSTR) ReparseData.Data)[(iSize >> 1) - 1] = L'\\';
-  wcscpy((LPWSTR) (ReparseData.Data + ReparseData.DisplayNameOffset), Target);
-  ((LPWSTR) (ReparseData.Data + ReparseData.DisplayNameOffset))
-    [(iSize >> 1) - 1] = L'\\';
-
-  if (!DeviceIoControl(hDir, FSCTL_SET_REPARSE_POINT, &ReparseData,
-		       16 + iSize + 2 + iSize + 2, NULL, 0, &dw, NULL))
-    {
-      DWORD last_error = GetLastError();
-      CloseHandle(hDir);
-      SetLastError(last_error);
-      return FALSE;
-    }
-  else
-    {
-      CloseHandle(hDir);
-      return TRUE;
-    }
-}
-
-BOOL
-ImDiskRemoveMountPoint(LPCWSTR MountPoint)
-{
-  REPARSE_DATA_JUNCTION ReparseData = { 0 };
-  HANDLE hDir;
-  DWORD dw;
-
-  hDir = CreateFile(MountPoint, GENERIC_READ | GENERIC_WRITE,
-		    FILE_SHARE_READ, NULL, OPEN_EXISTING,
-		    FILE_FLAG_BACKUP_SEMANTICS |
-		    FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-
-  if (hDir == INVALID_HANDLE_VALUE)
-    return FALSE;
-
-  ReparseData.ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
-
-  if (!DeviceIoControl(hDir, FSCTL_DELETE_REPARSE_POINT, &ReparseData,
-		       REPARSE_GUID_DATA_BUFFER_HEADER_SIZE, NULL, 0, &dw,
-		       NULL))
-    {
-      DWORD last_error = GetLastError();
-      CloseHandle(hDir);
-      SetLastError(last_error);
-      return FALSE;
-    }
-  else
-    {
-      CloseHandle(hDir);
-      return TRUE;
-    }
-}
-
-HANDLE
-ImDiskOpenDeviceByName(PUNICODE_STRING FileName, DWORD AccessMode)
-{
-  NTSTATUS status;
-  HANDLE handle;
-  OBJECT_ATTRIBUTES object_attrib;
-  IO_STATUS_BLOCK io_status;
-
-  DbgOemPrintF((stdout, "Opening device '%1!.*ws!'...\n",
-		FileName->Length / sizeof(WCHAR), FileName->Buffer));
-
-  InitializeObjectAttributes(&object_attrib,
-			     FileName,
-			     OBJ_CASE_INSENSITIVE,
-			     NULL,
-			     NULL);
-
-  status = NtOpenFile(&handle,
-		      SYNCHRONIZE | AccessMode,
-		      &object_attrib,
-		      &io_status,
-		      FILE_SHARE_READ | FILE_SHARE_WRITE,
-		      FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
-
-  if (!NT_SUCCESS(status))
-    {
-      SetLastError(RtlNtStatusToDosError(status));
-      return INVALID_HANDLE_VALUE;
-    }
-
-  return handle;
-}
-
-HANDLE
-ImDiskOpenDeviceByNumber(DWORD DeviceNumber, DWORD AccessMode)
-{
-  WCHAR device_path[MAX_PATH];
-  UNICODE_STRING file_name;
-
-  // Build device path, e.g. \Device\ImDisk2
-  _snwprintf(device_path, sizeof(device_path) / sizeof(*device_path),
-	     IMDISK_DEVICE_BASE_NAME L"%u", DeviceNumber);
-  device_path[sizeof(device_path)/sizeof(*device_path) - 1] = 0;
-
-  RtlInitUnicodeString(&file_name, device_path);
-  return ImDiskOpenDeviceByName(&file_name, AccessMode);
-}
-
-HANDLE
-ImDiskOpenDeviceByMountPoint(LPCWSTR MountPoint, DWORD AccessMode)
-{
-  REPARSE_DATA_JUNCTION ReparseData = { 0 };
-  HANDLE hDir;
-  DWORD dw;
-  UNICODE_STRING DeviceName;
-
-  hDir = CreateFile(MountPoint, GENERIC_READ,
-		    FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
-		    FILE_FLAG_BACKUP_SEMANTICS |
-		    FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-
-  if (hDir == INVALID_HANDLE_VALUE)
-    return INVALID_HANDLE_VALUE;
-
-  if (!DeviceIoControl(hDir, FSCTL_GET_REPARSE_POINT, NULL, 0, &ReparseData,
-		       sizeof ReparseData, &dw, NULL))
-
-    {
-      DWORD last_error = GetLastError();
-      CloseHandle(hDir);
-      SetLastError(last_error);
-      return INVALID_HANDLE_VALUE;
-    }
-
-  CloseHandle(hDir);
-
-  if (ReparseData.ReparseTag != IO_REPARSE_TAG_MOUNT_POINT)
-    {
-      SetLastError(ERROR_NOT_A_REPARSE_POINT);
-      return INVALID_HANDLE_VALUE;
-    }
-
-  DeviceName.Length = ReparseData.NameLength;
-  DeviceName.Buffer = (PWSTR) ReparseData.Data + ReparseData.NameOffset;
-  DeviceName.MaximumLength = DeviceName.Length;
-
-  if (DeviceName.Buffer[(DeviceName.Length >> 1) - 1] == L'\\')
-    {
-      DeviceName.Buffer[(DeviceName.Length >> 1) - 1] = 0;
-      DeviceName.Length -= 2;
-    }
-
-  return ImDiskOpenDeviceByName(&DeviceName, AccessMode);
-}
-
 int
-ImDiskCreate(LPDWORD DeviceNumber,
-	     PDISK_GEOMETRY DiskGeometry,
-	     DWORD Flags,
-	     LPCWSTR FileName,
-	     BOOL NativePath,
-	     LPWSTR MountPoint)
+ImDiskCliCreateDevice(LPDWORD DeviceNumber,
+		      PDISK_GEOMETRY DiskGeometry,
+		      DWORD Flags,
+		      LPCWSTR FileName,
+		      BOOL NativePath,
+		      LPWSTR MountPoint)
 {
   PIMDISK_CREATE_DATA create_data;
   HANDLE driver;
@@ -524,7 +339,7 @@ ImDiskCreate(LPDWORD DeviceNumber,
       puts("The ImDisk Virtual Disk Driver was loaded into the kernel.");
     }
 
-  if (!ImDiskCheckDriverVersion(driver))
+  if (!ImDiskCliCheckDriverVersion(driver))
     {
       CloseHandle(driver);
       return -1;
@@ -544,32 +359,35 @@ ImDiskCreate(LPDWORD DeviceNumber,
 		else
 		  break;
 
-	      puts("The ImDisk I/O Packet Forwarder Service was started.");
+	      puts
+		("The ImDisk Virtual Disk Driver Helper Service was started.");
 	    }
 	  else
 	    {
 	      switch (GetLastError())
 		{
 		case ERROR_SERVICE_DOES_NOT_EXIST:
-		  fputs("The ImDisk I/O Packet Forwarder Service is not "
+		  fputs("The ImDisk Virtual Disk Driver Helper Service is not "
 			"installed.\r\n"
 			"Please re-install ImDisk.\r\n", stderr);
 		  break;
 
 		case ERROR_PATH_NOT_FOUND:
 		case ERROR_FILE_NOT_FOUND:
-		  fputs("Cannot start ImDisk I/O Packet Forwarder Service.\r\n"
+		  fputs("Cannot start ImDisk Virtual Disk Driver Helper "
+			"Service.\r\n"
 			"Please re-install ImDisk.\r\n", stderr);
 		  break;
 
 		case ERROR_SERVICE_DISABLED:
-		  fputs("The ImDisk I/O Packet Forwarder Service is "
+		  fputs("The ImDisk Virtual Disk Driver Helper Service is "
 			"disabled.\r\n", stderr);
 		  break;
 
 		default:
 		  PrintLastError
-		    (L"Error starting ImDisk I/O Packet Forwarder Service:");
+		    (L"Error starting ImDisk Virtual Disk Driver Helper "
+		     L"Service:");
 		}
 
 	      CloseHandle(driver);
@@ -709,7 +527,7 @@ ImDiskCreate(LPDWORD DeviceNumber,
 }
 
 int
-ImDiskRemove(DWORD DeviceNumber, LPCWSTR MountPoint)
+ImDiskCliRemoveDevice(DWORD DeviceNumber, LPCWSTR MountPoint)
 {
   PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
     _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
@@ -795,7 +613,7 @@ ImDiskRemove(DWORD DeviceNumber, LPCWSTR MountPoint)
 	return -1;
       }
 
-  if (!ImDiskCheckDriverVersion(device))
+  if (!ImDiskCliCheckDriverVersion(device))
     {
       CloseHandle(device);
       return -1;
@@ -824,7 +642,7 @@ ImDiskRemove(DWORD DeviceNumber, LPCWSTR MountPoint)
       return -1;
     }
 
-  if (MountPoint == NULL)
+  if ((MountPoint == NULL) & (create_data->DriveLetter != 0))
     {
       drive_letter_mount_point[0] = create_data->DriveLetter;
       MountPoint = drive_letter_mount_point;
@@ -946,46 +764,26 @@ ImDiskRemove(DWORD DeviceNumber, LPCWSTR MountPoint)
 }
 
 int
-ImDiskQueryStatusDriver()
+ImDiskCliQueryStatusDriver()
 {
-  DWORD device_list;
-  DWORD dw;
+  DWORD device_list = ImDiskGetDeviceList();
   DWORD counter;
-  UNICODE_STRING file_name;
-  HANDLE driver;
-
-  RtlInitUnicodeString(&file_name, IMDISK_CTL_DEVICE_NAME);
-
-  driver = ImDiskOpenDeviceByName(&file_name,
-				  GENERIC_READ);
-
-  if (driver == INVALID_HANDLE_VALUE)
-    {
-      if (GetLastError() == ERROR_FILE_NOT_FOUND)
-	puts("The ImDisk Virtual Disk Driver is not loaded.");
-      else
-	PrintLastError(L"Cannot control the ImDisk Virtual Disk Driver:");
-
-      return -1;
-    }
-
-  if (!DeviceIoControl(driver,
-		       IOCTL_IMDISK_QUERY_DRIVER,
-		       NULL, 0,
-		       &device_list, sizeof(device_list),
-		       &dw, NULL))
-    {
-      CloseHandle(driver);
-      PrintLastError(L"Cannot control the ImDisk Virtual Disk Driver:");
-    }
-
-  CloseHandle(driver);
 
   if (device_list == 0)
-    {
-      puts("No virtual disks.");
-      return 0;
-    }
+    switch (GetLastError())
+      {
+      case NO_ERROR:
+	puts("No virtual disks.");
+	return 0;
+
+      case ERROR_FILE_NOT_FOUND:
+	puts("The ImDisk Virtual Disk Driver is not loaded.");
+	return 0;
+
+      default:
+	PrintLastError(L"Cannot control the ImDisk Virtual Disk Driver:");
+	return -1;
+      }
 
   for (counter = 0; device_list != 0; device_list >>= 1, counter++)
     if (device_list & 1)
@@ -995,7 +793,7 @@ ImDiskQueryStatusDriver()
 }
 
 int
-ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
+ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 {
   HANDLE device;
   DWORD dw;
@@ -1078,7 +876,7 @@ ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 	return -1;
       }
 
-  if (!ImDiskCheckDriverVersion(device))
+  if (!ImDiskCliCheckDriverVersion(device))
     {
       CloseHandle(device);
       return -1;
@@ -1108,7 +906,7 @@ ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
     }
 
   _snprintf(message_buffer, sizeof message_buffer,
-	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s.",
+	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s%s.",
 	    create_data->DriveLetter == 0 ?
 	    L'>' : create_data->DriveLetter,
 	    (MountPoint == NULL) | (create_data->DriveLetter != 0) ?
@@ -1123,6 +921,8 @@ ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 	    _p(create_data->DiskGeometry.Cylinders.QuadPart),
 	    IMDISK_READONLY(create_data->Flags) ?
 	    ", ReadOnly" : "",
+	    IMDISK_REMOVABLE(create_data->Flags) ?
+	    ", Removable" : "",
 	    IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM ?
 	    ", Virtual Memory Disk" :
 	    IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_PROXY ?
@@ -1140,7 +940,170 @@ ImDiskQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
   return 0;
 }
 
-int __cdecl
+int
+ImDiskCliExtendDevice(DWORD DeviceNumber, LPCWSTR MountPoint,
+		      LARGE_INTEGER ExtendSize)
+{
+  HANDLE device;
+  DWORD dw;
+  DISK_GROW_PARTITION grow_partition = { 0 };
+  GET_LENGTH_INFORMATION length_information;
+  DISK_GEOMETRY disk_geometry;
+  LONGLONG new_filesystem_size;
+
+  if (MountPoint == NULL)
+    {
+      device = ImDiskOpenDeviceByNumber(DeviceNumber,
+					GENERIC_READ | GENERIC_WRITE);
+      if (device == INVALID_HANDLE_VALUE)
+	device = ImDiskOpenDeviceByNumber(DeviceNumber,
+					  GENERIC_READ);
+    }
+  else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
+	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
+	   FALSE)
+    {
+      WCHAR drive_letter_path[] = L"\\\\.\\ :";
+
+      drive_letter_path[4] = MountPoint[0];
+
+      DbgOemPrintF((stdout, "Opening %1!ws!...\n", MountPoint));
+
+      device = CreateFile(drive_letter_path,
+			  GENERIC_READ | GENERIC_WRITE,
+			  FILE_SHARE_READ | FILE_SHARE_WRITE,
+			  NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = CreateFile(drive_letter_path,
+			    GENERIC_READ,
+			    FILE_SHARE_READ | FILE_SHARE_WRITE,
+			    NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+    }
+  else
+    {
+      device = ImDiskOpenDeviceByMountPoint(MountPoint,
+					    GENERIC_READ | GENERIC_WRITE);
+      if (device == INVALID_HANDLE_VALUE)
+	device = ImDiskOpenDeviceByMountPoint(MountPoint,
+					      GENERIC_READ);
+
+      if (device == INVALID_HANDLE_VALUE)
+	switch (GetLastError())
+	  {
+	  case ERROR_INVALID_PARAMETER:
+	    fputs("This version of Windows only supports drive letters as "
+		  "mount points.\r\n"
+		  "Windows 2000 or higher is required to support "
+		  "subdirectory mount points.\r\n",
+		  stderr);
+	    return -1;
+
+	  case ERROR_INVALID_FUNCTION:
+	    fputs("Mount points are only supported on NTFS volumes.\r\n",
+		  stderr);
+	    return -1;
+
+	  case ERROR_NOT_A_REPARSE_POINT:
+	  case ERROR_DIRECTORY:
+	  case ERROR_DIR_NOT_EMPTY:
+	    ImDiskOemPrintF(stderr, "Not a mount point: '%1!ws!'\n",
+			    MountPoint);
+	    return -1;
+
+	  default:
+	    PrintLastError(MountPoint);
+	    return -1;
+	}
+    }
+
+  if (device == INVALID_HANDLE_VALUE)
+    if (GetLastError() == ERROR_FILE_NOT_FOUND)
+      {
+	fputs("No such device.\r\n", stderr);
+	return -1;
+      }
+    else
+      {
+	PrintLastError(L"Error opening device:");
+	return -1;
+      }
+
+  puts("Extending disk size...");
+
+  grow_partition.PartitionNumber = 1;
+  grow_partition.BytesToGrow = ExtendSize;
+  if (!DeviceIoControl(device,
+                       IOCTL_DISK_GROW_PARTITION,
+                       &grow_partition,
+                       sizeof(grow_partition),
+                       NULL,
+                       0,
+                       &dw, NULL))
+    {
+      PrintLastError(MountPoint);
+      return -1;
+    }
+
+  puts("Extending filesystem size...");
+
+  if (!DeviceIoControl(device,
+                       IOCTL_DISK_GET_LENGTH_INFO,
+                       NULL,
+                       0,
+                       &length_information,
+                       sizeof(length_information),
+                       &dw, NULL))
+    {
+      PrintLastError(MountPoint);
+      ImDiskOemPrintF(stderr,
+		      "%1!ws!: Is that drive really an ImDisk drive?",
+		      MountPoint);
+      return -1;
+    }
+
+  if (!DeviceIoControl(device,
+                       IOCTL_DISK_GET_DRIVE_GEOMETRY,
+                       NULL,
+                       0,
+                       &disk_geometry,
+                       sizeof(disk_geometry),
+                       &dw, NULL))
+    {
+      PrintLastError(MountPoint);
+      ImDiskOemPrintF(stderr,
+		      "%1!ws!: Is that drive really an ImDisk drive?",
+		      MountPoint);
+      return -1;
+    }
+
+  new_filesystem_size =
+    length_information.Length.QuadPart /
+    disk_geometry.BytesPerSector;
+
+  if (!DeviceIoControl(device,
+                       FSCTL_EXTEND_VOLUME,
+                       &new_filesystem_size,
+                       sizeof(new_filesystem_size),
+                       NULL,
+                       0,
+                       &dw, NULL))
+    {
+      PrintLastError(MountPoint);
+      puts("The disk size was extended successfully, but it was not possible to extend the\r\n"
+	   "current filesystem on it. You will have to reformat the disk to use the full\r\n"
+	   "disk size.");
+    }
+
+  printf("New size: %.4g %s\n",
+	 _h(length_information.Length.QuadPart),
+	 _p(length_information.Length.QuadPart));
+
+  return 0;
+}
+
+int
+__cdecl
 wmain(int argc, LPWSTR argv[])
 {
   enum
@@ -1148,7 +1111,8 @@ wmain(int argc, LPWSTR argv[])
       OP_MODE_NONE,
       OP_MODE_CREATE,
       OP_MODE_REMOVE,
-      OP_MODE_QUERY
+      OP_MODE_QUERY,
+      OP_MODE_EXTEND
     } op_mode = OP_MODE_NONE;
   DWORD flags = 0;
   BOOL native_path = FALSE;
@@ -1161,32 +1125,49 @@ wmain(int argc, LPWSTR argv[])
   if (argc == 2)
     if (wcscmp(argv[1], L"--version") == 0)
       {
-	puts
-	  ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\r\n"
+	printf
+	  ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\n"
+	   "Version %i.%i.%i - (Compiled " __TIMESTAMP__ ")\n"
 	   "\n"
 	   "Copyright (C) 2004-2007 Olof Lagerkvist.\r\n"
 "\n"
-	   "Copyright to parts of this progam belongs to:\r\n"
+	   "http://www.ltr-data.se     olof@ltr-data.se\r\n"
+	   "\n"
+	   "Permission is hereby granted, free of charge, to any person\r\n"
+	   "obtaining a copy of this software and associated documentation\r\n"
+	   "files (the \"Software\"), to deal in the Software without\r\n"
+	   "restriction, including without limitation the rights to use,\r\n"
+	   "copy, modify, merge, publish, distribute, sublicense, and/or\r\n"
+	   "sell copies of the Software, and to permit persons to whom the\r\n"
+	   "Software is furnished to do so, subject to the following\r\n"
+	   "conditions:\r\n"
+	   "\r\n"
+	   "The above copyright notice and this permission notice shall be\r\n"
+	   "included in all copies or substantial portions of the Software.\r\n"
+	   "\r\n"
+	   "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\r\n"
+	   "EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES\r\n"
+	   "OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\r\n"
+	   "NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT\r\n"
+	   "HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\r\n"
+	   "WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\r\n"
+	   "FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\r\n"
+	   "OTHER DEALINGS IN THE SOFTWARE.\r\n"
+	   "\r\n"
+	   "This program contains some GNU GPL licensed code:\r\n"
 	   "- Parts related to floppy emulation based on VFD by Ken Kato.\r\n"
 	   "  http://chitchat.at.infoseek.co.jp/vmware/vfd.html\r\n"
-	   "- Parts related to CD-ROM emulation and impersonation to support remote\r\n"
-	   "  files based on FileDisk by Bo Brant‚n.\r\n"
-	   "  http://www.acc.umu.se/~bosse/\r\n"
-	   "- Virtual memory image support, usermode storage backend support and some\r\n"
-	   "  code ported to NT from the FreeBSD md driver by Olof Lagerkvist.\r\n"
+	   "Copyright (C) Free Software Foundation, Inc.\r\n"
+	   "Read gpl.txt for the full GNU GPL license.\r\n"
+	   "\r\n"
+	   "This program may contain BSD licensed code:\r\n"
+	   "- Some code ported to NT from the FreeBSD md driver by Olof Lagerkvist.\r\n"
 	   "  http://www.ltr-data.se\r\n"
-	   "\n"
-	   "This program is free software; you can redistribute it and/or modify\r\n"
-	   "it under the terms of the GNU General Public License as published by\r\n"
-	   "the Free Software Foundation; either version 2 of the License, or\r\n"
-	   "(at your option) any later version.\r\n"
-	   "This program is distributed in the hope that it will be useful,\r\n"
-	   "but WITHOUT ANY WARRANTY; without even the implied warranty of\r\n"
-	   "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\r\n"
-	   "GNU General Public License for more details.\r\n"
-	   "You should have received a copy of the GNU General Public License\r\n"
-	   "along with this program; if not, write to the Free Software\r\n"
-	   "Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA");
+	   "Copyright (C) The FreeBSD Project.\r\n"
+	   "Copyright (C) The Regents of the University of California.\r\n",
+	   (IMDISK_VERSION & 0xFF00) >> 8,
+	   (IMDISK_VERSION & 0xF0) >> 4,
+	   IMDISK_VERSION & 0xF);
 
 	return 0;
       }
@@ -1217,6 +1198,13 @@ wmain(int argc, LPWSTR argv[])
 	      ImDiskSyntaxHelp();
 
 	    op_mode = OP_MODE_QUERY;
+	    break;
+
+	  case L'e':
+	    if (op_mode != OP_MODE_NONE)
+	      ImDiskSyntaxHelp();
+
+	    op_mode = OP_MODE_EXTEND;
 	    break;
 
 	  case L't':
@@ -1255,6 +1243,8 @@ wmain(int argc, LPWSTR argv[])
 		   opt = wcstok(NULL, L","))
 		if (wcscmp(opt, L"ro") == 0)
 		  flags |= IMDISK_OPTION_RO;
+		else if (wcscmp(opt, L"rem") == 0)
+		  flags |= IMDISK_OPTION_REMOVABLE;
 		else if (wcscmp(opt, L"ip") == 0)
 		  {
 		    if ((IMDISK_TYPE(flags) != IMDISK_TYPE_PROXY) |
@@ -1306,7 +1296,7 @@ wmain(int argc, LPWSTR argv[])
 	    break;
 
 	  case L's':
-	    if ((op_mode != OP_MODE_CREATE) |
+	    if (((op_mode != OP_MODE_CREATE) & (op_mode != OP_MODE_EXTEND)) |
 		(argc < 2) |
 		(disk_geometry.Cylinders.QuadPart != 0))
 	      ImDiskSyntaxHelp();
@@ -1359,6 +1349,9 @@ wmain(int argc, LPWSTR argv[])
 		(disk_geometry.BytesPerSector != 0))
 	      ImDiskSyntaxHelp();
 
+	    if (!iswdigit(argv[1][0]))
+	      ImDiskSyntaxHelp();
+
 	    disk_geometry.BytesPerSector = wcstoul(argv[1], NULL, 0);
 
 	    argc--;
@@ -1369,6 +1362,9 @@ wmain(int argc, LPWSTR argv[])
 	    if ((op_mode != OP_MODE_CREATE) |
 		(argc < 2) |
 		(disk_geometry.SectorsPerTrack != 0))
+	      ImDiskSyntaxHelp();
+
+	    if (!iswdigit(argv[1][0]))
 	      ImDiskSyntaxHelp();
 
 	    disk_geometry.SectorsPerTrack = wcstoul(argv[1], NULL, 0);
@@ -1383,6 +1379,9 @@ wmain(int argc, LPWSTR argv[])
 		(disk_geometry.TracksPerCylinder != 0))
 	      ImDiskSyntaxHelp();
 
+	    if (!iswdigit(argv[1][0]))
+	      ImDiskSyntaxHelp();
+
 	    disk_geometry.TracksPerCylinder = wcstoul(argv[1], NULL, 0);
 
 	    argc--;
@@ -1393,6 +1392,9 @@ wmain(int argc, LPWSTR argv[])
 	    if ((argc < 2) |
 		((mount_point != NULL) & (op_mode != OP_MODE_CREATE)) |
 		(device_number != IMDISK_AUTO_DEVICE_NUMBER))
+	      ImDiskSyntaxHelp();
+
+	    if (!iswdigit(argv[1][0]))
 	      ImDiskSyntaxHelp();
 
 	    device_number = wcstoul(argv[1], NULL, 0);
@@ -1410,6 +1412,9 @@ wmain(int argc, LPWSTR argv[])
 
 	    mount_point = argv[1];
 
+	    if (wcscmp(mount_point, L"#:") == 0)
+	      mount_point[0] = ImDiskFindFreeDriveLetter();
+
 	    argc--;
 	    argv++;
 	    break;
@@ -1425,8 +1430,8 @@ wmain(int argc, LPWSTR argv[])
     {
     case OP_MODE_CREATE:
       {
-	int ret = ImDiskCreate(&device_number, &disk_geometry, flags,
-			       file_name, native_path, mount_point);
+	int ret = ImDiskCliCreateDevice(&device_number, &disk_geometry, flags,
+					file_name, native_path, mount_point);
 
 	if (ret == 0)
 	  if (numeric_print)
@@ -1447,14 +1452,22 @@ wmain(int argc, LPWSTR argv[])
 	  (mount_point == NULL))
 	ImDiskSyntaxHelp();
 
-      return ImDiskRemove(device_number, mount_point);
+      return ImDiskCliRemoveDevice(device_number, mount_point);
 
     case OP_MODE_QUERY:
       if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &
 	  (mount_point == NULL))
-	return !ImDiskQueryStatusDriver();
+	return !ImDiskCliQueryStatusDriver();
       
-      return ImDiskQueryStatusDevice(device_number, mount_point);
+      return ImDiskCliQueryStatusDevice(device_number, mount_point);
+
+    case OP_MODE_EXTEND:
+      if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &
+	  (mount_point == NULL))
+	ImDiskSyntaxHelp();
+
+      return ImDiskCliExtendDevice(device_number, mount_point,
+				   disk_geometry.Cylinders);
     }
 
   ImDiskSyntaxHelp();
@@ -1470,8 +1483,11 @@ wmainCRTStartup()
 
   if (argv == NULL)
     {
-      MessageBoxA(NULL, "This program requires Windows NT/2000/XP.", "ImDisk",
+      MessageBoxA(NULL,
+		  "This program requires Windows NT/2000/XP.",
+		  "ImDisk Virtual Disk Driver",
 		  MB_ICONSTOP);
+
       ExitProcess((UINT)-1);
     }
 

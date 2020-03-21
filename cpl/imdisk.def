@@ -1,3 +1,24 @@
-LIBRARY 'imdisk'
+LIBRARY imdisk.cpl
+
 EXPORTS
 	CPlApplet=_CPlApplet@16
+
+	RunDLL_MountFile=_RunDLL_MountFile@16
+	RunDLL_RemoveDevice=_RunDLL_RemoveDevice@16
+
+	MsgBoxPrintF
+	_MsgBoxLastError@8
+	_ImDiskStartService@4
+	_ImDiskCreateMountPoint@8
+	_ImDiskRemoveMountPoint@4
+	_ImDiskOpenDeviceByName@8
+	_ImDiskOpenDeviceByNumber@8
+	_ImDiskOpenDeviceByMountPoint@8
+	_ImDiskCheckDriverVersion@4
+	_ImDiskGetVersion@8
+	_ImDiskFindFreeDriveLetter@0
+	_ImDiskGetDeviceList@0
+	_ImDiskQueryDevice@12
+	_ImDiskCreateDevice@24
+	_ImDiskRemoveDevice@12
+	_ImDiskExtendDevice@12

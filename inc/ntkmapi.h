@@ -11,6 +11,8 @@
 #undef POOL_TAGGING
 #endif
 
+#pragma warning(disable: 4996)
+
 //
 // We include some stuff from newer DDK:s here so that one
 // version of the driver for all versions of Windows can

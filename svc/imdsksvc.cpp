@@ -26,6 +26,7 @@
 
 #include <windows.h>
 #include <winioctl.h>
+#include <ntsecapi.h>
 #include <winsock.h>
 
 #include <stdlib.h>
@@ -42,7 +43,9 @@ SERVICE_STATUS_HANDLE ImDiskSvcStatusHandle;
 HANDLE ImDiskSvcStopEvent = NULL;
 
 // Define DEBUG if you want debug output.
-#ifdef DEBUG
+//#define DEBUG
+
+#ifndef DEBUG
 
 #define KdPrint(x)
 #define KdPrintLastError(x)
@@ -159,6 +162,8 @@ class ImDiskSvcServerSession
 	return 0;
       }
 
+    IMDPROXY_CONNECT_RESP connect_resp = { 0 };
+
     ConnectionString[ConnectReq.length / sizeof *ConnectionString] = 0;
 
     HANDLE hTarget;
@@ -185,8 +190,13 @@ class ImDiskSvcServerSession
 
 	  if (hTarget == INVALID_HANDLE_VALUE)
 	    {
+	      connect_resp.error_code = GetLastError();
+
 	      KdPrintLastError(("CreateFile() failed"));
 	      free(ConnectionString);
+
+	      Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
+
 	      delete this;
 	      return 0;
 	    }
@@ -209,6 +219,9 @@ class ImDiskSvcServerSession
 	      SetCommTimeouts(hTarget, &timeouts);
 	    }
 
+	  KdPrint(("ImDskSvc: Connected to '%1!ws!' and configured.%n",
+		   FileName));
+
 	  break;
 	}
 
@@ -229,8 +242,13 @@ class ImDiskSvcServerSession
 	  hTarget = (HANDLE) ConnectTCP(ServerName, PortName);
 	  if (hTarget == INVALID_HANDLE_VALUE)
 	    {
+	      connect_resp.error_code = GetLastError();
+
 	      KdPrintLastError(("ConnectTCP() failed"));
 	      free(ConnectionString);
+
+	      Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
+
 	      delete this;
 	      return 0;
 	    }
@@ -239,12 +257,18 @@ class ImDiskSvcServerSession
 	  setsockopt((SOCKET) hTarget, IPPROTO_TCP, TCP_NODELAY, (LPCSTR) &b,
 		     sizeof b);
 
+	  KdPrint(("ImDskSvc: Connected to '%1!ws!:%2!ws!' and configured.%n",
+		   ServerName, PortName));
+
 	  break;
 	}
 
       default:
 	KdPrint(("ImDskSvc: Unsupported connection type (%1!#x!).%n",
 		 IMDISK_PROXY_TYPE(ConnectReq.flags)));
+
+	connect_resp.error_code = (ULONGLONG) -1;
+	Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
 
 	free(ConnectionString);
 	delete this;
@@ -253,157 +277,60 @@ class ImDiskSvcServerSession
 
     free(ConnectionString);
 
-    ULONGLONG req = IMDPROXY_REQ_INFO;
-    if (!Overlapped.BufSend(hTarget, &req, sizeof req))
-      {
-	KdPrintLastError(("Overlapped.BufSend() failed"));
+    HANDLE hDriver = CreateFile(IMDISK_CTL_DOSDEV_NAME,
+				GENERIC_READ | GENERIC_WRITE,
+				FILE_SHARE_READ | FILE_SHARE_WRITE,
+				NULL,
+				OPEN_EXISTING,
+				0,
+				NULL);
 
+    if (hDriver == INVALID_HANDLE_VALUE)
+      {
+	connect_resp.error_code = GetLastError();
+
+	KdPrintLastError(("Opening ImDiskCtl device failed"));
 	CloseHandle(hTarget);
+
+	Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
+
 	delete this;
 	return 0;
       }
 
-    WOverlapped DriverRead;
-    WOverlapped TargetRead;
-    if (!DriverRead | !TargetRead)
+    DWORD dw;
+    if (!DeviceIoControl(hDriver,
+			 IOCTL_IMDISK_REFERENCE_HANDLE,
+			 &hTarget,
+			 sizeof hTarget,
+			 &connect_resp.object_ptr,
+			 sizeof connect_resp.object_ptr,
+			 &dw,
+			 NULL))
       {
-	KdPrintLastError(("CreateEvent() failed"));
+	connect_resp.error_code = GetLastError();
 
+	KdPrintLastError(("IOCTL_IMDISK_REFERENCE_HANDLE failed"));
+	CloseHandle(hDriver);
 	CloseHandle(hTarget);
+
+	Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
+
 	delete this;
 	return 0;
       }
 
-    KdPrint(("The input buffer size is set to %1!u! bytes.%n",
-	     dwInBufferSize));
+    CloseHandle(hDriver);
 
-    KdPrint(("The output buffer size is set to %1!u! bytes.%n",
-	     dwOutBufferSize));
+    Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
 
-    LPVOID OutBuffer = malloc(dwOutBufferSize);
-    if (OutBuffer == NULL)
-      {
-	KdPrintLastError(("malloc() output buffer failed"));
-
-	CloseHandle(hTarget);
-	delete this;
-	return 0;
-      }
-
-    LPVOID InBuffer = malloc(dwInBufferSize);
-    if (InBuffer == NULL)
-      {
-	KdPrintLastError(("malloc() input buffer failed"));
-
-	free(OutBuffer);
-	CloseHandle(hTarget);
-	delete this;
-	return 0;
-      }
-
-    HANDLE hWait[] =
-      {
-	TargetRead.hEvent,
-	DriverRead.hEvent
-      };
-
-    bool bNewReadDriver = true;
-    bool bNewReadTarget = true;
-
-    for (;;)
-      {
-	if (bNewReadDriver)
-	  {
-	    if (!DriverRead.Read(hPipe, OutBuffer, dwOutBufferSize))
-	      if (GetLastError() != ERROR_IO_PENDING)
-		{
-		  KdPrintLastError(("DriverRead.Read() failed"));
-		  break;
-		}
-
-	    bNewReadDriver = false;
-	  }
-
-	if (bNewReadTarget)
-	  {
-	    if (!TargetRead.Read(hTarget, InBuffer, dwInBufferSize))
-	      if (GetLastError() != ERROR_IO_PENDING)
-		{
-		  KdPrintLastError(("TargetRead.Read() failed"));
-		  break;
-		}
-
-	    bNewReadTarget = false;
-	  }
-
-	if (WaitForMultipleObjects(sizeof(hWait) / sizeof(*hWait),
-				   hWait, FALSE, INFINITE) ==
-	    WAIT_FAILED)
-	  {
-	    KdPrintLastError(("WaitForMultipleObjects failed"));
-	    return 0;
-	  }
-
-	DWORD dwBytes;
-	if (DriverRead.GetResult(hPipe, &dwBytes, FALSE))
-	  {
-	    if (dwBytes == 0)
-	      {
-		KdPrint(("ImDskSvc: Driver disconnected.%n"));
-		break;
-	      }
-
-	    if (!Overlapped.BufSend(hTarget, OutBuffer, dwBytes))
-	      {
-		KdPrintLastError(("Overlapped.BufSend() failed"));
-		break;
-	      }
-
-	    bNewReadDriver = true;
-	  }
-	else if (GetLastError() != ERROR_IO_INCOMPLETE)
-	  {
-	    KdPrintLastError(("DriverRead.GetResult() failed"));
-	    break;
-	  }
-
-	if (TargetRead.GetResult(hTarget, &dwBytes, FALSE))
-	  {
-	    if (dwBytes == 0)
-	      {
-		KdPrint(("ImDskSvc: Target disconnected.%n"));
-		break;
-	      }
-
-	    if (!Overlapped.BufSend(hPipe, InBuffer, dwBytes))
-	      {
-		KdPrintLastError(("Overlapped.BufSend() failed"));
-		break;
-	      }
-
-	    bNewReadTarget = true;
-	  }
-	else if (GetLastError() != ERROR_IO_INCOMPLETE)
-	  {
-	    KdPrintLastError(("TargetRead.GetResult() failed"));
-	    break;
-	  }
-      }
+    // This will fail when driver closes the pipe, but that just indicates that
+    // we should shut down this connection.
+    Overlapped.BufRecv(hPipe, &dw, sizeof dw);
 
     KdPrint(("ImDskSvc: Cleaning up.%n"));
 
     CloseHandle(hTarget);
-    CloseHandle(hPipe);
-    hPipe = INVALID_HANDLE_VALUE;
-
-    if (!bNewReadDriver)
-      DriverRead.Wait();
-
-    if (!bNewReadTarget)
-      TargetRead.Wait();
-
-    free(OutBuffer);
-    free(InBuffer);
 
     delete this;
     return 1;

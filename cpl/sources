@@ -2,7 +2,7 @@ TARGETNAME=imdisk
 TARGETEXT=cpl
 TARGETPATH=.
 TARGETTYPE=DYNLINK
-SOURCES=imdisk.cpp imdisk.rc drvio.c
+SOURCES=imdisk.cpp imdisk.rc drvio.c rundll.c
 
 MSC_OPTIMIZATION=/Ox /GFS-
 MSC_WARNING_LEVEL=/W4 /WX /wd4201

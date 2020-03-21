@@ -1,4 +1,4 @@
-UNAME=unknown
+UNAME=exe
 UNAME!=uname
 
 all: devio.$(UNAME)

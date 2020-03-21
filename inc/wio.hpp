@@ -1,7 +1,7 @@
 /*
     Win32 overlapped I/O API functions encapsulated in C++ classes.
 
-    Copyright (C) 2005-2006 Olof Lagerkvist.
+    Copyright (C) 2005-2007 Olof Lagerkvist.
 */
 
 #ifndef _WIO_HPP

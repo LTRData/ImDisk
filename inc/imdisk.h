@@ -1,29 +1,28 @@
 /*
     ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2005-2006 Olof Lagerkvist.
+    Copyright (C) 2005-2007 Olof Lagerkvist.
 
-    Some credits:
-    - Parts related to floppy emulation based on VFD by Ken Kato.
-      http://chitchat.at.infoseek.co.jp/vmware/vfd.html
-    - Parts related to CD-ROM emulation and impersonation to support remote
-      files based on FileDisk by Bo Brantén.
-      http://www.acc.umu.se/~bosse/
-    - Virtual memory image support, usermode storage backend support and some
-      code ported to NT from the FreeBSD md driver by Olof Lagerkvist.
-      http://www.ltr-data.se
+    Permission is hereby granted, free of charge, to any person
+    obtaining a copy of this software and associated documentation
+    files (the "Software"), to deal in the Software without
+    restriction, including without limitation the rights to use,
+    copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following
+    conditions:
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    The above copyright notice and this permission notice shall be
+    included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+    OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #ifndef _IMDISK_H
@@ -41,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0101
+#define IMDISK_VERSION                 0x0102
 
 ///
 /// The base names for the device objects created in \Device
@@ -79,46 +78,388 @@
 ///
 #define FILE_DEVICE_IMDISK             0x8372
 
-#define IOCTL_IMDISK_QUERY_VERSION      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x800, METHOD_BUFFERED, 0))
-#define IOCTL_IMDISK_CREATE_DEVICE      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x801, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
-#define IOCTL_IMDISK_QUERY_DEVICE       ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x802, METHOD_BUFFERED, FILE_READ_ACCESS))
-#define IOCTL_IMDISK_QUERY_DRIVER       ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x803, METHOD_BUFFERED, FILE_READ_ACCESS))
+#define IOCTL_IMDISK_QUERY_VERSION     ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x800, METHOD_BUFFERED, 0))
+#define IOCTL_IMDISK_CREATE_DEVICE     ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x801, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_IMDISK_QUERY_DEVICE      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x802, METHOD_BUFFERED, FILE_READ_ACCESS))
+#define IOCTL_IMDISK_QUERY_DRIVER      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x803, METHOD_BUFFERED, FILE_READ_ACCESS))
+#define IOCTL_IMDISK_REFERENCE_HANDLE  ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x804, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
 
 ///
 /// Bit constants for the Flags field in IMDISK_CREATE_DATA
 ///
+
+/// Read-only device
 #define IMDISK_OPTION_RO                0x00000001
 
+/// Check if flags specifies read-only
 #define IMDISK_READONLY(x)              ((ULONG)(x) & 0x00000001)
 
+/// Removable, hot-plug, device
+#define IMDISK_OPTION_REMOVABLE         0x00000002
+
+/// Check if flags specifies removable
+#define IMDISK_REMOVABLE(x)             ((ULONG)(x) & 0x00000002)
+
+/// Device type is virtual harddisk partition
 #define IMDISK_DEVICE_TYPE_HD           0x00000010
+/// Device type is virtual floppy drive
 #define IMDISK_DEVICE_TYPE_FD           0x00000020
+/// Device type is virtual CD/DVD-ROM drive
 #define IMDISK_DEVICE_TYPE_CD           0x00000030
 
+/// Extracts the IMDISK_DEVICE_TYPE_xxx from flags
 #define IMDISK_DEVICE_TYPE(x)           ((ULONG)(x) & 0x000000F0)
 
+/// Virtual disk is backed by image file
 #define IMDISK_TYPE_FILE                0x00000100
+/// Virtual disk is backed by virtual memory
 #define IMDISK_TYPE_VM                  0x00000200
+/// Virtual disk is backed by proxy connection
 #define IMDISK_TYPE_PROXY               0x00000300
 
+/// Extracts the IMDISK_TYPE_xxx from flags
 #define IMDISK_TYPE(x)                  ((ULONG)(x) & 0x00000F00)
 
+/// Proxy connection is direct-type
 #define IMDISK_PROXY_TYPE_DIRECT        0x00000000
+/// Proxy connection is over serial line
 #define IMDISK_PROXY_TYPE_COMM          0x00001000
+/// Proxy connection is over TCP/IP
 #define IMDISK_PROXY_TYPE_TCP           0x00002000
 
+/// Extracts the IMDISK_PROXY_TYPE_xxx from flags
 #define IMDISK_PROXY_TYPE(x)            ((ULONG)(x) & 0x0000F000)
 
+/// Specify as device number to automatically select first free.
 #define IMDISK_AUTO_DEVICE_NUMBER       ((ULONG)-1)
 
+/**
+   Structure used by the IOCTL_IMDISK_CREATE_DEVICE and
+   IOCTL_IMDISK_QUERY_DEVICE calls and by the ImDiskQueryDevice() function.
+*/
 typedef struct _IMDISK_CREATE_DATA
 {
+  /// On create this can be set to IMDISK_AUTO_DEVICE_NUMBER
   ULONG           DeviceNumber;
+  /// Total size and virtual geometry.
   DISK_GEOMETRY   DiskGeometry;
+  /// Creation flags. Type of device and type of connection.
   ULONG           Flags;
+  /// Driveletter (if used, otherwise zero).
   WCHAR           DriveLetter;
+  /// Length in bytes of the FileName member.
   USHORT          FileNameLength;
+  /// Dynamically-sized member that specifies the image file name.
   WCHAR           FileName[1];
 } IMDISK_CREATE_DATA, *PIMDISK_CREATE_DATA;
+
+#ifdef WINAPI
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+   An interactive rundll32.exe-compatible function to mount a file with auto-
+   selected options in one operation. It is used by the Windows Explorer
+   context menues.
+
+   hWnd         Specifies a window that will be the owner window of any
+                MessageBox:es or similar.
+
+   hInst        Ignored.
+
+   lpszCmdLine  An ANSI string specifying the file to mount. If the string
+                starts with "-r," (without the quotes) the rest of the string
+		specifies the filename and that it will be mounted in read-
+		only mode.
+
+   nCmdShow     Ignored.
+*/
+void
+WINAPI
+RunDLL_MountFile(HWND hWnd,
+		 HINSTANCE hInst,
+		 LPSTR lpszCmdLine,
+		 int nCmdShow);
+
+/**
+   An interactive rundll32.exe-compatible function to remove an existing ImDisk
+   virtual disk. If the filesystem on the device cannot be locked and
+   dismounted a MessageBox() is displayed that asks the user if dismount should
+   be forced.
+
+   hWnd         Specifies a window that will be the owner window of any
+                MessageBox:es or similar.
+
+   hInst        Ignored.
+
+   lpszCmdLine  An ANSI string specifying the the virtual disk to remove. This
+                can be on the form "F:" or "F:\" (without the quotes).
+
+   nCmdShow     Ignored.
+*/
+void
+WINAPI
+RunDLL_MountFile(HWND hWnd,
+		 HINSTANCE hInst,
+		 LPSTR lpszCmdLine,
+		 int nCmdShow);
+
+/**
+   This function displays a MessageBox() dialog with a
+   FormatMessage()-formatted message.
+   
+   hWndParent   Parent window for the MessageBox() call.
+
+   uStyle       Style for the MessageBox() call.
+
+   lpTitle      Window title for the MessageBox() call.
+
+   lpMessage    Format string to be used in call to FormatMessage() followed
+                 by field parameters.
+*/
+BOOL
+CDECL
+MsgBoxPrintF(IN HWND hWndParent OPTIONAL,
+	     IN UINT uStyle,
+	     IN LPCWSTR lpTitle,
+	     IN LPCWSTR lpMessage, ...);
+
+/**
+   This function is a quick perror()-style way of displaying an error message
+   for the last failed Windows API call.
+
+   hWndParent   Parent window for the MessageBox() call.
+
+   Prefix       Text to print before the error message string.
+*/
+VOID
+WINAPI
+MsgBoxLastError(IN HWND hWndParent OPTIONAL,
+		IN LPCWSTR Prefix);
+
+/**
+   Starts a Win32 service or loads a kernel module or driver.
+
+   ServiceName  Key name of the service or driver.
+*/
+BOOL
+WINAPI
+ImDiskStartService(IN LPWSTR ServiceName);
+
+/**
+   An easy way to turn an empty NTFS directory to a reparsepoint that redirects
+   requests to a mounted device. Acts quite like mount points or symbolic links
+   in *nix.
+
+   Directory    Path to empty directory on an NTFS volume.
+
+   Target       Target device path on kernel object namespace form, e.g.
+                \Device\ImDisk2 or similar.
+*/
+BOOL
+WINAPI
+ImDiskCreateMountPoint(IN LPCWSTR Directory,
+		       IN LPCWSTR Target);
+
+/**
+   Restores a reparsepoint to be an ordinary empty directory.
+
+   Directory    Path to a reparse point on an NTFS volume.
+*/
+BOOL
+WINAPI
+ImDiskRemoveMountPoint(IN LPCWSTR MountPoint);
+
+/**
+   Opens a device object in the kernel object namespace.
+
+   FileName     Full kernel object namespace path to the object to open, e.g.
+                \Device\ImDisk2 or similar.
+
+   AccessMode   Access mode to request.
+*/
+HANDLE
+WINAPI
+ImDiskOpenDeviceByName(IN PUNICODE_STRING FileName,
+		       IN DWORD AccessMode);
+
+/**
+   Opens an ImDisk device by the device number.
+
+   DeviceNumber Number of the ImDisk Device. For example, number 2 opens
+                \Device\ImDisk2.
+
+   AccessMode   Access mode to request.
+*/
+HANDLE
+WINAPI
+ImDiskOpenDeviceByNumber(IN DWORD DeviceNumber,
+			 IN DWORD AccessMode);
+
+/**
+   Opens the device a junction/mount-point type reparse point is pointing to.
+
+   MountPoint   Path to the reparse point on an NTFS volume.
+
+   AccessMode   Access mode to request to the target device.
+*/
+HANDLE
+WINAPI
+ImDiskOpenDeviceByMountPoint(IN LPCWSTR MountPoint,
+			     IN DWORD AccessMode);
+
+/**
+   Check that the user-mode library and kernel-mode driver version matches for
+   an open ImDisk created device object.
+
+   DeviceHandle Handle to an open ImDisk virtual disk or control device.
+*/
+BOOL
+WINAPI
+ImDiskCheckDriverVersion(IN HANDLE DeviceHandle);
+
+/**
+   Retrieves the version numbers of the user-mode API library and the kernel-
+   mode driver.
+*/
+BOOL
+WINAPI
+ImDiskGetVersion(OUT PULONG LibraryVersion OPTIONAL,
+		 OUT PULONG DriverVersion OPTIONAL);
+
+/**
+   Returns the first free drive letter in the range D-Z.
+*/
+WCHAR
+WINAPI
+ImDiskFindFreeDriveLetter();
+
+/**
+   Returns a bit-mask representing ImDisk devices. Bit 0 represents device 0,
+   bit 1 represents device 1 and so on. A bit is 1 if the device exists or 0 if
+   the device number is free.
+*/
+ULONG
+WINAPI
+ImDiskGetDeviceList();
+
+/**
+   This function sends an IOCTL_IMDISK_QUERY_DEVICE control code to an existing
+   device and returns information about the device in an IMDISK_CREATE_DATA
+   structue.
+
+   DeviceNumber    Number of the ImDisk device to query.
+
+   CreateData      Pointer to a sufficiently large IMDISK_CREATE_DATA
+                   structure to receive all data including the image file name
+		   where applicable.
+
+   CreateDataSize  The size in bytes of the memory the CreateData parameter
+                   points to. The function call will fail if the memory is not
+		   large enough to hold the entire IMDISK_CREATE_DATA
+		   structure.
+*/
+BOOL
+WINAPI
+ImDiskQueryDevice(IN DWORD DeviceNumber,
+		  OUT PIMDISK_CREATE_DATA CreateData,
+		  IN ULONG CreateDataSize);
+
+/**
+   This function creates a new ImDisk virtual disk device.
+
+   hWndStatusText  A handle to a window that can display status message text.
+                   The function will send WM_SETTEXT messages to this window.
+		   If this parameter is NULL no WM_SETTEXT messages are sent
+		   and the function acts non-interactive.
+   DiskGeometry    The virtual geometry of the new virtual disk. Note that the
+                   Cylinders member does not specify the number of Cylinders
+		   but the total size in bytes of the new virtual disk. The
+		   actual number of cylinders are then automatically
+		   calculated and rounded down if necessary.
+
+		   The Cylinders member can be zero if the device is backed by
+		   an image file or a proxy device, but not if it is virtual
+		   memory only device.
+
+		   All or some of the other members of this structure can be
+		   zero in which case they are automatically filled in with
+		   most reasonable values by the driver.
+
+   Flags           Bitwise or-ed combination of one of the IMDISK_TYPE_xxx
+                   flags, one of the IMDISK_DEVICE_TYPE_xxx flags and any
+		   number of IMDISK_OPTION_xxx flags. The flags can often be
+		   left zero and left to the driver to automatically select.
+		   For example, if a virtual disk size is specified to 1440 KB
+		   and an image file name is not specified, the driver
+		   automatically selects IMDISK_TYPE_VM|IMDISK_DEVICE_TYPE_FD
+		   for this parameter.
+
+   FileName        Name of disk image file. In case IMDISK_TYPE_VM is
+                   specified in the Flags parameter, this file will be loaded
+		   into the virtual memory-backed disk when created.
+
+   NativePath      Set to TRUE if the FileName parameter specifies an NT
+                   native path, such as \??\C:\imagefile.img or FALSE if it
+		   specifies a Win32/DOS-style path such as C:\imagefile.img.
+
+   MountPoint      Drive letter to assign to the new virtual device. It can be
+                   specified on the form F: or F:\.
+*/
+BOOL
+WINAPI
+ImDiskCreateDevice(IN HWND hWndStatusText OPTIONAL,
+		   IN OUT PDISK_GEOMETRY DiskGeometry OPTIONAL,
+		   IN DWORD Flags OPTIONAL,
+		   IN LPCWSTR FileName OPTIONAL,
+		   IN BOOL NativePath,
+		   IN LPWSTR MountPoint OPTIONAL);
+
+/**
+   This function removes (unounts) an existing ImDisk virtual disk device.
+
+   hWndStatusText  A handle to a window that can display status message text.
+                   The function will send WM_SETTEXT messages to this window.
+		   If this parameter is NULL no WM_SETTEXT messages are sent
+		   and the function acts non-interactive.
+
+   DeviceNumber    Number of the ImDisk device to remove. This parameter is
+                   only used if MountPoint parameter is null.
+
+   MountPoint      Drive letter of the device to remove. It can be specified
+                   on the form F: or F:\.
+*/
+BOOL
+WINAPI
+ImDiskRemoveDevice(IN HWND hWndStatusText OPTIONAL,
+		   IN DWORD DeviceNumber OPTIONAL,
+		   IN LPCWSTR MountPoint OPTIONAL);
+
+/**
+   This function extends the size of an existing ImDisk virtual disk device.
+
+   hWndStatusText  A handle to a window that can display status message text.
+                   The function will send WM_SETTEXT messages to this window.
+		   If this parameter is NULL no WM_SETTEXT messages are sent
+		   and the function acts non-interactive.
+
+   DeviceNumber    Number of the ImDisk device to extend.
+
+   ExtendSize      A pointer to a LARGE_INTEGER structure that specifies the
+                   number of bytes to extend the device.
+*/
+BOOL
+WINAPI
+ImDiskExtendDevice(IN HWND hWndStatusText OPTIONAL,
+		   IN DWORD DeviceNumber,
+		   IN CONST PLARGE_INTEGER ExtendSize);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
 
 #endif

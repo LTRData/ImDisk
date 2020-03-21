@@ -1,7 +1,7 @@
 [Version]
 signature = "$Windows NT$"
 Provider = "Olof Lagerkvist"
-DriverVer = 02/22/2006,1,00,00,0001
+DriverVer = 04/23/2007,1,00,02,0001
 
 
 [SourceDisksNames]
@@ -25,6 +25,7 @@ ImDiskInfFiles = 17
 [DefaultInstall.NT]
 CopyFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles
 AddReg = ImDiskAddReg
+DelReg = ImDiskDelOldReg
 
 
 [DefaultUninstall.NT]
@@ -58,11 +59,27 @@ imdisk.inf
 
 [ImDiskAddReg]
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayName", 0, "ImDisk Virtual Disk Driver"
-HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "UninstallString", 0, "rundll32 setupapi.dll,InstallHinfSection DefaultUninstall 132 %17%\imdisk.inf"
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "UninstallString", 0, "rundll32.exe setupapi.dll,InstallHinfSection DefaultUninstall 132 %17%\imdisk.inf"
+
+HKCR, "*\shell\ImDiskMountFile", , 0, "Mount as ImDisk Virtual Disk"
+HKCR, "*\shell\ImDiskMountFile\command", , 0, "rundll32.exe imdisk.cpl,RunDLL_MountFile %%L"
+
+HKCR, "Drive\shell\ImDiskUnmount", , 0, "Unmount ImDisk Virtual Disk"
+HKCR, "Drive\shell\ImDiskUnmount\command", , 0, "rundll32.exe imdisk.cpl,RunDLL_RemoveDevice %%L"
+
+
+[ImDiskDelOldReg]
+HKCR, "*\shell\ImDiskMountFileWriteable"
 
 
 [ImDiskDelReg]
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk"
+
+HKCR, "*\shell\ImDiskMountFile"
+
+HKCR, "*\shell\ImDiskMountFileWriteable"
+
+HKCR, "Drive\shell\ImDiskUnmount"
 
 
 [ImDskDrv]
@@ -75,8 +92,8 @@ ServiceBinary = %12%\imdisk.sys
 
 
 [ImDskSvc]
-DisplayName = "ImDisk I/O Packet Forwarder"
-Description = "Helper service to forward I/O requests to virtual disks to other computers."
+DisplayName = "ImDisk Virtual Disk Driver Helper"
+Description = "Helper service for ImDisk Virtual Disk Driver."
 ServiceType = 16
 StartType = 3
 ErrorControl = 0

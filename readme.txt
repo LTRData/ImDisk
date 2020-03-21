@@ -6,10 +6,9 @@
   requests somewhere else, possibly to another machine, through a
   co-operating user-mode service, ImDskSvc.
 
-  To install this driver, service and command line tool, run the install.cmd
-  file or right-click the imdisk.inf file and select install. To uninstall,
-  run uninstall.cmd or use the Add/Remove Programs applet in the Control
-  Panel.
+  To install this driver, service and command line tool, right-click on the
+  imdisk.inf file and select 'Install'. To uninstall, use the Add/Remove
+  Programs applet in the Control Panel.
 
   You can get syntax help to the command line tool by typing just imdisk
   without parameters.
@@ -19,27 +18,39 @@
   you want to use this product under NT 3.51 you have to manually add the
   registry entries for the driver and the service.
 
+    Copyright (C) 2005-2007 Olof Lagerkvist
+    http://www.ltr-data.se      olof@ltr-data.se
 
-    Copyright (C) 2005-2006 Olof Lagerkvist.
+    Permission is hereby granted, free of charge, to any person
+    obtaining a copy of this software and associated documentation
+    files (the "Software"), to deal in the Software without
+    restriction, including without limitation the rights to use,
+    copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following
+    conditions:
 
-    Some credits:
+    The above copyright notice and this permission notice shall be
+    included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+    OTHER DEALINGS IN THE SOFTWARE.
+
+    This software contains some GNU GPL licensed code:
     - Parts related to floppy emulation based on VFD by Ken Kato.
       http://chitchat.at.infoseek.co.jp/vmware/vfd.html
-    - Parts related to CD-ROM emulation and impersonation to support remote
-      files based on FileDisk by Bo BrantÅÈn.
-      http://www.acc.umu.se/~bosse/
-    - Virtual memory image support, usermode storage backend support and some
-      code ported to NT from the FreeBSD md driver by Olof Lagerkvist.
-      http://www.ltr-data.se
+    Copyright (C) Free Software Foundation, Inc.
+    Read gpl.txt for the full GNU GPL license.
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation; either version 2 of the License, or
-  (at your option) any later version.
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-  You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    This software may contain BSD licensed code:
+    - Some code ported to NT from the FreeBSD md driver by Olof Lagerkvist.
+      http://www.ltr-data.se
+    Copyright (c) The FreeBSD Project.
+    Copyright (c) The Regents of the University of California.
+
