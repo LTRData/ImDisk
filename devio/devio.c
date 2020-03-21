@@ -1,7 +1,7 @@
 /*
     Server end for ImDisk Virtual Disk Driver proxy operation.
 
-    Copyright (C) 2005-2011 Olof Lagerkvist.
+    Copyright (C) 2005-2012 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -81,11 +81,11 @@ syslog(FILE *Stream, LPCSTR Message, ...)
       if (winerrno == NO_ERROR)
 	winerrno = 10000 + errno;
 
-      if (FormatMessage(FORMAT_MESSAGE_MAX_WIDTH_MASK |
-			FORMAT_MESSAGE_ALLOCATE_BUFFER |
-			FORMAT_MESSAGE_FROM_SYSTEM |
-			FORMAT_MESSAGE_IGNORE_INSERTS,
-			NULL, winerrno, 0, (LPSTR) &MsgBuf, 0, NULL))
+      if (FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+			 FORMAT_MESSAGE_ALLOCATE_BUFFER |
+			 FORMAT_MESSAGE_FROM_SYSTEM |
+			 FORMAT_MESSAGE_IGNORE_INSERTS,
+			 NULL, winerrno, 0, (LPSTR) &MsgBuf, 0, NULL))
 	CharToOemA(MsgBuf, MsgBuf);
     }
 
@@ -107,12 +107,6 @@ syslog(FILE *Stream, LPCSTR Message, ...)
 
 #define OBJNAME_SIZE  260
 
-typedef size_t ssize_t;
-typedef __int64 off_t_64;
-
-#define ULL_FMT       "%I64u"
-#define SLL_FMT       "%I64i"
-
 HANDLE shm_server_mutex = NULL;
 HANDLE shm_request_event = NULL;
 HANDLE shm_response_event = NULL;
@@ -133,24 +127,13 @@ HANDLE shm_response_event = NULL;
 #ifndef O_BINARY
 #define O_BINARY       0
 #endif
-#define ULL_FMT   "%llu"
-#define SLL_FMT   "%lli"
-
-typedef off_t off_t_64;
-
-#define _lseeki64 lseek
-#define stricmp strcasecmp
-#define strnicmp strncasecmp
-
-#ifndef __cdecl
-#define __cdecl
-#endif
 
 #endif
 
 #include "../inc/imdproxy.h"
-#include "devio.h"
+#include "devio_types.h"
 #include "safeio.h"
+#include "devio.h"
 
 #ifndef O_DIRECT
 #define O_DIRECT 0
@@ -160,7 +143,9 @@ typedef off_t off_t_64;
 #define O_FSYNC 0
 #endif
 
-#define DEF_BUFFER_SIZE (16 << 20)
+#define DEF_BUFFER_SIZE (2 << 20)
+
+#define DEF_REQUIRED_ALIGNMENT 1
 
 #ifdef DEBUG
 #define dbglog(x) syslog x
@@ -179,14 +164,15 @@ typedef union _LONGLONG_SWAP
 } longlongswap;
 
 int fd = -1;
-int sd = -1;
+void *libhandle = NULL;
+SOCKET sd = INVALID_SOCKET;
 int shm_mode = 0;
 char *shm_readptr = 0;
 char *shm_writeptr = 0;
 char *shm_view = NULL;
 char *buf = NULL;
 char *buf2 = NULL;
-u_long buffer_size = DEF_BUFFER_SIZE;
+safeio_size_t buffer_size = DEF_BUFFER_SIZE;
 off_t_64 offset = 0;
 IMDPROXY_INFO_RESP devio_info = { 0 };
 char dll_mode = 0;
@@ -240,8 +226,8 @@ struct _VHD_INFO
 
 } vhd_info = { { { 0 } } };
 
-u_long block_size = 0;
-u_int sector_size = 512;
+safeio_size_t block_size = 0;
+safeio_size_t sector_size = 512;
 off_t_64 table_offset = 0;
 short block_shift = 0;
 short sector_shift = 0;
@@ -252,20 +238,20 @@ dllwrite_proc dll_write = NULL;
 dllclose_proc dll_close = NULL;
 dllopen_proc dll_open = NULL;
 
-ssize_t
-physical_read(void *io_ptr, size_t size, off_t_64 offset)
+safeio_ssize_t
+physical_read(void *io_ptr, safeio_size_t size, off_t_64 offset)
 {
   if (dll_mode)
-    return dll_read(fd, io_ptr, size, offset);
+    return dll_read(libhandle, io_ptr, size, offset);
   else
     return pread(fd, io_ptr, size, offset);
 }
 
-ssize_t
-physical_write(void *io_ptr, size_t size, off_t_64 offset)
+safeio_ssize_t
+physical_write(void *io_ptr, safeio_size_t size, off_t_64 offset)
 {
   if (dll_mode)
-    return dll_write(fd, io_ptr, size, offset);
+    return dll_write(libhandle, io_ptr, size, offset);
   else
     return pwrite(fd, io_ptr, size, offset);
 }
@@ -274,7 +260,7 @@ int
 physical_close(int fd)
 {
   if (dll_mode)
-    return dll_close(fd);
+    return dll_close(libhandle);
   else
     return close(fd);
 }
@@ -282,7 +268,7 @@ physical_close(int fd)
 #ifdef _WIN32
 
 int
-shm_read(void *io_ptr, size_t size)
+shm_read(void *io_ptr, safeio_size_t size)
 {
   if (io_ptr == buf)
     if (size <= buffer_size)
@@ -303,7 +289,7 @@ shm_read(void *io_ptr, size_t size)
 }
 
 int
-shm_write(const void *io_ptr, size_t size)
+shm_write(const void *io_ptr, safeio_size_t size)
 {
   if (io_ptr == buf)
     if (size <= buffer_size)
@@ -344,13 +330,13 @@ shm_flush()
 #else  // Unix
 
 int
-shm_read(void *io_ptr, size_t size)
+shm_read(void *io_ptr, safeio_size_t size)
 {
   return 0;
 }
 
 int
-shm_write(const void *io_ptr, size_t size)
+shm_write(const void *io_ptr, safeio_size_t size)
 {
   return 0;
 }
@@ -373,7 +359,7 @@ comm_flush()
 }
 
 int
-comm_read(void *io_ptr, size_t size)
+comm_read(void *io_ptr, safeio_size_t size)
 {
   if (shm_mode)
     return shm_read(io_ptr, size);
@@ -382,7 +368,7 @@ comm_read(void *io_ptr, size_t size)
 }
 
 int
-comm_write(const void *io_ptr, size_t size)
+comm_write(const void *io_ptr, safeio_size_t size)
 {
   if (shm_mode)
     return shm_write(io_ptr, size);
@@ -405,17 +391,17 @@ send_info()
   return 1;
 }
 
-ssize_t
-vhd_read(char *io_ptr, size_t size, off_t_64 offset)
+safeio_ssize_t
+vhd_read(char *io_ptr, safeio_size_t size, off_t_64 offset)
 {
   off_t_64 block_number;
   off_t_64 data_offset;
-  size_t in_block_offset;
+  safeio_size_t in_block_offset;
   u_long block_offset;
-  size_t first_size = size;
+  safeio_size_t first_size = size;
   off_t_64 second_offset = 0;
-  size_t second_size = 0;
-  ssize_t readdone;
+  safeio_size_t second_size = 0;
+  safeio_ssize_t readdone;
 
   dbglog((LOG_ERR, "vhd_read: Request " SLL_FMT " bytes at " SLL_FMT ".\n",
 	  (off_t_64)size, (off_t_64)offset));
@@ -423,9 +409,9 @@ vhd_read(char *io_ptr, size_t size, off_t_64 offset)
   if (offset + size > current_size)
     return 0;
 
-  block_number = (size_t) (offset >> block_shift);
+  block_number = (safeio_size_t) (offset >> block_shift);
   data_offset = table_offset + (block_number << 2);
-  in_block_offset = (size_t) (offset & (block_size - 1));
+  in_block_offset = (safeio_size_t) (offset & (block_size - 1));
   if (first_size + in_block_offset > block_size)
     {
       first_size = block_size - in_block_offset;
@@ -441,7 +427,7 @@ vhd_read(char *io_ptr, size_t size, off_t_64 offset)
       if (errno == 0)
 	errno = E2BIG;
 
-      return (ssize_t) -1;
+      return (safeio_ssize_t) -1;
     }
 
   memset(io_ptr, 0, size);
@@ -456,18 +442,18 @@ vhd_read(char *io_ptr, size_t size, off_t_64 offset)
 	(((off_t_64) block_offset) << sector_shift) + sector_size +
 	in_block_offset;
 
-      readdone = physical_read(io_ptr, (size_t) first_size, data_offset);
+      readdone = physical_read(io_ptr, (safeio_size_t) first_size, data_offset);
       if (readdone == -1)
-	return (ssize_t) -1;
+	return (safeio_ssize_t) -1;
     }
 
   if (second_size > 0)
     {
-      size_t second_read =
+      safeio_size_t second_read =
 	vhd_read(io_ptr + first_size, second_size, second_offset);
 
       if (second_read == -1)
-	return (ssize_t) -1;
+	return (safeio_ssize_t) -1;
 
       readdone += second_read;
     }
@@ -475,21 +461,21 @@ vhd_read(char *io_ptr, size_t size, off_t_64 offset)
   return readdone;
 }
 
-ssize_t
-vhd_write(char *io_ptr, size_t size, off_t_64 offset)
+safeio_ssize_t
+vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
 {
   off_t_64 block_number;
   off_t_64 data_offset;
-  size_t in_block_offset;
+  safeio_size_t in_block_offset;
   u_long block_offset;
-  size_t first_size = size;
+  safeio_size_t first_size = size;
   off_t_64 second_offset = 0;
-  size_t second_size = 0;
-  ssize_t readdone;
-  ssize_t writedone;
+  safeio_size_t second_size = 0;
+  safeio_ssize_t readdone;
+  safeio_ssize_t writedone;
   off_t_64 bitmap_offset;
-  size_t bitmap_datasize;
-  size_t first_size_nqwords;
+  safeio_size_t bitmap_datasize;
+  safeio_size_t first_size_nqwords;
 
   dbglog((LOG_ERR, "vhd_write: Request " SLL_FMT " bytes at " SLL_FMT ".\n",
 	  (off_t_64)size, (off_t_64)offset));
@@ -499,7 +485,7 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
 
   block_number = offset >> block_shift;
   data_offset = table_offset + (block_number << 2);
-  in_block_offset = (size_t) (offset & (block_size - 1));
+  in_block_offset = (safeio_size_t) (offset & (block_size - 1));
   if (first_size + in_block_offset > block_size)
     {
       first_size = block_size - in_block_offset;
@@ -516,7 +502,7 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
       if (errno == 0)
 	errno = E2BIG;
 
-      return (ssize_t) -1;
+      return (safeio_ssize_t) -1;
     }
 
   // Alocate a new block if not already defined
@@ -542,11 +528,11 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
 
 	  if (second_size > 0)
 	    {
-	      size_t second_write =
+	      safeio_size_t second_write =
 		vhd_write(io_ptr + first_size, second_size, second_offset);
 
 	      if (second_write == -1)
-		return (ssize_t) -1;
+		return (safeio_ssize_t) -1;
 
 	      writedone += second_write;
 	    }
@@ -565,7 +551,7 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
 	  syslog(LOG_ERR, "vhd_write: Error allocating memory buffer for new "
 		 "block: %m\n");
 
-	  return (ssize_t) -1;
+	  return (safeio_ssize_t) -1;
 	}
 
       // New block is placed where the footer currently is
@@ -577,7 +563,7 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
 		 "block: %m\n");
 
 	  free(new_block_buf);
-	  return (ssize_t) -1;
+	  return (safeio_ssize_t) -1;
 	}
 
       // Store pointer to new block start sector in BAT
@@ -593,7 +579,7 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
 	  if (errno == 0)
 	    errno = E2BIG;
 
-	  return (ssize_t) -1;
+	  return (safeio_ssize_t) -1;
 	}
 
       // Initialize new block with zeroes followed by the new footer
@@ -605,7 +591,8 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
 	physical_write(new_block_buf,
 		       sector_size + block_size + sizeof(vhd_info.Footer),
 		       block_offset_bytes);
-      if (readdone != sector_size + block_size + sizeof(vhd_info.Footer))
+      if (readdone != sector_size + block_size +
+	  (safeio_size_t)sizeof(vhd_info.Footer))
 	{
 	  syslog(LOG_ERR, "vhd_write: Error writing new block: %m\n");
 
@@ -614,7 +601,7 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
 	  if (errno == 0)
 	    errno = E2BIG;
 
-	  return (ssize_t) -1;
+	  return (safeio_ssize_t) -1;
 	}
 
       free(new_block_buf);
@@ -626,9 +613,9 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
     in_block_offset;
 
   // Write data
-  writedone = physical_write(io_ptr, (size_t) first_size, data_offset);
+  writedone = physical_write(io_ptr, (safeio_size_t) first_size, data_offset);
   if (writedone == -1)
-    return (ssize_t) -1;
+    return (safeio_ssize_t) -1;
 
   // Calculate where and how many bytes in allocation bitmap we need to update
   bitmap_offset = ((off_t_64) block_offset << sector_shift) +
@@ -649,16 +636,16 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
       if (errno == 0)
 	errno = E2BIG;
 
-      return (ssize_t) -1;
+      return (safeio_ssize_t) -1;
     }
 
   if (second_size > 0)
     {
-      size_t second_write =
+      safeio_size_t second_write =
 	vhd_write(io_ptr + first_size, second_size, second_offset);
 
       if (second_write == -1)
-	return (ssize_t) -1;
+	return (safeio_ssize_t) -1;
 
       writedone += second_write;
     }
@@ -666,8 +653,8 @@ vhd_write(char *io_ptr, size_t size, off_t_64 offset)
   return writedone;
 }
 
-ssize_t
-logical_read(char *io_ptr, size_t size, off_t_64 offset)
+safeio_ssize_t
+logical_read(char *io_ptr, safeio_size_t size, off_t_64 offset)
 {
   if (vhd_mode)
     return vhd_read(io_ptr, size, offset);
@@ -675,8 +662,8 @@ logical_read(char *io_ptr, size_t size, off_t_64 offset)
     return physical_read(io_ptr, size, offset);
 }
 
-ssize_t
-logical_write(char *io_ptr, size_t size, off_t_64 offset)
+safeio_ssize_t
+logical_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
 {
   if (vhd_mode)
     return vhd_write(io_ptr, size, offset);
@@ -689,8 +676,8 @@ read_data()
 {
   IMDPROXY_READ_REQ req_block = { 0 };
   IMDPROXY_READ_RESP resp_block = { 0 };
-  size_t size;
-  ssize_t readdone;
+  safeio_size_t size;
+  safeio_ssize_t readdone;
 
   if (!comm_read(&req_block.offset,
 		 sizeof(req_block) - sizeof(req_block.request_code)))
@@ -699,7 +686,7 @@ read_data()
       return 0;
     }
 
-  size = (size_t)
+  size = (safeio_size_t)
     (req_block.length < buffer_size ? req_block.length : buffer_size);
 
   dbglog((LOG_ERR, "read request " ULL_FMT " bytes at " ULL_FMT " + "
@@ -710,7 +697,7 @@ read_data()
   memset(buf, 0, size);
 
   readdone =
-    logical_read(buf, (size_t) size, (off_t_64) (offset + req_block.offset));
+    logical_read(buf, (safeio_size_t) size, (off_t_64) (offset + req_block.offset));
   if (readdone == -1)
     {
       resp_block.errorno = errno;
@@ -738,7 +725,7 @@ read_data()
     }
 
   if (resp_block.errorno == 0)
-    if (!comm_write(buf, (size_t) resp_block.length))
+    if (!comm_write(buf, (safeio_size_t) resp_block.length))
       {
 	syslog(LOG_ERR, "Error sending read response to caller.\n");
 	return 0;
@@ -775,7 +762,7 @@ write_data()
       return 0;
     }
 
-  if (!comm_read(buf, (size_t) req_block.length))
+  if (!comm_read(buf, (safeio_size_t) req_block.length))
     {
       syslog(LOG_ERR, "Warning: I/O stream inconsistency.\n");
 
@@ -790,7 +777,7 @@ write_data()
     }
   else
     {
-      ssize_t writedone = logical_write(buf, (size_t) req_block.length,
+      safeio_ssize_t writedone = logical_write(buf, (safeio_size_t) req_block.length,
 				    (off_t_64) (offset + req_block.offset));
       if (writedone == -1)
 	{
@@ -834,7 +821,7 @@ do_comm(char *comm_device);
 int
 main(int argc, char **argv)
 {
-  ssize_t readdone;
+  safeio_ssize_t readdone;
   int partition_number = 0;
   char mbr[512];
   int retval;
@@ -862,12 +849,12 @@ main(int argc, char **argv)
 		"devio.h.\n"
 		"\n"
 		"Declaration for dllopen is:\n"
-		"int __cdecl dllopen(const char *str,\n"
-		"                    int read_only,\n"
-		"                    dllread_proc *dllread,\n"
-		"                    dllwrite_proc *dllwrite,\n"
-		"                    dllclose_proc *dllclose,\n"
-		"                    __int64 *size)\n"
+		"void * __cdecl dllopen(const char *str,\n"
+		"                       int read_only,\n"
+		"                       dllread_proc *dllread,\n"
+		"                       dllwrite_proc *dllwrite,\n"
+		"                       dllclose_proc *dllclose,\n"
+		"                       __int64 *size)\n"
 		"\n"
 		"str         Device name to open as specified at devio command line.\n"
 		"\n"
@@ -888,9 +875,12 @@ main(int argc, char **argv)
 		"\n"
 		"Types for dllread_proc, dllwrite_proc, dllclose_proc are declared in devio.h.\n"
 		"\n"
-		"Return value from dllopen can be zero or positive to indicate success or\n"
-		"negative to indicate that an error occured. Negative return value will cause\n"
-		"devio to exit.\n"
+		"Return value from dllopen is typed as void * to be able to hold as much data\n"
+		"            for some kind of reference as current architecture allows. Devio\n"
+		"            practically ignores this value, it is just sent in later calls to\n"
+		"            dllread/dllwrite/dllclose. The only thing that devio checks is that\n"
+		"            this value is not (void *)-1. That case is treated as an error\n"
+		"            return.\n"
 		"\n"
 		"Value returned by dllopen will be passed by devio to to dllread, dllwrite and\n"
 		"dllclose functions.\n"
@@ -980,10 +970,10 @@ main(int argc, char **argv)
   if ((argc < 3) | (argc > 7))
     {
       fprintf(stderr,
-	      "devio - Device I/O Service ver 3.01\n"
+	      "devio - Device I/O Service ver 3.02\n"
 	      "With support for Microsoft VHD format, custom DLL files and shared memory proxy\n"
 	      "operation.\n"
-	      "Copyright (C) 2005-2011 Olof Lagerkvist.\n"
+	      "Copyright (C) 2005-2012 Olof Lagerkvist.\n"
 	      "\n"
 	      "Usage:\n"
 	      "devio [-r] tcp-port|commdev diskdev [blocks] [offset] [alignm] [buffersize]\n"
@@ -1010,33 +1000,46 @@ main(int argc, char **argv)
 	      "\n"
 	      "For syntax help with custom I/O DLL under Windows, type:\n"
 	      "devio --dll\n",
-	      sector_size,
+	      DEF_REQUIRED_ALIGNMENT,
 	      DEF_BUFFER_SIZE);
       return -1;
     }
 
   comm_device = argv[1];
 
-  if (dll_mode && (devio_info.flags & IMDPROXY_FLAG_RO))
-    fd = dll_open(argv[2], 1, &dll_read, &dll_write, &dll_close,
-		  (off_t_64*)&devio_info.file_size);
-  else if (dll_mode)
-    fd = dll_open(argv[2], 0, &dll_read, &dll_write, &dll_close,
-		  (off_t_64*)&devio_info.file_size);
-  else if (devio_info.flags & IMDPROXY_FLAG_RO)
-    fd = open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDONLY);
-  else
-    fd = open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDWR);
-  if (fd == -1)
+  if (dll_mode)
     {
-      syslog(LOG_ERR, "Failed to open '%s': %m\n", argv[2]);
-      return 1;
+      if (devio_info.flags & IMDPROXY_FLAG_RO)
+	libhandle = dll_open(argv[2], 1, &dll_read, &dll_write, &dll_close,
+			     (off_t_64*)&devio_info.file_size);
+      else
+	libhandle = dll_open(argv[2], 0, &dll_read, &dll_write, &dll_close,
+			     (off_t_64*)&devio_info.file_size);
+
+      if (libhandle == NULL)
+	{
+	  syslog(LOG_ERR, "Library call failed to open '%s': %m\n", argv[2]);
+	  return 1;
+	}
+    }
+  else
+    {
+      if (devio_info.flags & IMDPROXY_FLAG_RO)
+	fd = open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDONLY);
+      else
+	fd = open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDWR);
+
+      if (fd == -1)
+	{
+	  syslog(LOG_ERR, "Failed to open '%s': %m\n", argv[2]);
+	  return 1;
+	}
     }
 
   printf("Successfully opened '%s'.\n", argv[2]);
 
   // Autodetect Microsoft .vhd files
-  readdone = physical_read(&vhd_info, (size_t) sizeof(vhd_info), 0);
+  readdone = physical_read(&vhd_info, (safeio_size_t) sizeof(vhd_info), 0);
   if ((readdone == sizeof(vhd_info)) &
       ((strncmp(vhd_info.Header.Cookie, "cxsparse", 8) == 0) &
        (strncmp(vhd_info.Footer.Cookie, "conectix", 8) == 0)))
@@ -1070,7 +1073,7 @@ main(int argc, char **argv)
 
       for (block_shift = 0;
 	   (block_shift < 64) &
-	     ((((u_long) 1) << block_shift) != block_size);
+	     ((((safeio_size_t) 1) << block_shift) != block_size);
 	   block_shift++);
 
       devio_info.file_size = current_size;
@@ -1085,114 +1088,118 @@ main(int argc, char **argv)
     }
 
   for (sector_shift = 0;
-       (sector_shift < 64) & ((((u_long) 1) << sector_shift) != sector_size);
+       (sector_shift < 64) & ((((safeio_size_t) 1) << sector_shift) !=
+			      sector_size);
        sector_shift++);
 
   if (argc > 3)
     {
+      ULONGLONG spec_size = 0;
       char suf = 0;
-      if (sscanf(argv[3], SLL_FMT "%c", &devio_info.file_size, &suf) == 2)
+      if (sscanf(argv[3], SLL_FMT "%c", &spec_size, &suf) == 2)
 	switch (suf)
 	  {
 	  case 'T':
-	    devio_info.file_size <<= 10;
+	    spec_size <<= 10;
 	  case 'G':
-	    devio_info.file_size <<= 10;
+	    spec_size <<= 10;
 	  case 'M':
-	    devio_info.file_size <<= 10;
+	    spec_size <<= 10;
 	  case 'K':
-	    devio_info.file_size <<= 10;
+	    spec_size <<= 10;
 	  case 'B':
 	    break;
 	  case 't':
-	    devio_info.file_size *= 1000;
+	    spec_size *= 1000;
 	  case 'g':
-	    devio_info.file_size *= 1000;
+	    spec_size *= 1000;
 	  case 'm':
-	    devio_info.file_size *= 1000;
+	    spec_size *= 1000;
 	  case 'k':
-	    devio_info.file_size *= 1000;
+	    spec_size *= 1000;
 	  case 'b':
 	    break;
 	  default:
 	    syslog(LOG_ERR, "Unsupported size suffix: %c\n", suf);
 	  }
-      else if ((devio_info.file_size >= 0) & (devio_info.file_size <= 8))
-	{
-	  partition_number = (int) devio_info.file_size;
-	  devio_info.file_size = current_size;
-	}
+      else if ((spec_size >= 0) & (spec_size <= 8))
+	partition_number = (int) spec_size;
       else
-	devio_info.file_size <<= 9;
+	devio_info.file_size = spec_size << 9;
     }
   else
     partition_number = 1;
 
 #ifdef _WIN32
   if (devio_info.file_size == 0)
-    {
-      HANDLE h = (HANDLE) _get_osfhandle(fd);
-      BY_HANDLE_FILE_INFORMATION by_handle_file_info;
+    if (dll_mode)
+      syslog(LOG_ERR, "Cannot determine size of image/partition.\n");
+    else
+      {
+	HANDLE h = (HANDLE) _get_osfhandle(fd);
+	BY_HANDLE_FILE_INFORMATION by_handle_file_info;
 
-      // If not regular disk file, try to lock volume using FSCTL operation.
-      if (!GetFileInformationByHandle(h, &by_handle_file_info))
-	{
-	  DWORD dw;
-	  FlushFileBuffers(h);
-	  if (DeviceIoControl(h, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0,
-			      &dw, NULL))
-	    {
-	      if (!DeviceIoControl(h, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0,
-				   &dw, NULL))
-		{
-		  syslog(LOG_ERR, "Cannot dismount filesystem on %s.\n",
-			 argv[2]);
-
-		  if (~devio_info.flags & IMDPROXY_FLAG_RO)
-		    return 9;
-		}
-	    }
-	  else
-	    switch (GetLastError())
+	// If not regular disk file, try to lock volume using FSCTL operation.
+	if (!GetFileInformationByHandle(h, &by_handle_file_info))
+	  {
+	    DWORD dw;
+	    FlushFileBuffers(h);
+	    if (DeviceIoControl(h, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0,
+				&dw, NULL))
 	      {
-	      case ERROR_NOT_SUPPORTED:
-	      case ERROR_INVALID_FUNCTION:
-	      case ERROR_INVALID_HANDLE:
-	      case ERROR_INVALID_PARAMETER:
-		break;
+		if (!DeviceIoControl(h, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL,
+				     0, &dw, NULL))
+		  {
+		    syslog(LOG_ERR, "Cannot dismount filesystem on %s.\n",
+			   argv[2]);
 
-	      default:
-		{
-		  syslog(LOG_ERR, "Cannot dismount filesystem on %s.\n",
-			 argv[2]);
-
-		  if (~devio_info.flags & IMDPROXY_FLAG_RO)
-		    return 9;
-		}
+		    if (~devio_info.flags & IMDPROXY_FLAG_RO)
+		      return 9;
+		  }
 	      }
+	    else
+	      switch (GetLastError())
+		{
+		case ERROR_NOT_SUPPORTED:
+		case ERROR_INVALID_FUNCTION:
+		case ERROR_INVALID_HANDLE:
+		case ERROR_INVALID_PARAMETER:
+		  break;
 
-	  if (devio_info.file_size == 0)
-	    {
-	      PARTITION_INFORMATION partition_info = { 0 };
-	      DWORD dw;
+		default:
+		  {
+		    syslog(LOG_ERR, "Cannot dismount filesystem on %s.\n",
+			   argv[2]);
 
-	      if (!DeviceIoControl(h, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0,
-				   &partition_info, sizeof(partition_info),
-				   &dw, NULL))
-		syslog(LOG_ERR, "Cannot determine size of image/partition.\n");
-	      else
-		devio_info.file_size = partition_info.PartitionLength.QuadPart;
-	    }
-	}
-      else if (devio_info.file_size == 0)
-	{
-	  LARGE_INTEGER file_size;
-	  file_size.HighPart = by_handle_file_info.nFileSizeHigh;
-	  file_size.LowPart = by_handle_file_info.nFileSizeLow;
+		    if (~devio_info.flags & IMDPROXY_FLAG_RO)
+		      return 9;
+		  }
+		}
 
-	  devio_info.file_size = file_size.QuadPart;
-	}
-    }
+	    if (devio_info.file_size == 0)
+	      {
+		PARTITION_INFORMATION partition_info = { 0 };
+		DWORD dw;
+
+		if (!DeviceIoControl(h, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0,
+				     &partition_info, sizeof(partition_info),
+				     &dw, NULL))
+		  syslog(LOG_ERR,
+			 "Cannot determine size of image/partition.\n");
+		else
+		  devio_info.file_size =
+		    partition_info.PartitionLength.QuadPart;
+	      }
+	  }
+	else if (devio_info.file_size == 0)
+	  {
+	    LARGE_INTEGER file_size;
+	    file_size.HighPart = by_handle_file_info.nFileSizeHigh;
+	    file_size.LowPart = by_handle_file_info.nFileSizeLow;
+
+	    devio_info.file_size = file_size.QuadPart;
+	  }
+      }
 #else
   if (devio_info.file_size == 0)
     {
@@ -1222,10 +1229,11 @@ main(int argc, char **argv)
 	{
 	  puts("Detected a master boot record at sector 0.");
 
+	  offset = 0;
+
 	  if ((partition_number >=5) & (partition_number <= 8))
 	    {
 	      int i = 0;
-	      offset = 0;
 	      for (i = 0; i < 4; i++)
 		switch (*(mbr + 512 - 66 + (i << 4) + 4))
 		  {
@@ -1233,18 +1241,33 @@ main(int argc, char **argv)
 		    offset = (off_t_64)
 		      (*(u_int*)(mbr + 512 - 66 + (i << 4) + 8)) <<
 		      sector_shift;
+
+		    printf("Reading extended partition table at " ULL_FMT
+			   ".\n", offset);
+
 		    if (logical_read(mbr, 512, offset) == 512)
 		      if ((*(u_short*)(mbr + 0x01FE) == 0xAA55) &
-			  (*(u_char*)(mbr + 0x01BD) == 0x00))
-			puts("Using extended partition table.");
+			  ((*(u_char*)(mbr + 0x01BE) & 0x7F) == 0) &
+			  ((*(u_char*)(mbr + 0x01CE) & 0x7F) == 0) &
+			  ((*(u_char*)(mbr + 0x01DE) & 0x7F) == 0) &
+			  ((*(u_char*)(mbr + 0x01EE) & 0x7F) == 0))
+			{
+			  puts("Found valid extended partition table.");
+			  partition_number -= 4;
+			}
 		  }
 
-	      partition_number -= 4;
+	      if (partition_number > 4)
+		{
+		  syslog(LOG_ERR,
+			 "No valid extended partition table found.\n");
+		  return 1;
+		}
 	    }
 
 	  if ((partition_number >=1) & (partition_number <= 4))
 	    {
-	      offset = (off_t_64)
+	      offset += (off_t_64)
 		(*(u_int*)(mbr + 512 - 66 + ((partition_number-1) << 4) + 8))
 		<< sector_shift;
 	      devio_info.file_size = (off_t_64)
@@ -1307,15 +1330,53 @@ main(int argc, char **argv)
   if (argc > 4)
     sscanf(argv[4], ULL_FMT, &devio_info.req_alignment);
   else
-    devio_info.req_alignment = sector_size;
+    devio_info.req_alignment = DEF_REQUIRED_ALIGNMENT;
 
   if (argc > 5)
-    sscanf(argv[5], "%lu", &buffer_size);
+    {
+      char suf = 0;
+      if (sscanf(argv[5], "%u%c", &buffer_size, &suf) == 2)
+	switch (suf)
+	  {
+	  case 'T':
+	    buffer_size <<= 10;
+	  case 'G':
+	    buffer_size <<= 10;
+	  case 'M':
+	    buffer_size <<= 10;
+	  case 'K':
+	    buffer_size <<= 10;
+	  case 'B':
+	    break;
+	  case 't':
+	    buffer_size *= 1000;
+	  case 'g':
+	    buffer_size *= 1000;
+	  case 'm':
+	    buffer_size *= 1000;
+	  case 'k':
+	    buffer_size *= 1000;
+	  case 'b':
+	    break;
+	  default:
+	    syslog(LOG_ERR, "Unsupported size suffix: %c\n", suf);
+	  }
+
+      /*
+      buffer_size = 0;
+      sscanf(argv[5], "%u", &buffer_size);
+      */
+    }
 
   printf("Total size: " SLL_FMT " bytes. Using " ULL_FMT " bytes from offset "
 	 SLL_FMT ".\n"
-	 "Required alignment: " ULL_FMT " bytes.\n",
-	 current_size, devio_info.file_size, offset, devio_info.req_alignment);
+	 "Required alignment: " ULL_FMT " bytes.\n"
+	 "Buffer size: %u bytes.\n",
+	 current_size,
+	 devio_info.file_size,
+	 offset,
+	 devio_info.req_alignment,
+	 buffer_size);
 
   retval = do_comm(comm_device);
 
@@ -1330,7 +1391,7 @@ do_comm_shm(char *comm_device)
 {
   HANDLE hFileMap = NULL;
   MEMORY_BASIC_INFORMATION memory_info = { 0 };
-  DWORD_PTR detected_buffer_size = 0;
+  safeio_size_t detected_buffer_size = 0;
   ULARGE_INTEGER map_size = { 0 };
   char *objname = (char*)malloc(OBJNAME_SIZE);
   char *namespace_prefix;
@@ -1393,7 +1454,8 @@ do_comm_shm(char *comm_device)
       return 2;
     }
 
-  detected_buffer_size = memory_info.RegionSize - IMDPROXY_HEADER_SIZE;
+  detected_buffer_size = (safeio_size_t)
+    (memory_info.RegionSize - IMDPROXY_HEADER_SIZE);
 
   if (buffer_size != detected_buffer_size)
     {
@@ -1503,7 +1565,7 @@ do_comm(char *comm_device)
     {
       struct sockaddr_in saddr = { 0 };
       int i;
-      int ssd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+      SOCKET ssd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
       if (ssd == -1)
 	{
 	  syslog(LOG_ERR, "socket() failed: %m\n");

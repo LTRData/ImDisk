@@ -1,6 +1,4 @@
-﻿Imports System.ComponentModel
-
-Namespace IO.ImDisk
+﻿Namespace ImDisk
 
   ''' <summary>
   ''' Represents ImDisk Virtual Disk Driver disk device objects.
@@ -10,7 +8,7 @@ Namespace IO.ImDisk
   Public Class ImDiskDevice
     Inherits ImDiskObject
 
-    Private RawDiskStream As FileStream
+    Private RawDiskStream As ImDiskDeviceStream
 
     Private Shared Function OpenDeviceHandle(DeviceNumber As UInt32, AccessMode As FileAccess) As SafeFileHandle
 
@@ -22,7 +20,7 @@ Namespace IO.ImDisk
         NativeAccessMode += NativeFileIO.Win32API.GENERIC_WRITE
       End If
 
-      Dim Handle As New SafeFileHandle(DLL.ImDiskOpenDeviceByNumber(DeviceNumber, NativeAccessMode), ownsHandle:=True)
+      Dim Handle = DLL.ImDiskOpenDeviceByNumber(DeviceNumber, NativeAccessMode)
       If Handle.IsInvalid Then
         Throw New Win32Exception
       End If
@@ -31,7 +29,7 @@ Namespace IO.ImDisk
         Throw New Win32Exception
       End If
 
-      NativeFileIO.Win32API.DeviceIoControl(Handle.DangerousGetHandle(), NativeFileIO.Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, Nothing, 0, Nothing, 0, 0, Nothing)
+      NativeFileIO.Win32API.DeviceIoControl(Handle, NativeFileIO.Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, IntPtr.Zero, 0UI, IntPtr.Zero, 0UI, 0UI, IntPtr.Zero)
       Return Handle
 
     End Function
@@ -46,12 +44,12 @@ Namespace IO.ImDisk
         NativeAccessMode += NativeFileIO.Win32API.GENERIC_WRITE
       End If
 
-      Dim Handle As New SafeFileHandle(DLL.ImDiskOpenDeviceByMountPoint(MountPoint, NativeAccessMode), ownsHandle:=True)
+      Dim Handle = DLL.ImDiskOpenDeviceByMountPoint(MountPoint, NativeAccessMode)
       If Handle.IsInvalid Then
         Throw New Win32Exception
       End If
 
-      NativeFileIO.Win32API.DeviceIoControl(Handle.DangerousGetHandle(), NativeFileIO.Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, Nothing, 0, Nothing, 0, 0, Nothing)
+      NativeFileIO.Win32API.DeviceIoControl(Handle, NativeFileIO.Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, IntPtr.Zero, 0UI, IntPtr.Zero, 0UI, 0UI, IntPtr.Zero)
       Return Handle
 
     End Function
@@ -82,39 +80,31 @@ Namespace IO.ImDisk
     Public ReadOnly Property DiskSize As Long
       Get
         Dim Size As Int64
-        Dim HandleReferenced As Boolean
-        Try
-          SafeFileHandle.DangerousAddRef(HandleReferenced)
-          If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-            Throw New ArgumentException("Handle is invalid")
-          End If
-          NativeFileIO.Win32Try(DLL.ImDiskGetVolumeSize(SafeFileHandle.DangerousGetHandle(), Size))
-
-        Finally
-          If HandleReferenced Then
-            SafeFileHandle.DangerousRelease()
-          End If
-
-        End Try
+        NativeFileIO.Win32Try(DLL.ImDiskGetVolumeSize(SafeFileHandle, Size))
         Return Size
       End Get
     End Property
 
     ''' <summary>
-    ''' Close device object.
+    ''' Locks and dismounts filesystem on a volume. Upon successful return, further access to the device
+    ''' can only be done through this device object instance until it is either closed (disposed) or lock is
+    ''' released on the underlying handle.
     ''' </summary>
-    Public Sub Close()
-      Dispose()
+    ''' <param name="Force">Indicates if True that volume should be immediately dismounted even if it
+    ''' cannot be locked. This causes all open handles to files on the volume to become invalid. If False,
+    ''' successful lock (no other open handles) is required before attempting to dismount filesystem.</param>
+    Public Sub DismountVolumeFilesystem(Force As Boolean)
+
+      NativeFileIO.Win32Try(NativeFileIO.DismountVolumeFilesystem(SafeFileHandle, Force))
+
     End Sub
 
     ''' <summary>
-    ''' Opens a FileStream object around this ImDisk device that can be used to directly access disk data.
+    ''' Opens a ImDiskDeviceStream object around this ImDisk device that can be used to directly access disk data.
     ''' </summary>
-    ''' <returns></returns>
-    ''' <remarks></remarks>
-    Public Function GetRawDiskStream() As FileStream
+    Public Function GetRawDiskStream() As ImDiskDeviceStream
       If RawDiskStream Is Nothing Then
-        RawDiskStream = New FileStream(SafeFileHandle, AccessMode)
+        RawDiskStream = New ImDiskDeviceStream(SafeFileHandle, AccessMode)
       End If
       Return RawDiskStream
     End Function
@@ -127,23 +117,10 @@ Namespace IO.ImDisk
     <ComVisible(False)>
     Public Sub SaveImageFile(ImageFile As FileStream, BufferSize As UInt32)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle.DangerousGetHandle(),
-                                                      ImageFile.SafeFileHandle.DangerousGetHandle(),
-                                                      BufferSize,
-                                                      IntPtr.Zero))
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                    ImageFile.SafeFileHandle,
+                                                    BufferSize,
+                                                    IntPtr.Zero))
 
     End Sub
 
@@ -157,23 +134,10 @@ Namespace IO.ImDisk
     <ComVisible(False)>
     Public Sub SaveImageFile(ImageFile As FileStream, BufferSize As UInt32, ByRef CancelFlag As Boolean)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle.DangerousGetHandle(),
-                                                      ImageFile.SafeFileHandle.DangerousGetHandle(),
-                                                      BufferSize,
-                                                      CancelFlag))
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                    ImageFile.SafeFileHandle,
+                                                    BufferSize,
+                                                    CancelFlag))
 
     End Sub
 
@@ -183,25 +147,12 @@ Namespace IO.ImDisk
     ''' <param name="ImageFile">Native file handle opened for writing where disk contents will be written.</param>
     ''' <param name="BufferSize">Buffer size to use when transferring data from disk device to file.</param>
     <ComVisible(False)>
-    Public Sub SaveImageFile(ImageFile As IntPtr, BufferSize As UInt32)
+    Public Sub SaveImageFile(ImageFile As SafeFileHandle, BufferSize As UInt32)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle.DangerousGetHandle(),
-                                                      ImageFile,
-                                                      BufferSize,
-                                                      IntPtr.Zero))
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                    ImageFile,
+                                                    BufferSize,
+                                                    IntPtr.Zero))
 
     End Sub
 
@@ -213,25 +164,12 @@ Namespace IO.ImDisk
     ''' <param name="CancelFlag">A boolean flag that will be checked between buffer reads/writes. If flag is set to True
     ''' operation will be cancelled and an exception thrown.</param>
     <ComVisible(False)>
-    Public Sub SaveImageFile(ImageFile As IntPtr, BufferSize As UInt32, ByRef CancelFlag As Boolean)
+    Public Sub SaveImageFile(ImageFile As SafeFileHandle, BufferSize As UInt32, ByRef CancelFlag As Boolean)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle.DangerousGetHandle(),
-                                                      ImageFile,
-                                                      BufferSize,
-                                                      CancelFlag))
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                    ImageFile,
+                                                    BufferSize,
+                                                    CancelFlag))
 
     End Sub
 
@@ -245,23 +183,10 @@ Namespace IO.ImDisk
 
       Using ImageFileHandle = NativeFileIO.OpenFileHandle(ImageFile, FileAccess.Write, FileShare.None, FileMode.Create, Overlapped:=False)
 
-        Dim HandleReferenced As Boolean
-        Try
-          SafeFileHandle.DangerousAddRef(HandleReferenced)
-          If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-            Throw New ArgumentException("Handle is invalid")
-          End If
-          NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle.DangerousGetHandle(),
-                                                        ImageFileHandle.DangerousGetHandle(),
-                                                        BufferSize,
-                                                        IntPtr.Zero))
-
-        Finally
-          If HandleReferenced Then
-            SafeFileHandle.DangerousRelease()
-          End If
-
-        End Try
+        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                      ImageFileHandle,
+                                                      BufferSize,
+                                                      IntPtr.Zero))
 
       End Using
 
@@ -279,23 +204,10 @@ Namespace IO.ImDisk
 
       Using ImageFileHandle = NativeFileIO.OpenFileHandle(ImageFile, FileAccess.Write, FileShare.None, FileMode.Create, Overlapped:=False)
 
-        Dim HandleReferenced As Boolean
-        Try
-          SafeFileHandle.DangerousAddRef(HandleReferenced)
-          If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-            Throw New ArgumentException("Handle is invalid")
-          End If
-          NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle.DangerousGetHandle(),
-                                                        ImageFileHandle.DangerousGetHandle(),
-                                                        BufferSize,
-                                                        CancelFlag))
-
-        Finally
-          If HandleReferenced Then
-            SafeFileHandle.DangerousRelease()
-          End If
-
-        End Try
+        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                      ImageFileHandle,
+                                                      BufferSize,
+                                                      CancelFlag))
 
       End Using
 
@@ -309,23 +221,10 @@ Namespace IO.ImDisk
 
       Using ImageFileHandle = NativeFileIO.OpenFileHandle(ImageFile, FileAccess.Write, FileShare.None, FileMode.Create, Overlapped:=False)
 
-        Dim HandleReferenced As Boolean
-        Try
-          SafeFileHandle.DangerousAddRef(HandleReferenced)
-          If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-            Throw New ArgumentException("Handle is invalid")
-          End If
-          NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle.DangerousGetHandle(),
-                                                        ImageFileHandle.DangerousGetHandle(),
+        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                        ImageFileHandle,
                                                         0,
-                                                        New Boolean))
-
-        Finally
-          If HandleReferenced Then
-            SafeFileHandle.DangerousRelease()
-          End If
-
-        End Try
+                                                        False))
 
       End Using
 
@@ -346,20 +245,7 @@ Namespace IO.ImDisk
     ''' a .iso suffixed image file name.</param>
     Public Sub SaveImageFileInteractive(hWnd As IntPtr, BufferSize As UInt32, IsCdRomType As Boolean)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        DLL.ImDiskSaveImageFileInteractive(SafeFileHandle.DangerousGetHandle(), hWnd, BufferSize, IsCdRomType)
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, BufferSize, IsCdRomType)
 
     End Sub
 
@@ -376,20 +262,7 @@ Namespace IO.ImDisk
     <ComVisible(False)>
     Public Sub SaveImageFileInteractive(hWnd As IntPtr, IsCdRomType As Boolean)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        DLL.ImDiskSaveImageFileInteractive(SafeFileHandle.DangerousGetHandle(), hWnd, 0, IsCdRomType)
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, 0, IsCdRomType)
 
     End Sub
 
@@ -406,20 +279,7 @@ Namespace IO.ImDisk
     <ComVisible(False)>
     Public Sub SaveImageFileInteractive(hWnd As IntPtr, BufferSize As UInt32)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        DLL.ImDiskSaveImageFileInteractive(SafeFileHandle.DangerousGetHandle(), hWnd, BufferSize, False)
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, BufferSize, False)
 
     End Sub
 
@@ -433,20 +293,7 @@ Namespace IO.ImDisk
     <ComVisible(False)>
     Public Sub SaveImageFileInteractive(hWnd As IntPtr)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        DLL.ImDiskSaveImageFileInteractive(SafeFileHandle.DangerousGetHandle(), hWnd, 0, False)
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, 0, False)
 
     End Sub
 
@@ -461,20 +308,7 @@ Namespace IO.ImDisk
     <ComVisible(False)>
     Public Sub SaveImageFileInteractive(IsCdRomType As Boolean)
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        DLL.ImDiskSaveImageFileInteractive(SafeFileHandle.DangerousGetHandle(), IntPtr.Zero, 0, IsCdRomType)
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, IntPtr.Zero, 0, IsCdRomType)
 
     End Sub
 
@@ -486,20 +320,7 @@ Namespace IO.ImDisk
     <ComVisible(False)>
     Public Sub SaveImageFileInteractive()
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        DLL.ImDiskSaveImageFileInteractive(SafeFileHandle.DangerousGetHandle(), IntPtr.Zero, 0, False)
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, IntPtr.Zero, 0, False)
 
     End Sub
 
@@ -508,20 +329,7 @@ Namespace IO.ImDisk
     ''' </summary>
     Public Overloads Sub ForceRemoveDevice()
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        NativeFileIO.Win32Try(DLL.ImDiskForceRemoveDevice(SafeFileHandle.DangerousGetHandle(), 0))
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      NativeFileIO.Win32Try(DLL.ImDiskForceRemoveDevice(SafeFileHandle, 0))
 
     End Sub
 

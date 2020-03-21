@@ -9,7 +9,7 @@
     </SchemaVersion>
     <ProjectGuid>{3EFCB6F8-EF7E-4F60-A0DE-BB197240FCC9}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>LTR</RootNamespace>
+    <RootNamespace>LTR.IO</RootNamespace>
     <AssemblyName>ImDiskNet</AssemblyName>
     <FileAlignment>512</FileAlignment>
     <MyType>Windows</MyType>
@@ -28,6 +28,7 @@
     </NoWarn>
     <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
     <Optimize>true</Optimize>
+    <RegisterForComInterop>true</RegisterForComInterop>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -39,6 +40,7 @@
     <NoWarn>
     </NoWarn>
     <WarningsAsErrors>41999,42016,42017,42018,42019,42020,42021,42022,42032,42036</WarningsAsErrors>
+    <RegisterForComInterop>true</RegisterForComInterop>
   </PropertyGroup>
   <PropertyGroup>
     <OptionExplicit>On</OptionExplicit>
@@ -66,20 +68,22 @@
     <Import Include="System" />
     <Import Include="System.Collections" />
     <Import Include="System.Collections.Generic" />
+    <Import Include="System.Collections.ObjectModel" />
+    <Import Include="System.ComponentModel" />
     <Import Include="System.Diagnostics" />
     <Import Include="System.IO" />
     <Import Include="System.Runtime.InteropServices" />
     <Import Include="System.Text" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="BufferedBinaryWriter.vb" />
-    <Compile Include="DLL.vb" />
-    <Compile Include="Flags.vb" />
-    <Compile Include="ImDiskAPI.vb" />
-    <Compile Include="ImDiskCOM.vb" />
-    <Compile Include="ImDiskControl.vb" />
-    <Compile Include="ImDiskDevice.vb" />
-    <Compile Include="ImDiskObject.vb" />
+    <Compile Include="ImDisk\DLL.vb" />
+    <Compile Include="ImDisk\Flags.vb" />
+    <Compile Include="ImDisk\ImDiskAPI.vb" />
+    <Compile Include="ImDisk\ComInterop\ImDiskCOM.vb" />
+    <Compile Include="ImDisk\ImDiskControl.vb" />
+    <Compile Include="ImDisk\ImDiskDevice.vb" />
+    <Compile Include="ImDisk\ImDiskDeviceStream.vb" />
+    <Compile Include="ImDisk\ImDiskObject.vb" />
     <Compile Include="NativeFileIO.vb" />
     <Compile Include="My Project\AssemblyInfo.vb" />
     <Compile Include="My Project\Application.Designer.vb">
@@ -117,6 +121,7 @@
       <LastGenOutput>Settings.Designer.vb</LastGenOutput>
     </None>
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

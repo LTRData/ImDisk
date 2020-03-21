@@ -1,19 +1,27 @@
-﻿Namespace IO.ImDisk
+﻿Namespace ImDisk.ComInterop
 
   <Guid("b0bf4b36-0ebe-4ef4-8974-07694a7a3a81")>
   <ClassInterface(ClassInterfaceType.AutoDual)>
   Public Class ImDiskCOM
 
     Public Sub New()
-      MyBase.New()
 
     End Sub
 
-    Public Function GetOffsetByFileExt(ImageFile As String) As Double
+    Public Function GetOffsetByFileExt(ImageFile As String) As LARGE_INTEGER
 
       Return ImDiskAPI.GetOffsetByFileExt(ImageFile)
 
     End Function
+
+    Public Sub AutoFindOffsetAndSize(Imagefile As String,
+                                     <Out()> ByRef Offset As LARGE_INTEGER,
+                                     <Out()> ByRef Size As LARGE_INTEGER,
+                                     Optional SectorSize As Int32 = 512)
+
+      ImDiskAPI.AutoFindOffsetAndSize(Imagefile, CUInt(SectorSize), Offset, Size)
+
+    End Sub
 
     Public Sub LoadDriver()
 
@@ -57,21 +65,21 @@
 
     End Function
 
-    Public Sub ExtendDevice(DeviceNumber As Int32, ExtendSize As Double, Optional StatusControl As Int32 = 0)
+    Public Sub ExtendDevice(DeviceNumber As Int32, <[In]()> ByRef ExtendSize As LARGE_INTEGER, Optional StatusControl As Int32 = 0)
 
-      ImDiskAPI.ExtendDevice(CUInt(DeviceNumber), CLng(ExtendSize), CType(StatusControl, IntPtr))
+      ImDiskAPI.ExtendDevice(CUInt(DeviceNumber), CLng(ExtendSize), New IntPtr(StatusControl))
 
     End Sub
 
-    Public Sub CreateDevice(Optional DiskSize As Double = 0,
+    Public Sub CreateDevice(<[In]()> ByRef DiskSize As LARGE_INTEGER,
+                            <[In]()> ByRef ImageOffset As LARGE_INTEGER,
+                            Optional Filename As String = Nothing,
+                            Optional MountPoint As String = Nothing,
                             Optional TracksPerCylinder As Int32 = 0,
                             Optional SectorsPerTrack As Int32 = 0,
                             Optional BytesPerSector As Int32 = 0,
-                            Optional ImageOffset As Double = 0,
                             Optional Flags As ImDiskFlags = 0,
-                            Optional Filename As String = Nothing,
                             Optional NativePath As Boolean = False,
-                            Optional MountPoint As String = Nothing,
                             Optional StatusControl As Int32 = 0)
 
       ImDiskAPI.CreateDevice(CLng(DiskSize),
@@ -87,15 +95,15 @@
 
     End Sub
 
-    Public Sub CreateDeviceEx(Optional DiskSize As Double = 0,
+    Public Sub CreateDeviceEx(<[In]()> ByRef DiskSize As LARGE_INTEGER,
+                              <[In]()> ByRef ImageOffset As LARGE_INTEGER,
+                              Optional Filename As String = Nothing,
+                              Optional MountPoint As String = Nothing,
                               Optional TracksPerCylinder As Int32 = 0,
                               Optional SectorsPerTrack As Int32 = 0,
                               Optional BytesPerSector As Int32 = 0,
-                              Optional ImageOffset As Double = 0,
                               Optional Flags As ImDiskFlags = 0,
-                              Optional Filename As String = Nothing,
                               Optional NativePath As Boolean = False,
-                              Optional MountPoint As String = Nothing,
                               Optional ByRef DeviceNumber As Int32 = -1,
                               Optional StatusControl As Int32 = 0)
 
@@ -135,15 +143,15 @@
 
     End Sub
 
-    Public Sub QueryDevice(ByRef DeviceNumber As Int32,
-                           Optional ByRef DiskSize As Double = 0,
-                           Optional ByRef TracksPerCylinder As Int32 = 0,
-                           Optional ByRef SectorsPerTrack As Int32 = 0,
-                           Optional ByRef BytesPerSector As Int32 = 0,
-                           Optional ByRef ImageOffset As Double = 0,
-                           Optional ByRef Flags As ImDiskFlags = 0,
-                           Optional ByRef DriveLetter As String = Nothing,
-                           Optional ByRef Filename As String = Nothing)
+    Public Sub QueryDevice(<[In]()> ByRef DeviceNumber As Int32,
+                           <Out()> ByRef DiskSize As LARGE_INTEGER,
+                           <Out()> ByRef ImageOffset As LARGE_INTEGER,
+                           <Out()> Optional ByRef TracksPerCylinder As Int32 = 0,
+                           <Out()> Optional ByRef SectorsPerTrack As Int32 = 0,
+                           <Out()> Optional ByRef BytesPerSector As Int32 = 0,
+                           <Out()> Optional ByRef Flags As ImDiskFlags = 0,
+                           <Out()> Optional ByRef DriveLetter As String = Nothing,
+                           <Out()> Optional ByRef Filename As String = Nothing)
 
       Dim _DeviceNumber = CUInt(DeviceNumber)
       Dim _DiskSize As Int64
@@ -246,5 +254,56 @@
     End Function
 
   End Class
+
+  <Guid("209d67ea-9afd-436a-a0f1-51c802fe6720")>
+  <StructLayout(LayoutKind.Sequential)>
+  Public Structure LARGE_INTEGER
+    Implements IEquatable(Of LARGE_INTEGER), IEquatable(Of Int64)
+
+    Public LowPart As Int32
+    Public HighPart As Int32
+
+    Public Property QuadPart As Int64
+      Get
+        Dim bytes As New List(Of Byte)(8)
+        bytes.AddRange(BitConverter.GetBytes(LowPart))
+        bytes.AddRange(BitConverter.GetBytes(HighPart))
+        Return BitConverter.ToInt64(bytes.ToArray(), 0)
+      End Get
+      Set(value As Int64)
+        Dim bytes = BitConverter.GetBytes(value)
+        LowPart = BitConverter.ToInt32(bytes, 0)
+        HighPart = BitConverter.ToInt32(bytes, 4)
+      End Set
+    End Property
+
+    Public Sub New(value As Int64)
+      QuadPart = value
+    End Sub
+
+    Public Overrides Function ToString() As String
+      Return QuadPart.ToString()
+    End Function
+
+    Public Overrides Function GetHashCode() As Integer
+      Return QuadPart.GetHashCode()
+    End Function
+
+    Shared Widening Operator CType(value As Int64) As LARGE_INTEGER
+      Return New LARGE_INTEGER(value)
+    End Operator
+
+    Shared Widening Operator CType(value As LARGE_INTEGER) As Int64
+      Return value.QuadPart
+    End Operator
+
+    Public Overloads Function Equals(other As Int64) As Boolean Implements IEquatable(Of Int64).Equals
+      Return QuadPart = other
+    End Function
+
+    Public Overloads Function Equals(other As LARGE_INTEGER) As Boolean Implements IEquatable(Of LARGE_INTEGER).Equals
+      Return LowPart = other.LowPart AndAlso HighPart = other.HighPart
+    End Function
+  End Structure
 
 End Namespace

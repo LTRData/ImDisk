@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include "devio_types.h"
 #include "safeio.h"
 
 int

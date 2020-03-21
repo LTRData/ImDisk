@@ -1,14 +1,26 @@
-﻿Namespace IO.ImDisk
+﻿Namespace ImDisk
 
   ''' <summary>
   ''' ImDisk API for sending commands to ImDisk Virtual Disk Driver from .NET applications.
   ''' </summary>
   <ComVisible(False)>
-  Public NotInheritable Class ImDiskAPI
+  Public Class ImDiskAPI
 
     Private Sub New()
 
     End Sub
+
+    ''' <summary>
+    ''' ImDisk API behaviour flags.
+    ''' </summary>
+    Public Shared Property APIFlags As DLL.ImDiskAPIFlags
+      Get
+        Return DLL.ImDiskGetAPIFlags()
+      End Get
+      Set(value As DLL.ImDiskAPIFlags)
+        DLL.ImDiskSetAPIFlags(value)
+      End Set
+    End Property
 
     ''' <summary>
     ''' Checks if filename contains a known extension for which ImDisk knows of a constant offset value. That value can be
@@ -25,6 +37,193 @@
       End If
 
     End Function
+
+    ''' <summary>
+    ''' Parses partition table entries from a master boot record and extended partition table record, if any.
+    ''' </summary>
+    ''' <param name="ImageFile">Name of image file to examine.</param>
+    ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
+    ''' parameter is in most cases 512.</param>
+    ''' <param name="Offset">Offset in image file where master boot record is located.</param>
+    ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+    Public Shared Function GetPartitionInformation(ImageFile As String, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+
+      Dim PartitionInformation(0 To 7) As NativeFileIO.Win32API.PARTITION_INFORMATION
+
+      NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInformation(ImageFile, SectorSize, Offset, PartitionInformation))
+
+      Return Array.AsReadOnly(PartitionInformation)
+
+    End Function
+
+    ''' <summary>
+    ''' Parses partition table entries from a master boot record and extended partition table record, if any.
+    ''' </summary>
+    ''' <param name="ImageFile">Disk image to examine.</param>
+    ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
+    ''' parameter is in most cases 512.</param>
+    ''' <param name="Offset">Offset in image file where master boot record is located.</param>
+    ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+    Public Shared Function GetPartitionInformation(ImageFile As Stream, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+
+      Dim StreamReader As DLL.ImDiskReadFileManagedProc =
+        Function(_Handle As IntPtr,
+                 _Buffer As Byte(),
+                 _Offset As Int64,
+                 _NumberOfBytesToRead As UInt32,
+                 ByRef _NumberOfBytesRead As UInt32) As Boolean
+
+          Try
+            ImageFile.Position = _Offset
+            _NumberOfBytesRead = CUInt(ImageFile.Read(_Buffer, 0, CInt(_NumberOfBytesToRead)))
+            Return True
+
+          Catch
+            Return False
+
+          End Try
+
+        End Function
+
+      Dim PartitionInformation(0 To 7) As NativeFileIO.Win32API.PARTITION_INFORMATION
+
+      NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirect(Nothing, StreamReader, SectorSize, Offset, PartitionInformation))
+
+      Return Array.AsReadOnly(PartitionInformation)
+
+    End Function
+
+    ''' <summary>
+    ''' Parses partition table entries from a master boot record and extended partition table record, if any.
+    ''' </summary>
+    ''' <param name="Handle">Value to pass as first parameter to ReadFileProc.</param>
+    ''' <param name="ReadFileProc">Reference to method that reads disk image.</param>
+    ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
+    ''' parameter is in most cases 512.</param>
+    ''' <param name="Offset">Offset in image file where master boot record is located.</param>
+    ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+    Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileManagedProc, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+
+      Dim PartitionInformation(0 To 7) As NativeFileIO.Win32API.PARTITION_INFORMATION
+
+      NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirect(Handle, ReadFileProc, SectorSize, Offset, PartitionInformation))
+
+      Return Array.AsReadOnly(PartitionInformation)
+
+    End Function
+
+    ''' <summary>
+    ''' Parses partition table entries from a master boot record and extended partition table record, if any.
+    ''' </summary>
+    ''' <param name="Handle">Value to pass as first parameter to ReadFileProc.</param>
+    ''' <param name="ReadFileProc">Reference to method that reads disk image.</param>
+    ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
+    ''' parameter is in most cases 512.</param>
+    ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+    Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileManagedProc, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+
+      Return GetPartitionInformation(Handle, ReadFileProc, SectorSize, 0)
+
+    End Function
+
+    ''' <summary>
+    ''' Parses partition table entries from a master boot record and extended partition table record, if any.
+    ''' </summary>
+    ''' <param name="Handle">Value to pass as first parameter to ReadFileProc.</param>
+    ''' <param name="ReadFileProc">Reference to method that reads disk image.</param>
+    ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
+    ''' parameter is in most cases 512.</param>
+    ''' <param name="Offset">Offset in image file where master boot record is located.</param>
+    ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+    Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileUnmanagedProc, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+
+      Dim PartitionInformation(0 To 7) As NativeFileIO.Win32API.PARTITION_INFORMATION
+
+      NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirect(Handle, ReadFileProc, SectorSize, Offset, PartitionInformation))
+
+      Return Array.AsReadOnly(PartitionInformation)
+
+    End Function
+
+    ''' <summary>
+    ''' Parses partition table entries from a master boot record and extended partition table record, if any.
+    ''' </summary>
+    ''' <param name="Handle">Value to pass as first parameter to ReadFileProc.</param>
+    ''' <param name="ReadFileProc">Reference to method that reads disk image.</param>
+    ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
+    ''' parameter is in most cases 512.</param>
+    ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+    Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileUnmanagedProc, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+
+      Return GetPartitionInformation(Handle, ReadFileProc, SectorSize, 0)
+
+    End Function
+
+    ''' <summary>
+    ''' Parses partition table entries from a master boot record and extended partition table record, if any.
+    ''' </summary>
+    ''' <param name="ImageFile">Name of image file to examine</param>
+    ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
+    ''' parameter is in most cases 512.</param>
+    ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+    Public Shared Function GetPartitionInformation(ImageFile As String, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+
+      Return GetPartitionInformation(ImageFile, SectorSize, 0)
+
+    End Function
+
+    Public Shared Function FilterDefinedPartitions(PartitionList As IEnumerable(Of NativeFileIO.Win32API.PARTITION_INFORMATION)) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+      Dim DefinedPartitions As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)(7)
+      For Each PartitionInfo In PartitionList
+        If PartitionInfo.StartingOffset <> 0 AndAlso
+          PartitionInfo.PartitionLength <> 0 AndAlso
+          Not PartitionInfo.IsContainerPartition Then
+
+          DefinedPartitions.Add(PartitionInfo)
+        End If
+      Next
+      Return DefinedPartitions.AsReadOnly()
+    End Function
+
+    ''' <summary>
+    ''' Combines GetOffsetByFileExt() and GetPartitionInformation() so that both format-specific offset and 
+    ''' offset to first partition is combined into resulting Offset. If a partition was found, size of it is
+    ''' also returned in the Size parameter.
+    ''' </summary>
+    ''' <param name="Imagefile">Name of image file to examine</param>
+    ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
+    ''' parameter is in most cases 512.</param>
+    ''' <param name="Offset">Absolute offset in image file where volume data begins</param>
+    ''' <param name="Size">Size of partition if a partition table was found, otherwise zero</param>
+    ''' <remarks></remarks>
+    Public Shared Sub AutoFindOffsetAndSize(Imagefile As String,
+                                            SectorSize As UInt32,
+                                            <Out()> ByRef Offset As Long,
+                                            <Out()> ByRef Size As Long)
+
+      Offset = 0
+      Size = 0
+
+      Try
+        Offset = ImDiskAPI.GetOffsetByFileExt(Imagefile)
+
+        Dim PartitionList = ImDiskAPI.FilterDefinedPartitions(ImDiskAPI.GetPartitionInformation(Imagefile, SectorSize, Offset))
+        If PartitionList Is Nothing OrElse PartitionList.Count = 0 Then
+          Exit Try
+        End If
+        If PartitionList(0).StartingOffset > 0 AndAlso
+              PartitionList(0).PartitionLength > 0 AndAlso
+              Not PartitionList(0).IsContainerPartition Then
+
+          Offset += PartitionList(0).StartingOffset
+          Size = PartitionList(0).PartitionLength
+        End If
+
+      Catch
+
+      End Try
+
+    End Sub
 
     ''' <summary>
     ''' Loads ImDisk Virtual Disk Driver into Windows kernel. This driver is needed to create ImDisk virtual disks. For
@@ -50,11 +249,14 @@
     End Sub
 
     ''' <summary>
-    ''' Creates a mount point on an empty subdirectory on an NTFS volume.
+    ''' An easy way to turn an empty NTFS directory to a reparsepoint that redirects
+    ''' requests to a mounted device. Acts quite like mount points or symbolic links
+    ''' in *nix. If MountPoint specifies a character followed by a colon, a drive
+    ''' letter is instead created to point to Target.
     ''' </summary>
-    ''' <param name="Directory">Path to an empty subdirectory on an NTFS volume</param>
+    ''' <param name="Directory">Path to empty directory on an NTFS volume, or a drive letter
+    ''' followed by a colon.</param>
     ''' <param name="Target">Target path in native format, for example \Device\ImDisk0</param>
-    ''' <remarks></remarks>
     Public Shared Sub CreateMountPoint(Directory As String, Target As String)
 
       NativeFileIO.Win32Try(DLL.ImDiskCreateMountPoint(Directory, Target))
@@ -62,25 +264,30 @@
     End Sub
 
     ''' <summary>
-    ''' Creates a mount point for an ImDisk virtual disk on an empty subdirectory on an NTFS volume.
+    ''' An easy way to turn an empty NTFS directory to a reparsepoint that redirects
+    ''' requests to an ImDisk device. Acts quite like mount points or symbolic links
+    ''' in *nix. If MountPoint specifies a character followed by a colon, a drive
+    ''' letter is instead created to point to Target.
     ''' </summary>
-    ''' <param name="Directory">Path to an empty subdirectory on an NTFS volume</param>
+    ''' <param name="Directory">Path to empty directory on an NTFS volume, or a drive letter
+    ''' followed by a colon.</param>
     ''' <param name="DeviceNumber">Device number of an existing ImDisk virtual disk</param>
-    ''' <remarks></remarks>
     Public Shared Sub CreateMountPoint(Directory As String, DeviceNumber As UInt32)
 
       NativeFileIO.Win32Try(DLL.ImDiskCreateMountPoint(Directory, "\Device\ImDisk" & DeviceNumber))
-      
+
     End Sub
 
     ''' <summary>
-    ''' Removes a mount point. Subdirectory will be restored to an empty subdirectory.
+    ''' Restores a reparsepoint to be an ordinary empty directory, or removes a drive
+    ''' letter mount point.
     ''' </summary>
-    ''' <param name="MountPoint">Path to mount point subdirectory</param>
+    ''' <param name="MountPoint">Path to a reparse point on an NTFS volume, or a drive
+    ''' letter followed by a colon to remove a drive letter mount point.</param>
     Public Shared Sub RemoveMountPoint(MountPoint As String)
 
       NativeFileIO.Win32Try(DLL.ImDiskRemoveMountPoint(MountPoint))
-      
+
     End Sub
 
     ''' <summary>
@@ -126,7 +333,7 @@
     Public Shared Sub ExtendDevice(DeviceNumber As UInt32, ExtendSize As Int64, StatusControl As IntPtr)
 
       NativeFileIO.Win32Try(DLL.ImDiskExtendDevice(StatusControl, DeviceNumber, ExtendSize))
-      
+
     End Sub
 
     ''' <summary>
@@ -175,17 +382,15 @@
                                    MountPoint As String,
                                    StatusControl As IntPtr)
 
-      Dim MediaType As Int32
-
-      Dim DiskGeometry As New BufferedBinaryWriter
-      DiskGeometry.Write(DiskSize)
-      DiskGeometry.Write(MediaType)
-      DiskGeometry.Write(TracksPerCylinder)
-      DiskGeometry.Write(SectorsPerTrack)
-      DiskGeometry.Write(BytesPerSector)
+      Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY With {
+        .Cylinders = DiskSize,
+        .TracksPerCylinder = TracksPerCylinder,
+        .SectorsPerTrack = SectorsPerTrack,
+        .BytesPerSector = BytesPerSector
+      }
 
       NativeFileIO.Win32Try(DLL.ImDiskCreateDevice(StatusControl,
-                                                   DiskGeometry.ToArray(),
+                                                   DiskGeometry,
                                                    ImageOffset,
                                                    Flags,
                                                    Filename,
@@ -234,18 +439,16 @@
                                    ByRef DeviceNumber As UInt32,
                                    StatusControl As IntPtr)
 
-      Dim MediaType As Int32
-
-      Dim DiskGeometry As New BufferedBinaryWriter
-      DiskGeometry.Write(DiskSize)
-      DiskGeometry.Write(MediaType)
-      DiskGeometry.Write(TracksPerCylinder)
-      DiskGeometry.Write(SectorsPerTrack)
-      DiskGeometry.Write(BytesPerSector)
+      Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY With {
+        .Cylinders = DiskSize,
+        .TracksPerCylinder = TracksPerCylinder,
+        .SectorsPerTrack = SectorsPerTrack,
+        .BytesPerSector = BytesPerSector
+      }
 
       NativeFileIO.Win32Try(DLL.ImDiskCreateDeviceEx(StatusControl,
                                                      DeviceNumber,
-                                                     DiskGeometry.ToArray(),
+                                                     DiskGeometry,
                                                      ImageOffset,
                                                      Flags,
                                                      Filename,
@@ -272,7 +475,7 @@
     Public Shared Sub RemoveDevice(DeviceNumber As UInt32, StatusControl As IntPtr)
 
       NativeFileIO.Win32Try(DLL.ImDiskRemoveDevice(StatusControl, DeviceNumber, Nothing))
-      
+
     End Sub
 
     ''' <summary>
@@ -292,6 +495,9 @@
     ''' <param name="StatusControl">Optional handle to control that can display status messages during operation.</param>
     Public Shared Sub RemoveDevice(MountPoint As String, StatusControl As IntPtr)
 
+      If String.IsNullOrEmpty(MountPoint) Then
+        Throw New ArgumentNullException("MountPoint")
+      End If
       NativeFileIO.Win32Try(DLL.ImDiskRemoveDevice(StatusControl, 0, MountPoint))
 
     End Sub
@@ -303,7 +509,7 @@
     Public Shared Sub ForceRemoveDevice(DeviceNumber As UInt32)
 
       NativeFileIO.Win32Try(DLL.ImDiskForceRemoveDevice(IntPtr.Zero, DeviceNumber))
-      
+
     End Sub
 
     ''' <summary>
@@ -322,7 +528,7 @@
     ''' without a drive letter this parameter will be set to an empty Char value.</param>
     ''' <param name="Filename">Name of disk image file holding storage for file type virtual disk or used to create a
     ''' virtual memory type virtual disk.</param>
-    Public Shared Sub QueryDevice(ByRef DeviceNumber As UInt32,
+    Public Shared Sub QueryDevice(DeviceNumber As UInt32,
                                   ByRef DiskSize As Int64,
                                   ByRef TracksPerCylinder As UInt32,
                                   ByRef SectorsPerTrack As UInt32,
@@ -335,7 +541,7 @@
       Dim CreateDataBuffer As Byte() = Nothing
       Array.Resize(CreateDataBuffer, 1096)
 
-      NativeFileIO.Win32Try(DLL.ImDiskQueryDevice(DeviceNumber, CreateDataBuffer, 1096))
+      NativeFileIO.Win32Try(DLL.ImDiskQueryDevice(DeviceNumber, CreateDataBuffer, CreateDataBuffer.Length))
 
       Dim CreateDataReader As New BinaryReader(New MemoryStream(CreateDataBuffer), Encoding.Unicode)
       DeviceNumber = CreateDataReader.ReadUInt32()
@@ -356,6 +562,18 @@
       End If
 
     End Sub
+
+    ''' <summary>
+    ''' Retrieves properties for an existing ImDisk virtual disk.
+    ''' </summary>
+    ''' <param name="DeviceNumber">Device number of ImDisk virtual disk to retrieve properties for.</param>
+    Public Shared Function QueryDevice(DeviceNumber As UInt32) As DLL.ImDiskCreateData
+
+      Dim CreateDataBuffer As New DLL.ImDiskCreateData
+      NativeFileIO.Win32Try(DLL.ImDiskQueryDevice(DeviceNumber, CreateDataBuffer, Marshal.SizeOf(CreateDataBuffer.GetType())))
+      Return CreateDataBuffer
+
+    End Function
 
     ''' <summary>
     ''' Modifies properties for an existing ImDisk virtual disk.

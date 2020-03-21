@@ -175,11 +175,30 @@ typedef struct _IMDISK_SET_DEVICE_FLAGS
   ULONG FlagValues;
 } IMDISK_SET_DEVICE_FLAGS, *PIMDISK_SET_DEVICE_FLAGS;
 
+#define IMDISK_API_NO_BROADCAST_NOTIFY  0x00000001
+#define IMDISK_API_FORCE_DISMOUNT       0x00000002
+
 #ifdef WINAPI
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+   Get behaviour flags for API.
+*/
+ULONGLONG
+WINAPI
+ImDiskGetAPIFlags();
+
+/**
+   Set behaviour flags for API. Returns previously defined flag field.
+
+   Flags        New flags value to set.
+*/
+ULONGLONG
+WINAPI
+ImDiskSetAPIFlags(ULONGLONG Flags);
 
 /**
    An interactive rundll32.exe-compatible function to show the Add New Virtual
@@ -317,10 +336,9 @@ ImDiskGetOffsetByFileExt(IN LPCWSTR ImageFile,
 /**
    Attempts to find partition information from a partition table for a raw
    disk image file. If no master boot record is found this function returns
-   false. Returns TRUE if a master boot record with a partition table is found
+   FALSE. Returns TRUE if a master boot record with a partition table is found
    and values stored in the structures pointed to by the PartitionInformation
-   parameter. Otherwise the function returns FALSE and the memory pointed to by
-   the PartitionInformation parameter is not changed.
+   parameter. Otherwise the function returns FALSE.
 
    ImageFile    Name of raw disk image file to examine.
 
@@ -343,6 +361,92 @@ ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 			      IN PLARGE_INTEGER Offset OPTIONAL,
 			      OUT PPARTITION_INFORMATION PartitionInformation);
 
+
+/**
+   Prototype for raw disk reader function used with
+   ImDiskGetPartitionInfoIndirect().
+
+   Handle                Value that was passed as first parameter to
+                         ImDiskGetPartitionInfoIndirect().
+
+   Buffer                Buffer where read data is to be stored.
+
+   Offset                Disk offset where read operation starts.
+
+   NumberOfBytesToRead   Number of bytes to read from disk.
+
+   NumberOfBytesRead     Pointer to DWORD size variable where function stores
+                         number of bytes actually read into Buffer. This value
+                         can be equal to or less than NumberOfBytesToRead
+			 parameter.
+*/
+typedef BOOL (WINAPI *ImDiskReadFileProc)(IN HANDLE Handle,
+					  IN OUT LPVOID Buffer,
+					  IN LARGE_INTEGER Offset,
+					  IN DWORD NumberOfBytesToRead,
+					  OUT LPDWORD NumberOfBytesRead);
+
+/**
+   A device read function with ImDiskReadFileProc, which means that it can be
+   used when calling ImDiskGetPartitionInfoIndirect() function.
+
+   Handle       Operating system file handle representing a file or device
+                opened for reading.
+
+   Buffer       Buffer where read data is to be stored.
+
+   Offset       Disk offset where read operation starts.
+
+   NumberOfBytesToRead
+                Number of bytes to read from disk.
+
+   NumberOfBytesRead
+                Pointer to DWORD size variable where function stores number of
+		bytes actually read into Buffer. This value can be equal to or
+		less than NumberOfBytesToRead parameter.
+*/
+BOOL
+WINAPI
+ImDiskReadFileHandle(IN HANDLE Handle,
+		     IN OUT LPVOID Buffer,
+		     IN LARGE_INTEGER Offset,
+		     IN DWORD NumberOfBytesToRead,
+		     OUT LPDWORD NumberOfBytesRead);
+
+/**
+   Attempts to find partition information from a partition table for a disk
+   image through a supplied device reader function.
+
+   If no master boot record is found this function returns FALSE. Returns TRUE
+   if a master boot record with a partition table is found and values stored in
+   the structures pointed to by the PartitionInformation parameter. Otherwise
+   the function returns FALSE.
+
+   Handle       Value that is passed as first parameter to ReadFileProc.
+
+   ReadFileProc Procedure of type ImDiskReadFileProc that is called to read raw
+                disk image.
+
+   SectorSize   Optional sector size used on disk if different from default
+                512 bytes.
+
+   Offset       Optional offset in bytes to master boot record within file for
+                use with "non-raw" image files with headers before the actual
+		disk image data.
+
+   PartitionInformation
+                Pointer to an array of eight PARTITION_INFORMATION structures
+		which will receive information from four recognized primary
+		partition entries followed by four recognized extended entries.
+*/
+BOOL
+WINAPI
+ImDiskGetPartitionInfoIndirect(IN HANDLE Handle,
+			       IN ImDiskReadFileProc ReadFileProc,
+			       IN DWORD SectorSize OPTIONAL,
+			       IN PLARGE_INTEGER Offset OPTIONAL,
+			       OUT PPARTITION_INFORMATION PartitionInfo);
+
 /**
    Starts a Win32 service or loads a kernel module or driver.
 
@@ -355,22 +459,26 @@ ImDiskStartService(IN LPWSTR ServiceName);
 /**
    An easy way to turn an empty NTFS directory to a reparsepoint that redirects
    requests to a mounted device. Acts quite like mount points or symbolic links
-   in *nix.
+   in *nix. If MountPoint specifies a character followed by a colon, a drive
+   letter is instead created to point to Target.
 
-   Directory    Path to empty directory on an NTFS volume.
+   MountPoint   Path to empty directory on an NTFS volume, or a drive letter
+                followed by a colon.
 
    Target       Target device path on kernel object namespace form, e.g.
                 \Device\ImDisk2 or similar.
 */
 BOOL
 WINAPI
-ImDiskCreateMountPoint(IN LPCWSTR Directory,
+ImDiskCreateMountPoint(IN LPCWSTR MountPoint,
 		       IN LPCWSTR Target);
 
 /**
-   Restores a reparsepoint to be an ordinary empty directory.
+   Restores a reparsepoint to be an ordinary empty directory, or removes a
+   drive letter mount point.
 
-   Directory    Path to a reparse point on an NTFS volume.
+   MountPoint   Path to a reparse point on an NTFS volume, or a drive letter
+                followed by a colon to remove a drive letter mount point.
 */
 BOOL
 WINAPI

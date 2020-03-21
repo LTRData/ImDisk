@@ -32,33 +32,34 @@
 extern "C" {
 #endif
 
-int
-safe_read(int fd, void *pdata, size_t size);
-
-int
-safe_write(int fd, const void *pdata, size_t size);
-
 #ifdef _WIN32
 __inline
-ssize_t
-pread(int d, void *buf, size_t nbytes, __int64 offset)
+int
+pread(int d, void *buf, int nbytes, __int64 offset)
 {
   if (_lseeki64(d, offset, SEEK_SET) != offset)
-    return (ssize_t) -1;
+    return -1;
 
   return read(d, buf, nbytes);
 }
 
 __inline
-ssize_t
-pwrite(int d, const void *buf, size_t nbytes, __int64 offset)
+int
+pwrite(int d, const void *buf, int nbytes, __int64 offset)
 {
   if (_lseeki64(d, offset, SEEK_SET) != offset)
-    return (ssize_t) -1;
+    return -1;
 
   return write(d, buf, nbytes);
 }
+
 #endif
+
+int
+safe_read(SOCKET fd, void *pdata, safeio_size_t size);
+
+int
+safe_write(SOCKET fd, const void *pdata, safeio_size_t size);
 
 #ifdef __cplusplus
 }

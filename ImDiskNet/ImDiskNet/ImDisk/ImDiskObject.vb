@@ -1,4 +1,4 @@
-﻿Namespace IO.ImDisk
+﻿Namespace ImDisk
 
   ''' <summary>
   ''' Base class that represents ImDisk Virtual Disk Driver created device objects.
@@ -11,10 +11,21 @@
     Public ReadOnly SafeFileHandle As SafeFileHandle
     Public ReadOnly AccessMode As FileAccess
 
+    ''' <summary>
+    ''' Opens specified Path with CreateFile Win32 API and encapsulates the returned handle
+    ''' in a new ImDiskObject.
+    ''' </summary>
+    ''' <param name="Path">Path to pass to CreateFile API</param>
+    ''' <param name="AccessMode">Access mode for opening and for underlying FileStream</param>
     Protected Sub New(Path As String, AccessMode As FileAccess)
       Me.New(NativeFileIO.OpenFileHandle(Path, AccessMode, FileShare.Read, FileMode.Open, Overlapped:=False), AccessMode)
     End Sub
 
+    ''' <summary>
+    ''' Encapsulates a handle in a new ImDiskObject.
+    ''' </summary>
+    ''' <param name="Handle">Existing handle to use</param>
+    ''' <param name="Access">Access mode for underlying FileStream</param>
     Protected Sub New(Handle As SafeFileHandle, Access As FileAccess)
       SafeFileHandle = Handle
       AccessMode = Access
@@ -26,24 +37,7 @@
     ''' </summary>
     Public Function CheckDriverVersion() As Boolean
 
-      Dim HandleReferenced As Boolean
-      Try
-        SafeFileHandle.DangerousAddRef(HandleReferenced)
-        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
-          Throw New ArgumentException("Handle is invalid")
-        End If
-        If DLL.ImDiskCheckDriverVersion(SafeFileHandle.DangerousGetHandle()) <> 0 Then
-          Return True
-        Else
-          Return False
-        End If
-
-      Finally
-        If HandleReferenced Then
-          SafeFileHandle.DangerousRelease()
-        End If
-
-      End Try
+      Return DLL.ImDiskCheckDriverVersion(SafeFileHandle)
 
     End Function
 
@@ -58,7 +52,9 @@
         End If
 
         ' TODO: free unmanaged resources (unmanaged objects) and override Finalize() below.
-        SafeFileHandle.Dispose()
+        If SafeFileHandle IsNot Nothing Then
+          SafeFileHandle.Dispose()
+        End If
 
         ' TODO: set large fields to null.
       End If
@@ -72,8 +68,10 @@
       MyBase.Finalize()
     End Sub
 
-    ' This code added by Visual Basic to correctly implement the disposable pattern.
-    Public Sub Dispose() Implements IDisposable.Dispose
+    ''' <summary>
+    ''' Close device object.
+    ''' </summary>
+    Public Sub Close() Implements IDisposable.Dispose
       ' Do not change this code.  Put cleanup code in Dispose(disposing As Boolean) above.
       Dispose(True)
       GC.SuppressFinalize(Me)

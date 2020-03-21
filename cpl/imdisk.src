@@ -13,9 +13,13 @@ EXPORTS
 	MsgBoxPrintF
 
 	_MsgBoxLastError@8
+	_ImDiskGetAPIFlags@0
+	_ImDiskSetAPIFlags@8
 	_ImDiskGetPartitionTypeName@12
 	_ImDiskGetOffsetByFileExt@8
 	_ImDiskGetPartitionInformation@16
+	_ImDiskReadFileHandle@24
+	_ImDiskGetPartitionInfoIndirect@20
 	_ImDiskStartService@4
 	_ImDiskCreateMountPoint@8
 	_ImDiskRemoveMountPoint@4
@@ -43,9 +47,13 @@ EXPORTS
 	_ImDiskSaveImageFileInteractive@16
 
 	MsgBoxLastError=_MsgBoxLastError@8
+	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
+	ImDiskSetAPIFlags=_ImDiskSetAPIFlags@8
 	ImDiskGetPartitionTypeName=_ImDiskGetPartitionTypeName@12
 	ImDiskGetOffsetByFileExt=_ImDiskGetOffsetByFileExt@8
 	ImDiskGetPartitionInformation=_ImDiskGetPartitionInformation@16
+	ImDiskReadFileHandle=_ImDiskReadFileHandle@24
+	ImDiskGetPartitionInfoIndirect=_ImDiskGetPartitionInfoIndirect@20
 	ImDiskStartService=_ImDiskStartService@4
 	ImDiskCreateMountPoint=_ImDiskCreateMountPoint@8
 	ImDiskRemoveMountPoint=_ImDiskRemoveMountPoint@4
@@ -83,9 +91,13 @@ EXPORTS
 	MsgBoxPrintF
 
 	MsgBoxLastError
+	ImDiskGetAPIFlags
+	ImDiskSetAPIFlags
 	ImDiskGetPartitionTypeName
 	ImDiskGetOffsetByFileExt
 	ImDiskGetPartitionInformation
+	ImDiskReadFileHandle
+	ImDiskGetPartitionInfoIndirect
 	ImDiskStartService
 	ImDiskCreateMountPoint
 	ImDiskRemoveMountPoint

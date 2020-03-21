@@ -27,23 +27,28 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <stdlib.h>
+#include <stdio.h>
+#include <io.h>
 #include <windows.h>
 #include <winsock.h>
 
 #include "..\inc\wio.hpp"
 
+#include "devio_types.h"
+#include "safeio.h"
+
 WOverlapped Overlapped;
 
 extern "C"
 int
-safe_read(SOCKET fd, void *pdata, size_t size)
+safe_read(SOCKET fd, void *pdata, safeio_size_t size)
 {
-  return Overlapped.BufRecv((HANDLE) fd, pdata, size) == size;
+  return Overlapped.BufRecv((HANDLE) fd, pdata, size) == (DWORD)size;
 }
 
 extern "C"
 int
-safe_write(int fd, const void *pdata, size_t size)
+safe_write(SOCKET fd, const void *pdata, safeio_size_t size)
 {
   return Overlapped.BufSend((HANDLE) fd, pdata, size);
 }

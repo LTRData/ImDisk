@@ -1,15 +1,15 @@
 #include <vcclr.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <stdio.h>
+#include <io.h>
 
-typedef size_t ssize_t;
-typedef __int64 off_t_64;
-
+#include "..\devio_types.h"
 #include "..\devio.h"
 
-//#define DEBUG
+#define CONSOLE_MESSAGES
 
-#ifdef DEBUG
+#ifdef CONSOLE_MESSAGES
 #define DbgMsg(m) System::Console::Out->WriteLine(m)
 #else
 #define DbgMsg(m)
@@ -35,9 +35,9 @@ public ref class StreamCreator abstract sealed
 	}
 };
 
-ssize_t
+safeio_ssize_t
 	__cdecl
-	dllread(int fd, void *buf, size_t size,	off_t_64 offset)
+	dllread(void *fd, void *buf, safeio_size_t size, off_t_64 offset)
 {
 	try
 	{
@@ -64,9 +64,9 @@ ssize_t
 	}
 }
 
-ssize_t
+safeio_ssize_t
 	__cdecl
-	dllwrite(int fd, void *buf, size_t size, off_t_64 offset)
+	dllwrite(void *fd, void *buf, safeio_size_t size, off_t_64 offset)
 {
 	try
 	{
@@ -93,7 +93,7 @@ ssize_t
 
 int
 	__cdecl
-	dllclose(int fd)
+	dllclose(void *fd)
 {
 	try
 	{
@@ -114,7 +114,7 @@ int
 	}
 }
 
-int
+void *
 	__cdecl
 	dllopen(
 		const char *str,
@@ -140,7 +140,7 @@ int
 		methodarguments[0] = arguments[3];
 		methodarguments[1] = read_only ? true : false;
 
-		gcroot<Object^> *gcobjptr = NULL;
+		DbgMsg("Loading assembly " + assemblyfile);
 
 		Assembly ^assembly = Assembly::Load(AssemblyName::GetAssemblyName(assemblyfile));
 
@@ -151,6 +151,8 @@ int
 		Type ^type = assembly->GetType(classname);
 		if (type == nullptr)
 			throw gcnew Exception("Class not found: " + classname);
+
+		DbgMsg("Loading method " + methodname);
 
 		MethodInfo ^method = type->GetMethod(
 			methodname,
@@ -178,17 +180,22 @@ int
 		if (!Stream::typeid->IsAssignableFrom(method->ReturnType))
 			throw gcnew Exception("Method has wrong return Type: " + classname + "::" + methodname);
 
+		DbgMsg("Invoking method " + methodname);
+
 		Stream ^strm = (Stream^)method->Invoke(nullptr, methodarguments);
 		if (strm == nullptr)
 			throw gcnew Exception("Null Stream reference returned");
 
 		*size = strm->Length;
+		void *handle = new gcroot<Stream^>(strm);
 
-		return (int)new gcroot<Stream^>(strm);
+		DbgMsg("Got Stream object:\r\ntype=" + strm->GetType()->ToString() + " length=" + (*size).ToString() + " handle=0x" + IntPtr(handle).ToString("X"));
+
+		return handle;
 	}
 	catch (Exception ^ex)
 	{
 		ErrMsg(ex->ToString());
-		return -1;
+		return NULL;
 	}
 }

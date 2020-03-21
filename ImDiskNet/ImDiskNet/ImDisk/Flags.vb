@@ -1,4 +1,4 @@
-﻿Namespace IO.ImDisk
+﻿Namespace ImDisk
 
   ''' <summary>
   ''' Values for ImDisk flags fields used when creating, querying or modifying virtual disks.
@@ -64,6 +64,11 @@
     ''' is used.
     ''' </summary>
     ProxyTypeTCP = &H2000UI
+    ''' <summary>
+    ''' Specifies that proxy application will be contacted through shared memory. The Filename parameter specifies object
+    ''' name of shared memory block and synchronization event objects.
+    ''' </summary>
+    ProxyTypeSharedMemory = &H3000UI
 
     ''' <summary>
     ''' This flag can only be set by the driver and may be included in the response Flags field from QueryDevice method.

@@ -1,4 +1,4 @@
-﻿Namespace IO.ImDisk
+﻿Namespace ImDisk
 
   ''' <summary>
   ''' Represents ImDisk Virtual Disk Driver control device object.
@@ -11,7 +11,7 @@
     ''' Creates a new instance and opens ImDisk Virtual Disk Driver control device object.
     ''' </summary>
     Public Sub New()
-      MyBase.New("\\?\ImDiskCtl", 0)
+      MyBase.New("\\?\ImDiskCtl", AccessMode:=0)
 
     End Sub
 
