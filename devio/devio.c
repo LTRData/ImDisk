@@ -470,12 +470,12 @@ main(int argc, char **argv)
     }
 
   if (argc > 5)
-    sscanf(argv[4], ULL_FMT, &devio_info.req_alignment);
+    sscanf(argv[5], ULL_FMT, &devio_info.req_alignment);
   else
     devio_info.req_alignment = DEF_REQ_ALIGNMENT;
 
   if (argc > 6)
-    sscanf(argv[5], "%lu", &buffer_size);
+    sscanf(argv[6], "%lu", &buffer_size);
 
   buf = malloc(buffer_size);
   if (buf == NULL)

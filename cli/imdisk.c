@@ -1,7 +1,7 @@
 /*
     Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2005-2007 Olof Lagerkvist.
+    Copyright (C) 2004-2008 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -49,6 +49,7 @@ enum
     IMDISK_CLI_ERROR_FORMAT = 8,
     IMDISK_CLI_ERROR_BAD_MOUNT_POINT = 9,
     IMDISK_CLI_ERROR_BAD_SYNTAX = 10,
+    IMDISK_CLI_ERROR_NOT_ENOUGH_MEMORY = 11,
     IMDISK_CLI_ERROR_FATAL = -1
   };
 
@@ -83,7 +84,7 @@ ImDiskSyntaxHelp()
      "imdisk -a -t type -m mountpoint [-n] [-o opt1[,opt2 ...]] [-f|-F file]\r\n"
      "       [-s size] [-b offset] [-S sectorsize] [-u unit] [-x sectors/track]\r\n"
      "       [-y tracks/cylinder] [-p \"format-parameters\"]\r\n"
-     "imdisk -d [-u unit | -m mountpoint]\r\n"
+     "imdisk -d|-D [-u unit | -m mountpoint]\r\n"
      "imdisk -l [-u unit | -m mountpoint]\r\n"
      "imdisk -e [-s size] [-o opt1[,opt2 ...]] [-u unit | -m mountpoint]\r\n"
      "\n"
@@ -91,6 +92,7 @@ ImDiskSyntaxHelp()
      "        with the parameters specified and attach it to the system.\r\n"
      "\n"
      "-d      Detach a virtual disk from the system and release all resources.\r\n"
+     "        Use -D to force removal even if the device is in use.\r\n"
      "\n"
      "-e      Edit an existing virtual disk.\r\n"
      "\n"
@@ -153,6 +155,10 @@ ImDiskSyntaxHelp()
      "        used as backingstore for the virtual disk is adjusted to the new size\r\n"
      "        specified with this size option.\r\n"
      "\n"
+     "        The size can be a negative value to indicate the size of free physical\r\n"
+     "        memory minus this size. If you e.g. type -400M the size of the virtual\r\n"
+     "        disk will be the amount of free physical memory minus 400 MB.\r\n"
+     "\n"
      "-b offset\r\n"
      "        Specifies an offset in an image file where the virtual disk begins. All\r\n"
      "        offsets of I/O operations on the virtual disk will be relative to this\r\n"
@@ -211,7 +217,7 @@ ImDiskSyntaxHelp()
      "        fixed.\r\n"
      "\n"
      "        Note that virtual floppy or CD/DVD-ROM drives are always read-only and\r\n"
-     "        removable devices and that can not be changed.\r\n"
+     "        removable devices and that cannot be changed.\r\n"
      "\n"
      "cd      Creates a virtual CD-ROM/DVD-ROM. This is the default if the file\r\n"
      "        name specified with the -f option ends with either .iso or .bin\r\n"
@@ -616,7 +622,9 @@ ImDiskCliFormatDisk(LPWSTR MountPoint, LPWSTR FormatOptions)
 }
 
 int
-ImDiskCliRemoveDevice(DWORD DeviceNumber, LPCWSTR MountPoint)
+ImDiskCliRemoveDevice(DWORD DeviceNumber,
+		      LPCWSTR MountPoint,
+		      BOOL ForceDismount)
 {
   PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
     _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
@@ -781,24 +789,49 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber, LPCWSTR MountPoint)
 		       0,
 		       &dw,
 		       NULL))
+    if (ForceDismount)
+      {
+	puts("Failed, forcing dismount...");
+	
+	DeviceIoControl(device,
+			FSCTL_DISMOUNT_VOLUME,
+			NULL,
+			0,
+			NULL,
+			0,
+			&dw,
+			NULL);
+	
+	DeviceIoControl(device,
+			FSCTL_LOCK_VOLUME,
+			NULL,
+			0,
+			NULL,
+			0,
+			&dw,
+			NULL);
+      }
+    else
+      {
+	PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+      }
+  else
     {
-      PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-    }
+      puts("Dismounting filesystem...");
 
-  puts("Dismounting filesystem...");
-
-  if (!DeviceIoControl(device,
-                       FSCTL_DISMOUNT_VOLUME,
-                       NULL,
-		       0,
-		       NULL,
-		       0,
-		       &dw,
-		       NULL))
-    {
-      PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+      if (!DeviceIoControl(device,
+			   FSCTL_DISMOUNT_VOLUME,
+			   NULL,
+			   0,
+			   NULL,
+			   0,
+			   &dw,
+			   NULL))
+	{
+	  PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	  return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	}
     }
 
   puts("Removing device...");
@@ -816,18 +849,14 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber, LPCWSTR MountPoint)
       return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
     }
 
-  if (!DeviceIoControl(device,
-                       FSCTL_UNLOCK_VOLUME,
-                       NULL,
-		       0,
-		       NULL,
-		       0,
-		       &dw,
-		       NULL))
-    {
-      PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-    }
+  DeviceIoControl(device,
+		  FSCTL_UNLOCK_VOLUME,
+		  NULL,
+		  0,
+		  NULL,
+		  0,
+		  &dw,
+		  NULL);
 
   CloseHandle(device);
 
@@ -1029,7 +1058,7 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
   _snprintf(message_buffer, sizeof message_buffer,
 	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s%s.",
 	    create_data->DriveLetter == 0 ?
-	    L'>' : create_data->DriveLetter,
+	    L' ' : create_data->DriveLetter,
 	    (MountPoint == NULL) | (create_data->DriveLetter != 0) ?
 	    L":" : MountPoint,
 	    create_data->FileNameLength > 0 ?
@@ -1400,6 +1429,7 @@ wmain(int argc, LPWSTR argv[])
   DWORD flags = 0;
   BOOL native_path = FALSE;
   BOOL numeric_print = FALSE;
+  BOOL force_dismount = FALSE;
   LPWSTR file_name = NULL;
   LPWSTR mount_point = NULL;
   LPWSTR format_options = NULL;
@@ -1416,7 +1446,7 @@ wmain(int argc, LPWSTR argv[])
 	  ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\n"
 	   "Version %i.%i.%i - (Compiled " __TIMESTAMP__ ")\n"
 	   "\n"
-	   "Copyright (C) 2004-2007 Olof Lagerkvist.\r\n"
+	   "Copyright (C) 2004-2008 Olof Lagerkvist.\r\n"
 "\n"
 	   "http://www.ltr-data.se     olof@ltr-data.se\r\n"
 	   "\n"
@@ -1474,10 +1504,15 @@ wmain(int argc, LPWSTR argv[])
 	    break;
 
 	  case L'd':
+	  case L'D':
 	    if (op_mode != OP_MODE_NONE)
 	      ImDiskSyntaxHelp();
 
 	    op_mode = OP_MODE_REMOVE;
+
+	    if (argv[0][1] == L'D')
+	      force_dismount = TRUE;
+
 	    break;
 
 	  case L'l':
@@ -1622,7 +1657,7 @@ wmain(int argc, LPWSTR argv[])
 	    {
               WCHAR suffix = 0;
 
-	      swscanf(argv[1], L"%I64u%c",
+	      swscanf(argv[1], L"%I64i%c",
 		      &disk_geometry.Cylinders, &suffix);
 
               switch (suffix)
@@ -1669,6 +1704,26 @@ wmain(int argc, LPWSTR argv[])
                           suffix);
                   return IMDISK_CLI_ERROR_BAD_SYNTAX;
                 }
+
+	      if (disk_geometry.Cylinders.QuadPart < 0)
+		{
+		  MEMORYSTATUS memstat;
+		  GlobalMemoryStatus(&memstat);
+		  disk_geometry.Cylinders.QuadPart =
+		    memstat.dwAvailPhys +
+		    disk_geometry.Cylinders.QuadPart;
+
+		  if (disk_geometry.Cylinders.QuadPart < 0)
+		    {
+		      fprintf(stderr,
+			      "ImDisk: Not enough memory, there is currently "
+			      "%.4g %s free physical memory.\n",
+			      _h(memstat.dwAvailPhys),
+			      _p(memstat.dwAvailPhys));
+
+		      return IMDISK_CLI_ERROR_NOT_ENOUGH_MEMORY;
+		    }
+		}
 	    }
 
 	    argc--;
@@ -1826,23 +1881,26 @@ wmain(int argc, LPWSTR argv[])
 				    native_path, mount_point);
 
 	if (ret == 0)
-	  if (numeric_print)
-	    printf("%u\n", device_number);
-	  else
-	    ImDiskOemPrintF
-	      (stdout,
-	       "Created device %1!u!: %2!ws! -> %3!ws!",
-	       device_number,
-	       mount_point == NULL ? L"No mountpoint" : mount_point,
-	       file_name == NULL ? L"VM image" : file_name);
+	  {
+	    if (numeric_print)
+	      printf("%u\n", device_number);
+	    else
+	      ImDiskOemPrintF
+		(stdout,
+		 "Created device %1!u!: %2!ws! -> %3!ws!",
+		 device_number,
+		 mount_point == NULL ? L"No mountpoint" : mount_point,
+		 file_name == NULL ? L"VM image" : file_name);
 
-	if (format_options != NULL)
-	  if (mount_point != NULL)
-	    ImDiskCliFormatDisk(mount_point, format_options);
-	  else
-	    fputs("Formatting is not supported without a mount point.\r\n"
-		  "The virtual disk has been created without formatting.\r\n",
-		  stderr);
+	    if (format_options != NULL)
+	      if (mount_point != NULL)
+		ImDiskCliFormatDisk(mount_point, format_options);
+	      else
+		fputs
+		  ("Formatting is not supported without a mount point.\r\n"
+		   "The virtual disk has been created without formatting.\r\n",
+		   stderr);
+	  }
 
 	return ret;
       }
@@ -1852,7 +1910,7 @@ wmain(int argc, LPWSTR argv[])
 	  (mount_point == NULL))
 	ImDiskSyntaxHelp();
 
-      return ImDiskCliRemoveDevice(device_number, mount_point);
+      return ImDiskCliRemoveDevice(device_number, mount_point, force_dismount);
 
     case OP_MODE_QUERY:
       if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &

@@ -1,5 +1,5 @@
-UNAME=exe
 UNAME!=uname
+UNAME?=$(shell uname)
 
 all: devio.$(UNAME)
 

@@ -1538,6 +1538,28 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   // Ensure upper-case driveletter.
   CreateData->DriveLetter &= ~0x20;
 
+  // Now build real DeviceType and DeviceCharacteristics parameters.
+  if (IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_CD)
+    {
+      device_type = FILE_DEVICE_CD_ROM;
+      device_characteristics = FILE_READ_ONLY_DEVICE | FILE_REMOVABLE_MEDIA;
+    }
+  else
+    {
+      device_type = FILE_DEVICE_DISK;
+
+      if (IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD)
+	device_characteristics = FILE_FLOPPY_DISKETTE | FILE_REMOVABLE_MEDIA;
+      else
+	device_characteristics = 0;
+    }
+
+  if (IMDISK_REMOVABLE(CreateData->Flags))
+    device_characteristics |= FILE_REMOVABLE_MEDIA;
+
+  if (IMDISK_READONLY(CreateData->Flags))
+    device_characteristics |= FILE_READ_ONLY_DEVICE;
+
   KdPrint
     (("ImDisk: After checks and translations we got this create data:\n"
       "DeviceNumber   = %#x\n"
@@ -1563,28 +1585,6 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       (int)(CreateData->FileNameLength / sizeof(*CreateData->FileName)),
       CreateData->FileName,
       CreateData->DriveLetter));
-
-  // Now build real DeviceType and DeviceCharacteristics parameters.
-  if (IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_CD)
-    {
-      device_type = FILE_DEVICE_CD_ROM;
-      device_characteristics = FILE_READ_ONLY_DEVICE | FILE_REMOVABLE_MEDIA;
-    }
-  else
-    {
-      device_type = FILE_DEVICE_DISK;
-
-      if (IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD)
-	device_characteristics = FILE_FLOPPY_DISKETTE | FILE_REMOVABLE_MEDIA;
-      else
-	device_characteristics = 0;
-    }
-
-  if (IMDISK_REMOVABLE(CreateData->Flags))
-    device_characteristics |= FILE_REMOVABLE_MEDIA;
-
-  if (IMDISK_READONLY(CreateData->Flags))
-    device_characteristics |= FILE_READ_ONLY_DEVICE;
 
   // Buffer for device name
   device_name_buffer = ExAllocatePool(PagedPool,
@@ -1646,6 +1646,10 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
       return status;
     }
+
+  KdPrint
+    (("ImDisk: Setting the AlignmentRequirement field to %#x.",
+      alignment_requirement));
 
   (*DeviceObject)->Flags |= DO_DIRECT_IO;
   (*DeviceObject)->AlignmentRequirement = alignment_requirement;
@@ -1983,6 +1987,12 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
       return STATUS_SUCCESS;
     }
+
+  KdPrint2(("ImDisk: Device %i got read/write request Offset=%p%p Len=%p.\n",
+	    device_extension->device_number,
+	    io_stack->Parameters.Read.ByteOffset.HighPart,
+	    io_stack->Parameters.Read.ByteOffset.LowPart,
+	    io_stack->Parameters.Read.Length));
 
   IoMarkIrpPending(Irp);
 

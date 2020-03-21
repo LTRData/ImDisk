@@ -1,7 +1,7 @@
 /*
     API library for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2007 Olof Lagerkvist.
+    Copyright (C) 2007-2008 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -559,7 +559,7 @@ ImDiskCreateDevice(HWND hWnd,
 	  case ERROR_SERVICE_DISABLED:
 	    if (hWnd != NULL)
 	      MessageBox(hWnd,
-			 L"The ImDisk Virtual Disk Driver is not disabled.",
+			 L"The ImDisk Virtual Disk Driver is disabled.",
 			 L"ImDisk Virtual Disk Driver", MB_ICONSTOP);
 	    return FALSE;
 

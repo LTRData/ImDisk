@@ -170,19 +170,16 @@ extern "C" {
 #endif
 
 /**
-   An interactive rundll32.exe-compatible function to mount a file with auto-
-   selected options in one operation. It is used by the Windows Explorer
-   context menues.
+   An interactive rundll32.exe-compatible function to show the Add New Virtual
+   Disk dialog box with a file name already filled in. It is used by the
+   Windows Explorer context menues.
 
    hWnd         Specifies a window that will be the owner window of any
                 MessageBox:es or similar.
 
    hInst        Ignored.
 
-   lpszCmdLine  An ANSI string specifying the file to mount. If the string
-                starts with "-r," (without the quotes) the rest of the string
-		specifies the filename and that it will be mounted in read-
-		only mode.
+   lpszCmdLine  An ANSI string specifying the image file to mount.
 
    nCmdShow     Ignored.
 */
@@ -211,10 +208,33 @@ RunDLL_MountFile(HWND hWnd,
 */
 void
 WINAPI
-RunDLL_MountFile(HWND hWnd,
-		 HINSTANCE hInst,
-		 LPSTR lpszCmdLine,
-		 int nCmdShow);
+RunDLL_RemoveDevice(HWND hWnd,
+		    HINSTANCE hInst,
+		    LPSTR lpszCmdLine,
+		    int nCmdShow);
+
+/**
+   An interactive rundll32.exe-compatible function to save a virtual or
+   physical drive as an image file. If the filesystem on the device cannot be
+   locked and dismounted a MessageBox() is displayed that asks the user if the
+   image saving should continue anyway.
+
+   hWnd         Specifies a window that will be the owner window of any
+                MessageBox:es or similar.
+
+   hInst        Ignored.
+
+   lpszCmdLine  An ANSI string specifying the the disk to save. This can be on
+   the form "F:" or "F:\" (without the quotes).
+
+   nCmdShow     Ignored.
+*/
+void
+WINAPI
+RunDLL_SaveImageFile(HWND hWnd,
+		     HINSTANCE hInst,
+		     LPSTR lpszCmdLine,
+		     int nCmdShow);
 
 /**
    This function displays a MessageBox() dialog with a
@@ -347,7 +367,7 @@ WINAPI
 ImDiskFindFreeDriveLetter();
 
 /**
-   Returns a bit-mask representing ImDisk devices. Bit 0 represents device 0,
+   Returns a bit-field representing ImDisk devices. Bit 0 represents device 0,
    bit 1 represents device 1 and so on. A bit is 1 if the device exists or 0 if
    the device number is free.
 */

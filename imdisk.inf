@@ -60,6 +60,9 @@ imdisk.inf
 [ImDiskAddReg]
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayName", 0, "ImDisk Virtual Disk Driver"
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "UninstallString", 0, "rundll32.exe setupapi.dll,InstallHinfSection DefaultUninstall 132 %17%\imdisk.inf"
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayIcon", 0, "%11%\imdisk.cpl"
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "EstimatedSize", 65537, 3635
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "Size", 0, ""
 
 HKCR, "*\shell\ImDiskMountFile", , 0, "Mount as ImDisk Virtual Disk"
 HKCR, "*\shell\ImDiskMountFile\command", , 0, "rundll32.exe imdisk.cpl,RunDLL_MountFile %%L"

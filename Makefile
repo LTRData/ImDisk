@@ -1,4 +1,4 @@
-BUILD_OPTIONS=-cegiw -nmake -i
+BUILD_DEFAULT=-cegiw -nmake -i
 
 all: cli\i386\imdisk.exe svc\i386\imdsksvc.exe cpl\i386\imdisk.cpl sys\i386\imdisk.sys deviotst\i386\deviotst.exe
 
@@ -6,24 +6,21 @@ clean:
 	del /s *~ *.obj *.res *.log *.wrn *.err *.mac *.o
 
 publish: p:\utils\imdiskinst.exe p:\utils\imdisk_source.7z
+	start explorer ftp://ftp.ltr-data.se/ltr-data.se/public_html/files
+	start z:\ltr-website\files\
 
 p:\utils\imdiskinst.exe: p:\utils\imdisk.7z p:\utils\7zSD.sfx 7zSDcfg.txt
 	copy /y /b p:\utils\7zSD.sfx + 7zSDcfg.txt + p:\utils\imdisk.7z p:\utils\imdiskinst.exe
 	copy /y /b p:\utils\7zSD.sfx + 7zSDcfg.txt + p:\utils\imdisk.7z z:\ltr-website\files\imdiskinst.exe
-	start explorer ftp://ftp.ltr-data.se/ltr-data.se/public_html/files
-	start z:\ltr-website\files\
 
-p:\utils\imdisk.7z: readme.txt gpl.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys imdisk.inf runwait.exe
+p:\utils\imdisk.7z: readme.txt gpl.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys imdisk.inf
 	del p:\utils\imdisk.7z
-	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys imdisk.inf runwait.exe
+	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys imdisk.inf
 
-p:\utils\imdisk_source.7z: *.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys deviotst\i386\deviotst.exe imdisk.inf runwait.exe uninstall.cmd Makefile
+p:\utils\imdisk_source.7z: *.txt cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys deviotst\i386\deviotst.exe devio\*.c devio\*.cpp devio\*.h devio\Makefile* imdisk.inf uninstall.cmd Makefile
 	del p:\utils\imdisk_source.7z
-	7z a -r p:\utils\imdisk_source.7z -m0=PPMd *.txt *.def *.ico *.c *.h *.cpp *.hpp *.rc *.lib Sources dirs imdisk.inf runwait.exe uninstall.cmd Makefile
+	7z a -r p:\utils\imdisk_source.7z -x!*~ -m0=PPMd *.txt *.def *.ico *.c *.h *.cpp *.hpp *.rc *.lib Sources dirs imdisk.inf uninstall.cmd Makefile*
 	xcopy p:\utils\imdisk_source.7z z:\ltr-website\files\ /d/y
-
-runwait.exe: p:\utils\runwait.exe
-	copy /y p:\utils\runwait.exe runwait.exe
 
 cli\i386\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\i386\imdisk.lib
 	cd cli

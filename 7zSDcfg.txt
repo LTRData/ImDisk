@@ -1,5 +1,6 @@
 ;!@Install@!UTF-8!
 Title="ImDisk Virtual Disk Driver"
 BeginPrompt="This will install the ImDisk Virtual Disk Driver with the imdisk.exe command line tool and a Control Panel applet. Continue?"
-RunProgram="runwait.exe rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 132 .\imdisk.inf"
+ExecuteFile="rundll32.exe"
+ExecuteParameters="setupapi.dll,InstallHinfSection DefaultInstall 132 .\imdisk.inf"
 ;!@InstallEnd@!
