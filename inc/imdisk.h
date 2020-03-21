@@ -40,7 +40,8 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0103
+#define IMDISK_VERSION                 0x0110
+#define IMDISK_DRIVER_VERSION          0x0103
 
 ///
 /// The base names for the device objects created in \Device
@@ -268,6 +269,68 @@ VOID
 WINAPI
 MsgBoxLastError(IN HWND hWndParent OPTIONAL,
 		IN LPCWSTR Prefix);
+
+/**
+   Used to get a string describing a partition type.
+
+   PartitionType  Partition type from partition table.
+
+   Name           Pointer to memory that receives a string describing the
+                  partition type.
+
+   NameSize       Size of memory area pointed to by the Name parameter.
+*/
+VOID
+WINAPI
+ImDiskGetPartitionTypeName(IN BYTE PartitionType,
+			   OUT LPWSTR Name,
+			   IN DWORD NameSize);
+
+/**
+   Returns the offset in bytes to actual disk image data for some known
+   "non-raw" image file formats with headers. Returns TRUE if file extension
+   is recognized and the known offset has been stored in the variable pointed
+   to by the Offset parameter. Otherwise the function returns FALSE and the
+   value pointed to by the Offset parameter is not changed.
+
+   ImageFile    Name of raw disk image file. This does not need to be a valid
+                path or filename, just the extension is used by this function.
+
+   Offset       Returned offset in bytes if function returns TRUE.
+*/
+BOOL
+WINAPI
+ImDiskGetOffsetByFileExt(IN LPCWSTR ImageFile,
+			 OUT PLARGE_INTEGER Offset);
+
+/**
+   Attempts to find partition information from a partition table for a raw
+   disk image file. If no master boot record is found this function returns
+   false. Returns TRUE if a master boot record with a partition table is found
+   and values stored in the structures pointed to by the PartitionInformation
+   parameter. Otherwise the function returns FALSE and the memory pointed to by
+   the PartitionInformation parameter is not changed.
+
+   ImageFile    Name of raw disk image file to examine.
+
+   SectorSize   Optional sector size used on disk if different from default
+                512 bytes.
+
+   Offset       Optional offset in bytes to master boot record within file for
+                use with "non-raw" image files with headers before the actual
+		disk image data.
+
+   PartitionInformation
+                Pointer to an array of eight PARTITION_INFORMATION structures
+		which will receive information from four recognized primary
+		partition entries followed by four recognized extended entries.
+*/
+BOOL
+WINAPI
+ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
+			      IN DWORD SectorSize OPTIONAL,
+			      IN PLARGE_INTEGER Offset OPTIONAL,
+			      OUT PPARTITION_INFORMATION PartitionInformation);
 
 /**
    Starts a Win32 service or loads a kernel module or driver.

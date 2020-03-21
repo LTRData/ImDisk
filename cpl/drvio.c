@@ -40,6 +40,18 @@
 
 #pragma warning(disable: 4100)
 
+// Known file format offsets
+typedef struct _KNOWN_FORMAT
+{
+  LPCWSTR Extension;
+  LONGLONG Offset;
+} KNOWN_FORMAT, *PKNOWN_FORMAT;
+
+KNOWN_FORMAT KnownFormats[] = {
+  { L"nrg", 600 << 9 },
+  { L"sdi", 8 << 9 }
+};
+
 void
 DoEvents(HWND hWnd)
 {
@@ -128,6 +140,221 @@ MsgBoxLastError(HWND hWnd, LPCWSTR Prefix)
 	       L"%1\r\n\r\n%2", Prefix, MsgBuf);
 
   LocalFree(MsgBuf);
+}
+
+VOID
+WINAPI
+ImDiskGetPartitionTypeName(IN BYTE PartitionType,
+			   OUT LPWSTR Name,
+			   IN DWORD NameSize)
+{
+  LPWSTR name;
+
+  switch (PartitionType & 0x3F)
+    {
+    case PARTITION_ENTRY_UNUSED:
+      name = L"Unused";
+      break;
+
+    case PARTITION_EXTENDED: case PARTITION_XINT13_EXTENDED:
+      name = L"Extended";
+      break;
+
+    case PARTITION_FAT_12:
+      name = L"FAT12";
+      break;
+
+    case PARTITION_FAT_16: case PARTITION_HUGE: case PARTITION_XINT13:
+      name = L"FAT16";
+      break;
+
+    case PARTITION_FAT32: case PARTITION_FAT32_XINT13:
+      name = L"FAT32";
+      break;
+
+    case PARTITION_OS2BOOTMGR:
+      name = L"OS/2 Boot Manager";
+      break;
+
+    case PARTITION_XENIX_1: case PARTITION_XENIX_2:
+      name = L"Xenix";
+      break;
+
+    case PARTITION_IFS:
+      name = L"NTFS or HPFS";
+      break;
+
+    case PARTITION_UNIX:
+      name = L"Unix";
+      break;
+
+    case 0xA5:
+      name = L"BSD";
+      break;
+
+    default:
+      name = L"Unknown";
+      break;
+    }
+
+  wcsncpy(Name, name, NameSize - 1);
+  Name[NameSize - 1] = 0;
+}
+
+BOOL
+WINAPI
+ImDiskGetOffsetByFileExt(IN LPCWSTR ImageFile,
+			 OUT PLARGE_INTEGER Offset)
+{
+  LPWSTR path_sep;
+  PKNOWN_FORMAT known_format;
+
+  path_sep = wcsrchr(ImageFile, L'/');
+  if (path_sep != NULL)
+    ImageFile = path_sep + 1;
+  path_sep = wcsrchr(ImageFile, L'\\');
+  if (path_sep != NULL)
+    ImageFile = path_sep + 1;
+
+  ImageFile = wcsrchr(ImageFile, L'.');
+  if (ImageFile == NULL)
+    return FALSE;
+
+  ++ImageFile;
+
+  for (known_format = KnownFormats;
+       known_format <
+	 KnownFormats + sizeof(KnownFormats)/sizeof(*KnownFormats);
+       known_format++)
+    if (_wcsicmp(ImageFile, known_format->Extension) == 0)
+      {
+	Offset->QuadPart = known_format->Offset;
+	return TRUE;
+      }
+
+  return FALSE;
+}
+
+BOOL
+WINAPI
+ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
+			      IN DWORD SectorSize OPTIONAL,
+			      IN PLARGE_INTEGER Offset OPTIONAL,
+			      OUT PPARTITION_INFORMATION PartitionInformation)
+{
+  HANDLE hImageFile = INVALID_HANDLE_VALUE;
+  LPBYTE buffer = NULL;
+  DWORD read_size = 0;
+  int i;
+
+  if (SectorSize == 0)
+    SectorSize = 512;
+
+  buffer = _alloca(SectorSize << 1);
+  if (buffer == NULL)
+    return FALSE;
+
+  hImageFile = CreateFile(ImageFile, GENERIC_READ, FILE_SHARE_READ |
+			  FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+			  OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+
+  if (hImageFile == INVALID_HANDLE_VALUE)
+    return FALSE;
+
+  if (Offset->QuadPart != 0)
+    if (SetFilePointer(hImageFile, Offset->LowPart, &Offset->HighPart,
+		       FILE_BEGIN) == (DWORD)-1)
+      if (GetLastError() != NO_ERROR)
+	return FALSE;
+
+  if (!ReadFile(hImageFile, buffer, SectorSize, &read_size, NULL))
+    {
+      CloseHandle(hImageFile);
+      return FALSE;
+    }
+
+  if (read_size != SectorSize)
+    {
+      CloseHandle(hImageFile);
+      return FALSE;
+    }
+
+  if (*(LPWORD)(buffer + SectorSize - 2) != 0xAA55)
+    {
+      CloseHandle(hImageFile);
+      return FALSE;
+    }
+
+  ZeroMemory(PartitionInformation, 8 * sizeof(PARTITION_INFORMATION));
+
+  for (i = 0; i < 4; i++)
+    {
+      LPBYTE partition_entry = buffer + SectorSize - 66 + (i << 4);
+
+      PartitionInformation[i].StartingOffset.QuadPart =
+	(LONGLONG)SectorSize * *(LPDWORD)(partition_entry + 8);
+      PartitionInformation[i].PartitionLength.QuadPart =
+	(LONGLONG)SectorSize * *(LPDWORD)(partition_entry + 12);
+      PartitionInformation[i].HiddenSectors = *(LPDWORD)(partition_entry + 8);
+      PartitionInformation[i].PartitionNumber = i+1;
+      PartitionInformation[i].PartitionType = *(partition_entry + 4);
+      PartitionInformation[i].BootIndicator = *partition_entry >> 7;
+      PartitionInformation[i].RecognizedPartition = FALSE;
+      PartitionInformation[i].RewritePartition = FALSE;
+
+      if (IsContainerPartition(PartitionInformation[i].PartitionType))
+	{
+	  LARGE_INTEGER offset = *Offset;
+	  int j;
+	  offset.QuadPart += PartitionInformation[i].StartingOffset.QuadPart;
+
+	  if (SetFilePointer(hImageFile, offset.LowPart, &offset.HighPart,
+			     FILE_BEGIN) == (DWORD)-1)
+	    if (GetLastError() != NO_ERROR)
+	      return FALSE;
+
+	  if (!ReadFile(hImageFile, buffer + SectorSize, SectorSize,
+			&read_size, NULL))
+	    {
+	      CloseHandle(hImageFile);
+	      return FALSE;
+	    }
+
+	  if (read_size != SectorSize)
+	    {
+	      CloseHandle(hImageFile);
+	      return FALSE;
+	    }
+
+	  if (*(LPWORD)(buffer + (SectorSize << 1) - 2) != 0xAA55)
+	    {
+	      CloseHandle(hImageFile);
+	      return FALSE;
+	    }
+
+	  for (j = 0; j < 4; j++)
+	    {
+	      partition_entry = buffer + (SectorSize << 1) - 66 + (j << 4);
+
+	      PartitionInformation[j+4].StartingOffset.QuadPart =
+		PartitionInformation[i].StartingOffset.QuadPart +
+		(LONGLONG)SectorSize * *(LPDWORD)(partition_entry + 8);
+	      PartitionInformation[j+4].PartitionLength.QuadPart =
+		(LONGLONG)SectorSize * *(LPDWORD)(partition_entry + 12);
+	      PartitionInformation[j+4].HiddenSectors =
+		*(LPDWORD)(partition_entry + 8);
+	      PartitionInformation[j+4].PartitionNumber = j+1;
+	      PartitionInformation[j+4].PartitionType = *(partition_entry + 4);
+	      PartitionInformation[j+4].BootIndicator = *partition_entry >> 7;
+	      PartitionInformation[j+4].RecognizedPartition = FALSE;
+	      PartitionInformation[j+4].RewritePartition = FALSE;
+	    }
+	}
+    }
+
+  CloseHandle(hImageFile);
+
+  return TRUE;
 }
 
 BOOL
@@ -361,7 +588,7 @@ ImDiskCheckDriverVersion(HANDLE Device)
   if (BytesReturned < sizeof VersionCheck)
     return FALSE;
 
-  if (VersionCheck != IMDISK_VERSION)
+  if (VersionCheck != IMDISK_DRIVER_VERSION)
     return FALSE;
 
   return TRUE;
@@ -425,7 +652,7 @@ ImDiskFindFreeDriveLetter()
 {
   DWORD logical_drives = GetLogicalDrives();
   WCHAR search;
-  for (search = L'D'; search < L'Z'; search++)
+  for (search = L'D'; search <= L'Z'; search++)
     if ((logical_drives & (1 << (search - L'A'))) == 0)
       return search;
 

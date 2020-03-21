@@ -2420,7 +2420,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	  status = STATUS_INVALID_PARAMETER;
 	else
 	  {
-	    *(PULONG) Irp->AssociatedIrp.SystemBuffer = IMDISK_VERSION;
+	    *(PULONG) Irp->AssociatedIrp.SystemBuffer = IMDISK_DRIVER_VERSION;
 	    Irp->IoStatus.Information = sizeof(ULONG);
 	    status = STATUS_SUCCESS;
 	  }

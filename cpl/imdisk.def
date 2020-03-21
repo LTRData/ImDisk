@@ -9,6 +9,9 @@ EXPORTS
 
 	MsgBoxPrintF
 	_MsgBoxLastError@8
+	_ImDiskGetPartitionTypeName@12
+	_ImDiskGetOffsetByFileExt@8
+	_ImDiskGetPartitionInformation@16
 	_ImDiskStartService@4
 	_ImDiskCreateMountPoint@8
 	_ImDiskRemoveMountPoint@4

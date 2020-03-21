@@ -62,6 +62,8 @@
 	       (n)>=_1MB ? L"MB" : (n)>=_1KB ? L"KB": \
 	       (n)==1 ? L"byte" : L"bytes")
 
+#define TXT_CURRENT_IMAGE_FILE_SIZE L"(current image file size)"
+
 extern "C" HINSTANCE hInstance = NULL;
 
 // Define DEBUG if you want debug output.
@@ -480,6 +482,211 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
   CloseHandle(hImage);
 }
 
+BOOL
+CALLBACK
+SelectPartitionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+  switch (uMsg)
+    {
+    case WM_INITDIALOG:
+      {
+	SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+			   LB_ADDSTRING, 0, (LPARAM) L"Use entire image file");
+
+	WCHAR wcBuffer[128];
+	bool has_extended_partition = false;
+
+	for (int i = 0; i < 4; i++)
+	  {
+	    PPARTITION_INFORMATION part_rec =
+	      ((PPARTITION_INFORMATION) lParam) + i;
+
+	    WCHAR part_name[128];
+	    ImDiskGetPartitionTypeName(part_rec->PartitionType,
+				       part_name,
+				       sizeof(part_name)/sizeof(*part_name));
+
+	    if ((part_rec->StartingOffset.QuadPart != 0) &
+		(part_rec->PartitionLength.QuadPart != 0))
+	      {
+		_snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
+			   L"Primary partition %i - %.4g %s %s",
+			   i + 1,
+			   _h(part_rec->PartitionLength.QuadPart),
+			   _p(part_rec->PartitionLength.QuadPart),
+			   part_name);
+		wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
+		SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+				   LB_ADDSTRING, 0, (LPARAM) wcBuffer);
+	      }
+	    else
+	      {
+		_snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
+			   L"Primary partition %i - %s",
+			   i + 1,
+			   part_name);
+		wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
+		SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+				   LB_ADDSTRING, 0, (LPARAM) wcBuffer);
+	      }
+
+	    if (IsContainerPartition(part_rec->PartitionType))
+	      has_extended_partition = true;
+	  }
+
+	for (int i = 4; i < 8; i++)
+	  {
+	    PPARTITION_INFORMATION part_rec =
+	      ((PPARTITION_INFORMATION) lParam) + i;
+
+	    WCHAR part_name[128];
+	    ImDiskGetPartitionTypeName(part_rec->PartitionType,
+				       part_name,
+				       sizeof(part_name)/sizeof(*part_name));
+
+	    if ((part_rec->StartingOffset.QuadPart != 0) &
+		(part_rec->PartitionLength.QuadPart != 0))
+	      {
+		_snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
+			   L"Logical partition %i - %.4g %s %s",
+			   i - 3,
+			   _h(part_rec->PartitionLength.QuadPart),
+			   _p(part_rec->PartitionLength.QuadPart),
+			   part_name);
+		wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
+		SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+				   LB_ADDSTRING, 0, (LPARAM) wcBuffer);
+	      }
+	    else
+	      {
+		_snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
+			   L"Logical partition %i - %s",
+			   i - 3,
+			   part_name);
+		wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
+		SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+				   LB_ADDSTRING, 0, (LPARAM) wcBuffer);
+	      }
+	  }
+
+	SetFocus(GetDlgItem(hWnd, IDC_SELECT_PARTITION_LIST));
+
+	SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+			   LB_SETSEL, TRUE, 0);
+	
+	return TRUE;
+      }
+
+    case WM_COMMAND:
+      switch (LOWORD(wParam))
+	{
+	case IDCANCEL:
+	case IDOK:
+	  {
+	    EndDialog(hWnd, SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+					       LB_GETCURSEL, 0, 0));
+	    return TRUE;
+	  }
+	}
+
+      return TRUE;
+
+    case WM_CLOSE:
+      EndDialog(hWnd, IDCANCEL);
+      return TRUE;
+    }
+
+  return FALSE;
+}
+
+void
+AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
+{
+  LARGE_INTEGER offset = { 0 };
+  ImDiskGetOffsetByFileExt(lpwszFileName, &offset);
+
+  LARGE_INTEGER size = { 0 };
+  PARTITION_INFORMATION partition_information[8] = { 0 };
+  int found_partitions = 0;
+  if (ImDiskGetPartitionInformation(lpwszFileName,
+				    0,
+				    &offset,
+				    partition_information))
+    for (PPARTITION_INFORMATION part_rec = partition_information;
+	 part_rec < partition_information + 8;
+	 part_rec++)
+      if ((part_rec->StartingOffset.QuadPart != 0) &
+	  (part_rec->PartitionLength.QuadPart != 0) &
+	  !IsContainerPartition(part_rec->PartitionType))
+	++found_partitions;
+
+  if (found_partitions > 1)
+    {
+      int i = DialogBoxParam(hInstance,
+			     MAKEINTRESOURCE(IDD_SELECT_PARTITION_DLG),
+			     hWnd, SelectPartitionDlgProc,
+			     (LPARAM) partition_information);
+      if ((i >= 1) & (i <= 8))
+	{
+	  PPARTITION_INFORMATION part_rec = partition_information + i - 1;
+
+	  if ((part_rec->StartingOffset.QuadPart != 0) &
+	      (part_rec->PartitionLength.QuadPart != 0) &
+	      !IsContainerPartition(part_rec->PartitionType))
+	    {
+	      offset.QuadPart += part_rec->StartingOffset.QuadPart;
+	      size = part_rec->PartitionLength;
+	    }
+	}
+    }
+  else if (found_partitions == 1)
+    for (PPARTITION_INFORMATION part_rec = partition_information;
+	 part_rec < partition_information + 8;
+	 part_rec++)
+      if ((part_rec->StartingOffset.QuadPart != 0) &
+	  (part_rec->PartitionLength.QuadPart != 0) &
+	  !IsContainerPartition(part_rec->PartitionType))
+	{
+	  offset.QuadPart += part_rec->StartingOffset.QuadPart;
+	  size = part_rec->PartitionLength;
+	  break;
+	}
+
+  CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_UNCHECKED);
+  CheckDlgButton(hWnd, IDC_OFFSET_UNIT_BLOCKS, BST_UNCHECKED);
+  CheckDlgButton(hWnd, IDC_OFFSET_UNIT_KB, BST_UNCHECKED);
+  CheckDlgButton(hWnd, IDC_OFFSET_UNIT_MB, BST_UNCHECKED);
+  CheckDlgButton(hWnd, IDC_OFFSET_UNIT_GB, BST_UNCHECKED);
+  offset.QuadPart >>= 9;
+  if ((offset.QuadPart > 0) & (offset.HighPart == 0))
+    {
+      SetDlgItemInt(hWnd, IDC_EDT_IMAGE_OFFSET, offset.LowPart, FALSE);
+      CheckDlgButton(hWnd, IDC_OFFSET_UNIT_BLOCKS, BST_CHECKED);
+    }
+  else
+    {
+      SetDlgItemText(hWnd, IDC_EDT_IMAGE_OFFSET, L"0");
+      CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_CHECKED);
+    }
+
+  CheckDlgButton(hWnd, IDC_UNIT_B, BST_UNCHECKED);
+  CheckDlgButton(hWnd, IDC_UNIT_BLOCKS, BST_UNCHECKED);
+  CheckDlgButton(hWnd, IDC_UNIT_KB, BST_UNCHECKED);
+  CheckDlgButton(hWnd, IDC_UNIT_MB, BST_UNCHECKED);
+  CheckDlgButton(hWnd, IDC_UNIT_GB, BST_UNCHECKED);
+  size.QuadPart >>= 9;
+  if ((size.QuadPart > 0) & (size.HighPart == 0))
+    {
+      SetDlgItemInt(hWnd, IDC_EDT_SIZE, size.LowPart, FALSE);
+      CheckDlgButton(hWnd, IDC_UNIT_BLOCKS, BST_CHECKED);
+    }
+  else
+    {
+      SetDlgItemText(hWnd, IDC_EDT_SIZE, TXT_CURRENT_IMAGE_FILE_SIZE);
+      CheckDlgButton(hWnd, IDC_UNIT_B, BST_CHECKED);
+    }
+}
+
 BOOL CALLBACK
 NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -492,9 +699,6 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, WM_SETTEXT, 0,
 			   (LPARAM)(LPCWSTR) free_drive_letter);
 
-	if (lParam != 0)
-	  SetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, (LPCWSTR) lParam);
-
 	SendDlgItemMessage(hWnd, IDC_EDT_IMAGEFILE, EM_SETLIMITTEXT,
 			   (WPARAM) MAX_PATH, 0);
 	SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, EM_SETLIMITTEXT, (WPARAM) 1,
@@ -503,6 +707,12 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	CheckDlgButton(hWnd, IDC_UNIT_B, BST_CHECKED);
 	CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_CHECKED);
 	CheckDlgButton(hWnd, IDC_DT_AUTO, BST_CHECKED);
+
+	if (lParam != 0)
+	  {
+	    SetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, (LPCWSTR) lParam);
+	    AutoFindOffsetAndSize((LPCWSTR) lParam, hWnd);
+	  }
 
 	return TRUE;
       }
@@ -535,7 +745,10 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		OFN_LONGNAMES | OFN_PATHMUSTEXIST;
 
 	      if (GetOpenFileName((LPOPENFILENAMEW) &ofn))
-		SetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, file_name);
+		{
+		  SetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, file_name);
+		  AutoFindOffsetAndSize(file_name, hWnd);
+		}
 	    }
 	    return TRUE;
 
@@ -634,7 +847,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	      case EN_KILLFOCUS:
 		if (GetDlgItemInt(hWnd, IDC_EDT_SIZE, NULL, FALSE) == 0)
 		  SetDlgItemText(hWnd, IDC_EDT_SIZE,
-				 L"(current image file size)");
+				 TXT_CURRENT_IMAGE_FILE_SIZE);
 		return TRUE;
 	      }
 	    return TRUE;

@@ -20,8 +20,8 @@ STRINGTABLE
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,0,3,15
-PRODUCTVERSION 1,0,3,15
+FILEVERSION 1,1,0,20
+PRODUCTVERSION 1,1,0,20
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -38,12 +38,12 @@ FILESUBTYPE    0
         {
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "Control Panel Applet for the ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", "1.0.3.15\0"
+            VALUE "FileVersion", "1.1.0.20\0"
             VALUE "InternalName", "imdisk\0"
             VALUE "LegalCopyright", "Copyright © 2004-2008 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "imdisk.cpl\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", "1.0.3.15\0"
+            VALUE "ProductVersion", "1.1.0.20\0"
         }
     }
     BLOCK "VarFileInfo"
@@ -182,5 +182,14 @@ FONT 8, "MS Sans Serif"
 {
  CONTROL "OK", IDOK, "BUTTON", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 256, 180, 50, 14
  CONTROL "", IDC_EDT_ABOUTTEXT, "edit", ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_TABSTOP, 0, 0, 308, 176
+}
+
+IDD_SELECT_PARTITION_DLG DIALOG 54, 19, 165, 118
+STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+CAPTION "Select partition in disk image"
+FONT 8, "MS Sans Serif"
+{
+ CONTROL "ListBox1", IDC_SELECT_PARTITION_LIST, "listbox", LBS_NOTIFY | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_TABSTOP, 4, 4, 156, 92
+ CONTROL "OK", IDOK, "BUTTON", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE, 108, 100, 50, 14
 }
 

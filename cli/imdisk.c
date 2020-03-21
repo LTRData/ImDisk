@@ -50,6 +50,7 @@ enum
     IMDISK_CLI_ERROR_BAD_MOUNT_POINT = 9,
     IMDISK_CLI_ERROR_BAD_SYNTAX = 10,
     IMDISK_CLI_ERROR_NOT_ENOUGH_MEMORY = 11,
+    IMDISK_CLI_ERROR_PARTITION_NOT_FOUND = 12,
     IMDISK_CLI_ERROR_FATAL = -1
   };
 
@@ -82,8 +83,8 @@ ImDiskSyntaxHelp()
      "\n"
      "Syntax:\r\n"
      "imdisk -a -t type -m mountpoint [-n] [-o opt1[,opt2 ...]] [-f|-F file]\r\n"
-     "       [-s size] [-b offset] [-S sectorsize] [-u unit] [-x sectors/track]\r\n"
-     "       [-y tracks/cylinder] [-p \"format-parameters\"]\r\n"
+     "       [-s size] [-b offset] [-v partition] [-S sectorsize] [-u unit]\r\n"
+     "       [-x sectors/track] [-y tracks/cylinder] [-p \"format-parameters\"]\r\n"
      "imdisk -d|-D [-u unit | -m mountpoint]\r\n"
      "imdisk -l [-u unit | -m mountpoint]\r\n"
      "imdisk -e [-s size] [-o opt1[,opt2 ...]] [-u unit | -m mountpoint]\r\n"
@@ -169,6 +170,17 @@ ImDiskSyntaxHelp()
      "        disk with a pre-load image file specified with -f or -F paramters, the\r\n"
      "        -b parameter specifies an offset in the image file where the image to\r\n"
      "        be loaded into the vm type virtual disk begins.\r\n"
+     "\n"
+     "        Specify auto as offset to automatically select offset for a few known\r\n"
+     "        non-raw disk image file formats. Currently auto-selection is supported\r\n"
+     "        for Nero .nrg and Microsoft .sdi image files.\r\n"
+     "\n"
+     "-v partition\r\n"
+     "        Specifies which partition to mount when mounting a raw hard disk image\r\n"
+     "        file containing a master boot record and partitions.\r\n"
+     "\n"
+     "        Specify number 1-4 to mount a partition from the primary partition\r\n"
+     "        table and 5-8 to mount a partition from an extended partition table.\r\n"
      "\n"
      "-S sectorsize\r\n"
      "        Sectorsize to use for the virtual disk device. Default value is 512\r\n"
@@ -326,18 +338,18 @@ ImDiskCliCheckDriverVersion(HANDLE Device)
 	      "Wrong version of ImDisk Virtual Disk Driver.\n"
 	      "No current driver version information, expected: %u.%u.\n"
 	      "Please reinstall ImDisk and reboot if this issue persists.\n",
-	      HIBYTE(IMDISK_VERSION), LOBYTE(IMDISK_VERSION),
+	      HIBYTE(IMDISK_DRIVER_VERSION), LOBYTE(IMDISK_DRIVER_VERSION),
 	      BytesReturned);
       return FALSE;
     }
 
-  if (VersionCheck != IMDISK_VERSION)
+  if (VersionCheck != IMDISK_DRIVER_VERSION)
     {
       fprintf(stderr,
 	      "Wrong version of ImDisk Virtual Disk Driver.\n"
 	      "Expected: %u.%u Installed: %u.%u\n"
 	      "Please re-install ImDisk and reboot if this issue persists.\n",
-	      HIBYTE(IMDISK_VERSION), LOBYTE(IMDISK_VERSION),
+	      HIBYTE(IMDISK_DRIVER_VERSION), LOBYTE(IMDISK_DRIVER_VERSION),
 	      HIBYTE(VersionCheck), LOBYTE(VersionCheck));
       return FALSE;
     }
@@ -1436,6 +1448,8 @@ wmain(int argc, LPWSTR argv[])
   DWORD device_number = IMDISK_AUTO_DEVICE_NUMBER;
   DISK_GEOMETRY disk_geometry = { 0 };
   LARGE_INTEGER image_offset = { 0 };
+  BOOL auto_find_offset = FALSE;
+  BYTE auto_find_partition_entry = 0;
   DWORD flags_to_change = 0;
   int ret = 0;
 
@@ -1775,48 +1789,69 @@ wmain(int argc, LPWSTR argv[])
 	    argv++;
 	    break;
 
+	  case L'v':
+	    if ((op_mode != OP_MODE_CREATE) |
+		(argc < 2) |
+		(auto_find_partition_entry != 0))
+	      ImDiskSyntaxHelp();
+
+	    if ((argv[1][0] < L'1') | (argv[1][0] > L'8'))
+	      ImDiskSyntaxHelp();
+
+	    if (argv[1][1] != 0)
+	      ImDiskSyntaxHelp();
+
+	    auto_find_partition_entry = (BYTE)(argv[1][0] - L'0');
+	    argc--;
+	    argv++;
+	    break;
+
 	  case L'b':
 	    if ((op_mode != OP_MODE_CREATE) |
 		(argc < 2) |
-		(image_offset.QuadPart != 0))
+		(image_offset.QuadPart != 0) |
+		(auto_find_offset != FALSE))
 	      ImDiskSyntaxHelp();
 
-	    {
-              WCHAR suffix = 0;
+	    if (wcscmp(argv[1], L"auto") == 0)
+	      auto_find_offset = TRUE;
+	    else
+	      {
+		WCHAR suffix = 0;
 
-	      swscanf(argv[1], L"%I64u%c",
-		      &image_offset, &suffix);
+		swscanf(argv[1], L"%I64u%c",
+			&image_offset, &suffix);
 
-              switch (suffix)
-                {
-		case 0:
-		  break;
-		case 'T':
-                  image_offset.QuadPart <<= 10;
-                case 'G':
-                  image_offset.QuadPart <<= 10;
-                case 'M':
-                  image_offset.QuadPart <<= 10;
-                case 'K':
-                  image_offset.QuadPart <<= 10;
-                  break;
-                case 'b':
-                  image_offset.QuadPart <<= 9;
-                  break;
-                case 't':
-                  image_offset.QuadPart *= 1000;
-                case 'g':
-                  image_offset.QuadPart *= 1000;
-                case 'm':
-                  image_offset.QuadPart *= 1000;
-                case 'k':
-                  image_offset.QuadPart *= 1000;
-                default:
-                  fprintf(stderr, "ImDisk: Unsupported size suffix: '%wc'\n",
-                          suffix);
-                  return IMDISK_CLI_ERROR_BAD_SYNTAX;
-                }
-	    }
+		switch (suffix)
+		  {
+		  case 0:
+		    break;
+		  case 'T':
+		    image_offset.QuadPart <<= 10;
+		  case 'G':
+		    image_offset.QuadPart <<= 10;
+		  case 'M':
+		    image_offset.QuadPart <<= 10;
+		  case 'K':
+		    image_offset.QuadPart <<= 10;
+		    break;
+		  case 'b':
+		    image_offset.QuadPart <<= 9;
+		    break;
+		  case 't':
+		    image_offset.QuadPart *= 1000;
+		  case 'g':
+		    image_offset.QuadPart *= 1000;
+		  case 'm':
+		    image_offset.QuadPart *= 1000;
+		  case 'k':
+		    image_offset.QuadPart *= 1000;
+		  default:
+		    fprintf(stderr, "ImDisk: Unsupported size suffix: '%wc'\n",
+			    suffix);
+		    return IMDISK_CLI_ERROR_BAD_SYNTAX;
+		  }
+	      }
 
 	    argc--;
 	    argv++;
@@ -1876,6 +1911,64 @@ wmain(int argc, LPWSTR argv[])
     {
     case OP_MODE_CREATE:
       {
+	if (auto_find_offset)
+	  if (file_name == NULL)
+	    ImDiskSyntaxHelp();
+	  else
+	    ImDiskGetOffsetByFileExt(file_name, &image_offset);
+
+	if (auto_find_partition_entry != 0)
+	  {
+	    PARTITION_INFORMATION partition_information[8];
+	    PPARTITION_INFORMATION part_rec =
+	      partition_information +
+	      auto_find_partition_entry - 1;
+
+	    if (!ImDiskGetPartitionInformation(file_name,
+					       disk_geometry.BytesPerSector,
+					       &image_offset,
+					       partition_information))
+	      {
+		fputs("Error: Partition table not found.\r\n", stderr);
+		return IMDISK_CLI_ERROR_PARTITION_NOT_FOUND;
+	      }
+
+	    if ((part_rec->StartingOffset.QuadPart == 0) |
+		(part_rec->PartitionLength.QuadPart == 0))
+	      {
+		fprintf(stderr,
+			"Error: Partition %i is not defined.\n",
+			(int)auto_find_partition_entry);
+		return IMDISK_CLI_ERROR_PARTITION_NOT_FOUND;
+	      }
+
+	    image_offset.QuadPart += part_rec->StartingOffset.QuadPart;
+	    disk_geometry.Cylinders = part_rec->PartitionLength;
+	  }
+	else if (auto_find_offset)
+	  {
+	    PARTITION_INFORMATION partition_information[8];
+	    if (ImDiskGetPartitionInformation(file_name,
+					      disk_geometry.BytesPerSector,
+					      &image_offset,
+					      partition_information))
+	      {
+		PPARTITION_INFORMATION part_rec;
+		for (part_rec = partition_information;
+		     part_rec < partition_information + 8;
+		     part_rec++)
+		  if ((part_rec->StartingOffset.QuadPart != 0) &
+		      (part_rec->PartitionLength.QuadPart != 0) &
+		      !IsContainerPartition(part_rec->PartitionType))
+		    {
+		      image_offset.QuadPart +=
+			part_rec->StartingOffset.QuadPart;
+		      disk_geometry.Cylinders = part_rec->PartitionLength;
+		      break;
+		    }
+	      }
+	  }
+
 	ret = ImDiskCliCreateDevice(&device_number, &disk_geometry,
 				    &image_offset, flags, file_name,
 				    native_path, mount_point);
