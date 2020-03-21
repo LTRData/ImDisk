@@ -93,30 +93,65 @@
 //
 //	Sizes in bytes of different kinds of floppies
 //
-#define MEDIA_SIZE_2P88MB	(2880 << 10)
-#define MEDIA_SIZE_1P44MB	(1440 << 10)
+// 3.5" UHD
+#define MEDIA_SIZE_240MB        (234752 << 10)
+#define MEDIA_SIZE_120MB        (123264 << 10)
+// 3.5"
+#define MEDIA_SIZE_2800KB	(2880 << 10)
+#define MEDIA_SIZE_1722KB       (1722 << 10)
+#define MEDIA_SIZE_1680KB       (1680 << 10)
+#define MEDIA_SIZE_1440KB	(1440 << 10)
+#define	MEDIA_SIZE_820KB 	(820  << 10)
 #define	MEDIA_SIZE_720KB 	(720  << 10)
-#define MEDIA_SIZE_1P20MB	(1200 << 10)
-#define MEDIA_SIZE_640KB	(640  << 10)
+// 5.25"
+#define MEDIA_SIZE_1200KB	(1200 << 10)
+#define MEDIA_SIZE_640KB        (640  << 10)
+#define	MEDIA_SIZE_360KB	(360  << 10)
 #define	MEDIA_SIZE_320KB 	(320  << 10)
+#define MEDIA_SIZE_180KB	(180  << 10)
+#define	MEDIA_SIZE_160KB 	(160  << 10)
 
 //
 //      Indexes for the following DISK_GEOMETRY table.
 //
-#define MEDIA_TYPE_288	0
-#define MEDIA_TYPE_144	1
-#define MEDIA_TYPE_720	2
-#define MEDIA_TYPE_120	3
-#define MEDIA_TYPE_640	4
-#define MEDIA_TYPE_320	5
+enum {
+  // 3.5" UHD
+  MEDIA_TYPE_240M,
+  MEDIA_TYPE_120M,
+  // 3.5"
+  MEDIA_TYPE_2880K,
+  MEDIA_TYPE_1722K,
+  MEDIA_TYPE_1680K,
+  MEDIA_TYPE_1440K,
+  MEDIA_TYPE_820K,
+  MEDIA_TYPE_720K,
+  // 5.12"
+  MEDIA_TYPE_1200K,
+  MEDIA_TYPE_640K,
+  MEDIA_TYPE_360K,
+  MEDIA_TYPE_320K,
+  MEDIA_TYPE_180K,
+  MEDIA_TYPE_160K
+};
 
 DISK_GEOMETRY media_table[] = {
-  { { 80 }, F3_2Pt88_512, 2, 36, 512 },
-  { { 80 }, F3_1Pt44_512, 2, 18, 512 },
-  { { 80 }, F3_720_512,   2,  9, 512 },
-  { { 80 }, F5_1Pt2_512,  2, 15, 512 },
-  { { 40 }, F5_640_512,   2, 18, 512 },
-  { { 40 }, F5_320_512,   2,  9, 512 }
+  // 3.5" UHD
+  { { 963 }, F3_120M_512,  8, 32, 512 },
+  { { 262 }, F3_120M_512, 32, 56, 512 },
+  // 3.5"
+  { {  80 }, F3_2Pt88_512, 2, 36, 512 },
+  { {  82 }, F3_1Pt44_512, 2, 21, 512 },
+  { {  80 }, F3_1Pt44_512, 2, 21, 512 },
+  { {  80 }, F3_1Pt44_512, 2, 18, 512 },
+  { {  82 }, F3_720_512,   2, 10, 512 },
+  { {  80 }, F3_720_512,   2,  9, 512 },
+  // 5.25"
+  { {  80 }, F5_1Pt2_512,  2, 15, 512 },
+  { {  40 }, F5_640_512,   2, 18, 512 },
+  { {  40 }, F5_360_512,   2,  9, 512 },
+  { {  40 }, F5_320_512,   2,  8, 512 },
+  { {  40 }, F5_180_512,   1,  9, 512 },
+  { {  40 }, F5_160_512,   1,  8, 512 }
 };
 
 //
@@ -148,15 +183,13 @@ typedef struct _DEVICE_EXTENSION
   KEVENT request_event;
   BOOLEAN terminate_thread;
   ULONG device_number;
-  union
-  {
-    HANDLE file_handle;        // For file or proxy type
-    PUCHAR image_buffer;       // For vm type
-  };
+  HANDLE file_handle;          // For file or proxy type
+  PUCHAR image_buffer;         // For vm type
   PFILE_OBJECT proxy_device;   // Pointer to proxy communication object
   UNICODE_STRING file_name;    // Name of image file, if any
   WCHAR drive_letter;          // Drive letter if maintained by the driver
   DISK_GEOMETRY disk_geometry; // Virtual C/H/S geometry (Cylinders=Total size)
+  LARGE_INTEGER image_offset;  // Offset in bytes in the image file
   ULONG media_change_count;
   BOOLEAN read_only;
   BOOLEAN vm_disk;             // TRUE if this device is a virtual memory disk
@@ -200,20 +233,6 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 VOID
 ImDiskDeviceThread(IN PVOID Context);
-
-NTSTATUS
-ImDiskReadVMDisk(IN PUCHAR VMDisk,
-		 OUT PIO_STATUS_BLOCK IoStatusBlock,
-		 OUT PVOID Buffer,
-		 IN ULONG Length,
-		 IN ULONG ByteOffset);
-
-NTSTATUS
-ImDiskWriteVMDisk(OUT PUCHAR VMDisk,
-		  OUT PIO_STATUS_BLOCK IoStatusBlock,
-		  IN PVOID Buffer,
-		  IN ULONG Length,
-		  IN ULONG ByteOffset);
 
 NTSTATUS
 ImDiskConnectProxy(IN OUT PFILE_OBJECT *ProxyDevice,
@@ -452,6 +471,7 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
   PKEY_VALUE_PARTIAL_INFORMATION value_info_image_file;
   PKEY_VALUE_PARTIAL_INFORMATION value_info_size;
   PKEY_VALUE_PARTIAL_INFORMATION value_info_flags;
+  PKEY_VALUE_PARTIAL_INFORMATION value_info_drive_letter;
   ULONG required_size;
   PIMDISK_CREATE_DATA create_data;
   PWSTR value_name_buffer;
@@ -506,9 +526,25 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-  value_name_buffer = ExAllocatePool(PagedPool, MAXIMUM_FILENAME_LENGTH);
+  value_info_drive_letter =
+    ExAllocatePool(PagedPool,
+		   sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(WCHAR));
 
-  if (value_info_flags == NULL)
+  if (value_info_drive_letter == NULL)
+    {
+      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
+	       DeviceNumber));
+
+      ExFreePool(value_info_image_file);
+      ExFreePool(value_info_size);
+      ExFreePool(value_info_flags);
+      return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+  value_name_buffer = ExAllocatePool(PagedPool,
+				     MAXIMUM_FILENAME_LENGTH * sizeof(WCHAR));
+
+  if (value_name_buffer == NULL)
     {
       KdPrint(("ImDisk: Error creating device %u. (ExAllocatePool)\n",
 	       DeviceNumber));
@@ -516,10 +552,11 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       ExFreePool(value_info_image_file);
       ExFreePool(value_info_size);
       ExFreePool(value_info_flags);
+      ExFreePool(value_info_drive_letter);
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-  _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH,
+  _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
 	     IMDISK_CFG_IMAGE_FILE_PREFIX L"%u", DeviceNumber);
   value_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
 
@@ -543,7 +580,7 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       value_info_image_file->DataLength = sizeof(WCHAR);
     }
 
-  _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH,
+  _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
 	     IMDISK_CFG_SIZE_PREFIX L"%u", DeviceNumber);
   value_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
   
@@ -567,7 +604,7 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       ((PLARGE_INTEGER) value_info_size->Data)->QuadPart = 0;
     }
 
-  _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH,
+  _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
 	     IMDISK_CFG_FLAGS_PREFIX L"%u", DeviceNumber);
   value_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
 
@@ -590,6 +627,28 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       *(PULONG) value_info_flags->Data = 0;
     }
 
+  _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
+	     IMDISK_CFG_DRIVE_LETTER_PREFIX L"%u", DeviceNumber);
+  value_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
+
+  RtlInitUnicodeString(&value_name, value_name_buffer);
+
+  status = ZwQueryValueKey(ParameterKey,
+			   &value_name,
+			   KeyValuePartialInformation,
+			   value_info_drive_letter,
+			   sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
+			   sizeof(WCHAR),
+			   &required_size);
+
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
+	       value_name_buffer, DeviceNumber));
+
+      *(PWCHAR) value_info_drive_letter->Data = 0;
+    }
+
   ExFreePool(value_name_buffer);
   
   create_data =
@@ -605,6 +664,7 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       ExFreePool(value_info_image_file);
       ExFreePool(value_info_size);
       ExFreePool(value_info_flags);
+      ExFreePool(value_info_drive_letter);
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -625,6 +685,10 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
   create_data->Flags = *(PULONG) value_info_flags->Data;
 
   ExFreePool(value_info_flags);
+
+  create_data->DriveLetter = *(PWCHAR) value_info_drive_letter->Data;
+
+  ExFreePool(value_info_drive_letter);
 
   create_data->DeviceNumber = DeviceNumber;
 
@@ -992,7 +1056,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       // Adjust the file length to the requested virtual disk size.
       if ((CreateData->DiskGeometry.Cylinders.QuadPart != 0) &
 	  (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
-	  !IMDISK_READONLY(CreateData->Flags))
+	  (!IMDISK_READONLY(CreateData->Flags)) &
+	  (CreateData->ImageOffset.QuadPart == 0))
 	{
 	  status = ZwSetInformationFile(file_handle,
 					&io_status,
@@ -1036,12 +1101,12 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	  // Allocate virtual memory for 'vm' type.
 	  if (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM)
 	    {
-	      LARGE_INTEGER byte_offset;
 	      ULONG max_size;
 
 	      // Check that file size < 2 GB.
 	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
-		if (file_standard.EndOfFile.QuadPart & 0xFFFFFFFF80000000)
+		if ((file_standard.EndOfFile.QuadPart -
+		     CreateData->ImageOffset.QuadPart) & 0xFFFFFFFF80000000)
 		  {
 		    ZwClose(file_handle);
 		    ExFreePool(file_name.Buffer);
@@ -1051,10 +1116,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		    return STATUS_INSUFFICIENT_RESOURCES;
 		  }
 		else
-		  CreateData->DiskGeometry.Cylinders = file_standard.EndOfFile;
+		  CreateData->DiskGeometry.Cylinders.QuadPart =
+		    file_standard.EndOfFile.QuadPart -
+		    CreateData->ImageOffset.QuadPart;
 
 	      max_size = CreateData->DiskGeometry.Cylinders.LowPart;
-	      image_buffer = NULL;
 	      status =
 		ZwAllocateVirtualMemory(NtCurrentProcess(),
 					&image_buffer,
@@ -1075,36 +1141,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
 	      alignment_requirement = FILE_BYTE_ALIGNMENT;
 
-	      KdPrint(("ImDisk: Reading image file into vm disk buffer.\n"));
-
-	      // Failure to read pre-load image is now considered a fatal error
-	      byte_offset.QuadPart = 0;
-	      status =
-		ImDiskSafeReadFile(file_handle,
-				   &io_status,
-				   image_buffer,
-				   CreateData->DiskGeometry.Cylinders.LowPart,
-				   &byte_offset);
-
-	      ZwClose(file_handle);
-
-	      if (!NT_SUCCESS(status))
-		{
-		  ULONG free_size = 0;
-
-		  ZwFreeVirtualMemory(NtCurrentProcess(),
-				      &image_buffer,
-				      &free_size, MEM_RELEASE);
-
-		  ExFreePool(file_name.Buffer);
-
-		  KdPrint(("ImDisk: Failed to read image file (%#x).\n",
-			   status));
-
-		  return status;
-		}
-
-	      KdPrint(("ImDisk: Image loaded successfully.\n"));
+	      // Loading of image file has been moved to be done just before
+	      // the service loop.
 	    }
 	  else
 	    {
@@ -1128,13 +1166,16 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		  return status;
 		}
 
-	      CreateData->DiskGeometry.Cylinders = file_standard.EndOfFile;
+	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
+		CreateData->DiskGeometry.Cylinders.QuadPart =
+		  file_standard.EndOfFile.QuadPart -
+		  CreateData->ImageOffset.QuadPart;
 
 	      alignment_requirement = file_alignment.AlignmentRequirement;
 	    }
 	}
       else
-	// If proxy is used the file size is queried to the proxy instead.
+	// If proxy is used, get the image file size from the proxy instead.
 	{
 	  IMDPROXY_INFO_RESP proxy_info;
 
@@ -1207,7 +1248,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      ExFreePool(file_name.Buffer);
 
 	      KdPrint(("ImDisk: Unsupported sizes. "
-		       "Got %p-%p size and %p-%p alignment.\n",
+		       "Got %p%p size and %p%p alignment.\n",
 		       proxy_info.file_size,
 		       proxy_info.req_alignment));
 
@@ -1282,12 +1323,20 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   if (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)
     switch (CreateData->DiskGeometry.Cylinders.QuadPart)
       {
-      case MEDIA_SIZE_2P88MB:
-      case MEDIA_SIZE_1P44MB:
+      case MEDIA_SIZE_240MB:
+      case MEDIA_SIZE_120MB:
+      case MEDIA_SIZE_2800KB:
+      case MEDIA_SIZE_1722KB:
+      case MEDIA_SIZE_1680KB:
+      case MEDIA_SIZE_1440KB:
+      case MEDIA_SIZE_820KB:
       case MEDIA_SIZE_720KB:
-      case MEDIA_SIZE_1P20MB:
+      case MEDIA_SIZE_1200KB:
       case MEDIA_SIZE_640KB:
+      case MEDIA_SIZE_360KB:
       case MEDIA_SIZE_320KB:
+      case MEDIA_SIZE_180KB:
+      case MEDIA_SIZE_160KB:
 	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
 	break;
 
@@ -1346,33 +1395,67 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	  (CreateData->DiskGeometry.MediaType == Unknown))
 	switch (calccyl)
 	  {
-	  case MEDIA_SIZE_2P88MB:
-	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_288];
+	    // 3.5" formats
+	  case MEDIA_SIZE_240MB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_240M];
 	    break;
 
-	  case MEDIA_SIZE_1P44MB:
-	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_144];
+	  case MEDIA_SIZE_120MB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_120M];
+	    break;
+
+	  case MEDIA_SIZE_2800KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_2880K];
+	    break;
+
+	  case MEDIA_SIZE_1722KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_1722K];
+	    break;
+
+	  case MEDIA_SIZE_1680KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_1680K];
+	    break;
+
+	  case MEDIA_SIZE_1440KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_1440K];
+	    break;
+
+	  case MEDIA_SIZE_820KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_820K];
 	    break;
 
 	  case MEDIA_SIZE_720KB:
-	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_720];
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_720K];
 	    break;
 
-	  case MEDIA_SIZE_1P20MB:
-	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_120];
+	    // 5.25" formats
+	  case MEDIA_SIZE_1200KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_1200K];
 	    break;
 
 	  case MEDIA_SIZE_640KB:
-	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_640];
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_640K];
+	    break;
+
+	  case MEDIA_SIZE_360KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_360K];
 	    break;
 
 	  case MEDIA_SIZE_320KB:
-	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_320];
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_320K];
+	    break;
+
+	  case MEDIA_SIZE_180KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_180K];
+	    break;
+
+	  case MEDIA_SIZE_160KB:
+	    CreateData->DiskGeometry = media_table[MEDIA_TYPE_160K];
 	    break;
 	  }
 
       // In this case the Cylinders member actually specifies the total size of
-      // the virtual disk so restore that in case overwritten by the the pre-
+      // the virtual disk so restore that in case overwritten by the pre-
       // defined floppy geometries above.
       CreateData->DiskGeometry.Cylinders.QuadPart = calccyl;
 
@@ -1525,7 +1608,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-  _snwprintf(device_name_buffer, MAXIMUM_FILENAME_LENGTH,
+  _snwprintf(device_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
 	     IMDISK_DEVICE_BASE_NAME L"%u", CreateData->DeviceNumber);
   device_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
 
@@ -1590,17 +1673,16 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   device_extension->disk_geometry = CreateData->DiskGeometry;
 
+  device_extension->image_offset = CreateData->ImageOffset;
+
   // VM disk.
   if (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM)
-    {
-      device_extension->image_buffer = image_buffer;
-      device_extension->vm_disk = TRUE;
-    }
+    device_extension->vm_disk = TRUE;
   else
-    {
-      device_extension->file_handle = file_handle;
-      device_extension->vm_disk = FALSE;
-    }
+    device_extension->vm_disk = FALSE;
+
+  device_extension->image_buffer = image_buffer;
+  device_extension->file_handle = file_handle;
 
   // Use proxy service.
   if (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY)
@@ -1645,6 +1727,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
       device_extension->drive_letter = CreateData->DriveLetter;
     }
+
+  device_extension->device_thread = KeGetCurrentThread();
 
   (*DeviceObject)->Flags &= ~DO_DEVICE_INITIALIZING;
 
@@ -2007,6 +2091,77 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
   
   switch (io_stack->Parameters.DeviceIoControl.IoControlCode)
     {
+    case IOCTL_IMDISK_SET_DEVICE_FLAGS:
+      KdPrint(("ImDisk: IOCTL_IMDISK_SET_DEVICE_FLAGS for device %i.\n",
+	       device_extension->device_number));
+
+      if (KeGetCurrentIrql() >= DISPATCH_LEVEL)
+	{
+	  status = STATUS_ACCESS_DENIED;
+	  Irp->IoStatus.Information = 0;
+	  break;
+	}
+
+      if (io_stack->Parameters.DeviceIoControl.InputBufferLength <
+	  sizeof(IMDISK_SET_DEVICE_FLAGS))
+	{
+	  status = STATUS_INVALID_PARAMETER;
+	  Irp->IoStatus.Information = 0;
+	  break;
+	}
+
+      {
+	PIMDISK_SET_DEVICE_FLAGS device_flags =
+	  Irp->AssociatedIrp.SystemBuffer;
+
+	if (IMDISK_READONLY(device_flags->FlagsToChange))
+	  if (DeviceObject->DeviceType == FILE_DEVICE_DISK)
+	    {
+	      if (IMDISK_READONLY(device_flags->FlagValues))
+		{
+		  DeviceObject->Characteristics |= FILE_READ_ONLY_DEVICE;
+		  device_extension->read_only = TRUE;
+
+		  device_flags->FlagsToChange &= ~IMDISK_OPTION_RO;
+		}
+	      else
+		// It is not possible to make a file- or proxy virtual disk
+		// writable on the fly. (A physical image file or the proxy
+		// comm channel might not be opened for writing.)
+		if (device_extension->vm_disk) 
+		  {
+		    DeviceObject->Characteristics &= ~FILE_READ_ONLY_DEVICE;
+		    device_extension->read_only = FALSE;
+		    
+		    device_flags->FlagsToChange &= ~IMDISK_OPTION_RO;
+		  }
+	    }
+
+	if (IMDISK_REMOVABLE(device_flags->FlagsToChange))
+	  if (DeviceObject->DeviceType == FILE_DEVICE_DISK)
+	    {
+	      if (IMDISK_REMOVABLE(device_flags->FlagValues))
+		DeviceObject->Characteristics |= FILE_REMOVABLE_MEDIA;
+	      else
+		DeviceObject->Characteristics &= ~FILE_REMOVABLE_MEDIA;
+
+	      device_flags->FlagsToChange &= ~IMDISK_OPTION_REMOVABLE;
+	    }
+
+	if (device_flags->FlagsToChange)
+	  status = STATUS_INVALID_DEVICE_REQUEST;
+	else
+	  status = STATUS_SUCCESS;
+      }
+
+      if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+	  sizeof(IMDISK_SET_DEVICE_FLAGS))
+	Irp->IoStatus.Information = sizeof(IMDISK_SET_DEVICE_FLAGS);
+      else
+	Irp->IoStatus.Information = 0;
+
+      break;
+
     case IOCTL_IMDISK_REFERENCE_HANDLE:
       KdPrint(("ImDisk: IOCTL_IMDISK_REFERENCE_HANDLE for device %i.\n",
 	       device_extension->device_number));
@@ -2418,13 +2573,6 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    break;
 	  }
 
-	if (device_extension->vm_disk)
-	  {
-	    status = STATUS_INVALID_DEVICE_REQUEST;
-	    Irp->IoStatus.Information = 0;
-	    break;
-	  }
-
 	grow_partition = (PDISK_GROW_PARTITION)
 	  Irp->AssociatedIrp.SystemBuffer;
 
@@ -2439,18 +2587,6 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    break;
 	  }
 
-	// For proxy-type disks the new size is just accepted and that's it.
-	if (device_extension->use_proxy)
-	  {
-	    device_extension->disk_geometry.Cylinders.QuadPart +=
-	      grow_partition->BytesToGrow.QuadPart;
-	    
-	    status = STATUS_SUCCESS;
-	    Irp->IoStatus.Information = 0;
-	    break;
-	  }
-
-	// For file-backed disks we need to adjust the physical filesize.
 	status = STATUS_PENDING;
 	break;
       }
@@ -2874,6 +3010,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	if (chars < 0)
 	  {
 	    if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+		FIELD_OFFSET(MOUNTDEV_NAME, Name) +
 		sizeof(mountdev_name->NameLength))
 	      mountdev_name->NameLength = sizeof(IMDISK_DEVICE_BASE_NAME) +
 		20;
@@ -2884,11 +3021,17 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 		     chars));
 
 	    status = STATUS_BUFFER_OVERFLOW;
-	    Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
+
+	    if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+		sizeof(MOUNTDEV_NAME))
+	      Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
+	    else
+	      Irp->IoStatus.Information = 0;
+
 	    break;
 	  }
 
-	mountdev_name->NameLength = (USHORT)chars << 1;
+	mountdev_name->NameLength = (USHORT) chars << 1;
 
 	status = STATUS_SUCCESS;
 	Irp->IoStatus.Information =
@@ -2965,7 +3108,7 @@ ImDiskDeviceThread(IN PVOID Context)
     {
       LARGE_INTEGER wait_time;
 
-      KdPrint2(("ImDisk: Driver still initializing, waiting 100ms...\n"));
+      KdPrint2(("ImDisk: Driver still initializing, waiting 100 ms...\n"));
 
       wait_time.QuadPart = -1000000;
       KeDelayExecutionThread(KernelMode, FALSE, &wait_time);
@@ -2990,10 +3133,6 @@ ImDiskDeviceThread(IN PVOID Context)
       PsTerminateSystemThread(STATUS_SUCCESS);
     }
 
-  device_extension = (PDEVICE_EXTENSION) device_object->DeviceExtension;
-
-  device_extension->device_thread = KeGetCurrentThread();
-
   // Now we are done with initialization. Let the one that asks us to create
   // this device now that, or if no-one left there, clean up init structures
   // here.
@@ -3008,7 +3147,40 @@ ImDiskDeviceThread(IN PVOID Context)
   KdPrint(("ImDisk: Device thread initialized. (flags=%#x)\n",
 	   device_object->Flags));
 
+  device_extension = (PDEVICE_EXTENSION) device_object->DeviceExtension;
+
   time_out.QuadPart = -1000000;
+
+  // If this is a VM backed disk that should be pre-loaded with an image file
+  // we have to load the contents of that file now.
+  if (device_extension->vm_disk && (device_extension->file_handle != NULL))
+    {
+      LARGE_INTEGER byte_offset = device_extension->image_offset;
+      IO_STATUS_BLOCK io_status;
+      NTSTATUS status;
+
+      KdPrint(("ImDisk: Reading image file into vm disk buffer.\n"));
+
+      status =
+	ImDiskSafeReadFile(device_extension->file_handle,
+			   &io_status,
+			   device_extension->image_buffer,
+			   device_extension->disk_geometry.Cylinders.LowPart,
+			   &byte_offset);
+
+      ZwClose(device_extension->file_handle);
+      device_extension->file_handle = NULL;
+
+      // Failure to read pre-load image is now considered a fatal error
+      if (!NT_SUCCESS(status))
+	{
+	  KdPrint(("ImDisk: Failed to read image file (%#x).\n", status));
+
+	  ImDiskRemoveVirtualDisk(device_object);
+	}
+      else
+	KdPrint(("ImDisk: Image loaded successfully.\n"));
+    }
 
   for (;;)
     {
@@ -3047,7 +3219,7 @@ ImDiskDeviceThread(IN PVOID Context)
 	    {
 	      NTSTATUS status;
 	      WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
-	      WCHAR sym_link_wchar[] = L"\\DosDevices\\Global\\ :";
+	      WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
 	      UNICODE_STRING sym_link;
 
 	      sym_link_global_wchar[19] = device_extension->drive_letter;
@@ -3137,6 +3309,8 @@ ImDiskDeviceThread(IN PVOID Context)
 	    PUCHAR system_buffer =
 	      (PUCHAR) MmGetSystemAddressForMdlSafe(irp->MdlAddress,
 						    NormalPagePriority);
+	    LARGE_INTEGER offset;
+
 	    if (system_buffer == NULL)
 	      {
 		irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -3146,15 +3320,19 @@ ImDiskDeviceThread(IN PVOID Context)
 
 	    if (device_extension->vm_disk)
 	      {
-		irp->IoStatus.Status =
-		  ImDiskReadVMDisk(device_extension->image_buffer,
-				   &irp->IoStatus,
-				   system_buffer,
-				   io_stack->Parameters.Read.Length,
-				   io_stack->Parameters.
-				   Read.ByteOffset.LowPart);
+		RtlCopyMemory(system_buffer,
+			      device_extension->image_buffer +
+			      io_stack->Parameters.Read.ByteOffset.LowPart,
+			      io_stack->Parameters.Read.Length);
+
+		irp->IoStatus.Status = STATUS_SUCCESS;
+		irp->IoStatus.Information = io_stack->Parameters.Read.Length;
+
 		break;
 	      }
+
+	    offset.QuadPart = io_stack->Parameters.Read.ByteOffset.QuadPart +
+	      device_extension->image_offset.QuadPart;
 
 	    buffer = (PUCHAR)
 	      ExAllocatePool(NonPagedPool, io_stack->Parameters.Read.Length);
@@ -3173,7 +3351,7 @@ ImDiskDeviceThread(IN PVOID Context)
 				  &irp->IoStatus,
 				  buffer,
 				  io_stack->Parameters.Read.Length,
-				  &io_stack->Parameters.Read.ByteOffset);
+				  &offset);
 
 		if (!NT_SUCCESS(irp->IoStatus.Status))
 		  {
@@ -3198,7 +3376,7 @@ ImDiskDeviceThread(IN PVOID Context)
 			   &irp->IoStatus,
 			   buffer,
 			   io_stack->Parameters.Read.Length,
-			   &io_stack->Parameters.Read.ByteOffset,
+			   &offset,
 			   NULL);
 
 	    RtlCopyMemory(system_buffer, buffer,
@@ -3215,6 +3393,8 @@ ImDiskDeviceThread(IN PVOID Context)
 	    PUCHAR system_buffer =
 	      (PUCHAR) MmGetSystemAddressForMdlSafe(irp->MdlAddress,
 						    NormalPagePriority);
+	    LARGE_INTEGER offset;
+
 	    if (system_buffer == NULL)
 	      {
 		irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -3224,16 +3404,20 @@ ImDiskDeviceThread(IN PVOID Context)
 
 	    if (device_extension->vm_disk)
 	      {
-		irp->IoStatus.Status =
-		  ImDiskWriteVMDisk(device_extension->image_buffer,
-				    &irp->IoStatus,
-				    system_buffer,
-				    io_stack->Parameters.Write.Length,
-				    io_stack->Parameters.
-				    Write.ByteOffset.LowPart);
+		RtlCopyMemory(device_extension->image_buffer +
+			      io_stack->Parameters.Write.ByteOffset.LowPart,
+			      system_buffer,
+			      io_stack->Parameters.Write.Length);
+
+		irp->IoStatus.Status = STATUS_SUCCESS;
+		irp->IoStatus.Information = io_stack->Parameters.Write.Length;
+
 		break;
 	      }
-		
+
+	    offset.QuadPart = io_stack->Parameters.Write.ByteOffset.QuadPart +
+	      device_extension->image_offset.QuadPart;
+
 	    buffer = (PUCHAR)
 	      ExAllocatePool(NonPagedPool, io_stack->Parameters.Write.Length);
 
@@ -3254,8 +3438,7 @@ ImDiskDeviceThread(IN PVOID Context)
 				   &irp->IoStatus,
 				   buffer,
 				   io_stack->Parameters.Write.Length,
-				   &io_stack->
-				   Parameters.Write.ByteOffset);
+				   &offset);
 
 		if (!NT_SUCCESS(irp->IoStatus.Status))
 		  {
@@ -3280,7 +3463,7 @@ ImDiskDeviceThread(IN PVOID Context)
 			    &irp->IoStatus,
 			    buffer,
 			    io_stack->Parameters.Write.Length,
-			    &io_stack->Parameters.Write.ByteOffset,
+			    &offset,
 			    NULL);
 
 	    ExFreePool(buffer);
@@ -3297,7 +3480,6 @@ ImDiskDeviceThread(IN PVOID Context)
 	    case IOCTL_STORAGE_CHECK_VERIFY2:
 	      {
 		PUCHAR buffer;
-		LARGE_INTEGER byte_offset;
 		
 		buffer = (PUCHAR)
 		  ExAllocatePool(NonPagedPool, + 1);
@@ -3309,15 +3491,13 @@ ImDiskDeviceThread(IN PVOID Context)
 		    break;
 		  }
 
-		byte_offset.QuadPart = 0;
-
 		if (device_extension->use_proxy)
 		  irp->IoStatus.Status =
 		    ImDiskReadProxy(device_extension->proxy_device,
 				    &irp->IoStatus,
 				    buffer,
 				    0,
-				    &byte_offset);
+				    &device_extension->image_offset);
 		else				      
 		  irp->IoStatus.Status =
 		    ZwReadFile(device_extension->file_handle,
@@ -3327,7 +3507,7 @@ ImDiskDeviceThread(IN PVOID Context)
 			       &irp->IoStatus,
 			       buffer,
 			       0,
-			       &byte_offset,
+			       &device_extension->image_offset,
 			       NULL);
 
 		ExFreePool(buffer);
@@ -3398,6 +3578,69 @@ ImDiskDeviceThread(IN PVOID Context)
 		  ((PDISK_GROW_PARTITION) irp->AssociatedIrp.SystemBuffer)->
 		  BytesToGrow.QuadPart;
 
+		if (device_extension->vm_disk)
+		  {
+		    ULONG max_size = new_size.EndOfFile.LowPart;
+		    PVOID new_image_buffer = NULL;
+
+		    // A vm type disk cannot be extened to a larger size than
+		    // 2 GB.
+		    if (new_size.EndOfFile.QuadPart & 0xFFFFFFFF80000000)
+		      {
+			irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+			irp->IoStatus.Information = 0;
+			break;
+		      }
+
+		    status = ZwAllocateVirtualMemory(NtCurrentProcess(),
+						     &new_image_buffer,
+						     0,
+						     &max_size,
+						     MEM_COMMIT,
+						     PAGE_READWRITE);
+
+		    if (!NT_SUCCESS(status))
+		      {
+			irp->IoStatus.Status = status;
+			irp->IoStatus.Information = 0;
+			break;
+		      }
+
+		    RtlCopyMemory
+		      (new_image_buffer,
+		       device_extension->image_buffer,
+		       device_extension->disk_geometry.Cylinders.LowPart);
+
+		    max_size = 0;
+		    ZwFreeVirtualMemory(NtCurrentProcess(),
+					&device_extension->image_buffer,
+					&max_size, MEM_RELEASE);
+
+		    device_extension->image_buffer = new_image_buffer;
+		    device_extension->disk_geometry.Cylinders =
+		      new_size.EndOfFile;
+
+		    irp->IoStatus.Information = 0;
+		    irp->IoStatus.Status = STATUS_SUCCESS;
+		    break;
+		  }
+
+		// For proxy-type disks and file-type disks with offset the
+		// new size is just accepted and that's it.
+		if ((device_extension->use_proxy) |
+		    (device_extension->image_offset.QuadPart != 0))
+		  {
+		    device_extension->disk_geometry.Cylinders =
+		      new_size.EndOfFile;
+	    
+		    irp->IoStatus.Information = 0;
+		    irp->IoStatus.Status = STATUS_SUCCESS;
+		    break;
+		  }
+
+		// For other, fixed file-backed disks we need to adjust the
+		// physical filesize.
+
 		status = ZwSetInformationFile(device_extension->file_handle,
 					      &irp->IoStatus,
 					      &new_size,
@@ -3426,58 +3669,6 @@ ImDiskDeviceThread(IN PVOID Context)
 			NT_SUCCESS(irp->IoStatus.Status) ?
 			IO_DISK_INCREMENT : IO_NO_INCREMENT);
     }
-}
-
-NTSTATUS
-ImDiskReadVMDisk(IN PUCHAR VMDisk,
-		 OUT PIO_STATUS_BLOCK IoStatusBlock,
-		 OUT PVOID Buffer,
-		 IN ULONG Length,
-		 IN ULONG ByteOffset)
-{
-  LARGE_INTEGER wait_time;
-
-  PAGED_CODE();
-
-  ASSERT(VMDisk != NULL);
-  ASSERT(IoStatusBlock != NULL);
-  ASSERT(Buffer != NULL);
-
-  RtlCopyMemory(Buffer,	VMDisk + ByteOffset, Length);
-
-  wait_time.QuadPart = -1;
-  KeDelayExecutionThread(KernelMode, FALSE, &wait_time);
-
-  IoStatusBlock->Status = STATUS_SUCCESS;
-  IoStatusBlock->Information = Length;
-
-  return STATUS_SUCCESS;
-}
-
-NTSTATUS
-ImDiskWriteVMDisk(IN OUT PUCHAR VMDisk,
-		  OUT PIO_STATUS_BLOCK IoStatusBlock,
-		  OUT PVOID Buffer,
-		  IN ULONG Length,
-		  IN ULONG ByteOffset)
-{
-  LARGE_INTEGER wait_time;
-
-  PAGED_CODE();
-
-  ASSERT(VMDisk != NULL);
-  ASSERT(IoStatusBlock != NULL);
-  ASSERT(Buffer != NULL);
-
-  RtlCopyMemory(VMDisk + ByteOffset, Buffer, Length);
-
-  wait_time.QuadPart = -1;
-  KeDelayExecutionThread(KernelMode, FALSE, &wait_time);
-
-  IoStatusBlock->Status = STATUS_SUCCESS;
-  IoStatusBlock->Information = Length;
-
-  return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -4095,6 +4286,9 @@ ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
       Irp->IoStatus.Information = 0;
       return STATUS_SUCCESS;
     }
+
+  start_offset.QuadPart += Extension->image_offset.QuadPart;
+  end_offset.QuadPart += Extension->image_offset.QuadPart;
 
   format_buffer = ExAllocatePool(PagedPool, track_length);
 

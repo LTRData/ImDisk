@@ -40,6 +40,7 @@
 
 #include <windows.h>
 #include <winsock.h>
+#include <winioctl.h>
 #include <io.h>
 
 __inline
@@ -312,8 +313,9 @@ main(int argc, char **argv)
 	      "Usage:\n"
 	      "%s [-r] tcp-port|commdev diskdev [blocks] [offset] [alignm] [buffersize]\n"
 	      "\n"
-	      "Default number of blocks is 0. This can only be used if the client knows the\n"
-	      "size without help from this service.\n"
+	      "Default number of blocks is 0. When running on Windows the program will try to\n"
+	      "get the size of the image file or partition automatically in this case,\n"
+	      "otherwise the client must know the exact size without help from this service.\n"
 	      "Default alignment is %u bytes.\n"
 	      "Default buffer size is %u bytes.\n",
 	      argv[0],
@@ -368,6 +370,71 @@ main(int argc, char **argv)
       else
 	devio_info.file_size <<= 9;
     }
+
+#ifdef _WIN32
+  {
+    HANDLE h = (HANDLE) _get_osfhandle(fd);
+    BY_HANDLE_FILE_INFORMATION by_handle_file_info;
+
+    // If not regular disk file, try to lock volume using FSCTL operation.
+    if (!GetFileInformationByHandle(h, &by_handle_file_info))
+      {
+	DWORD dw;
+	FlushFileBuffers(h);
+	if (DeviceIoControl(h, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dw, NULL))
+	  {
+	    if (!DeviceIoControl(h, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0,
+				 &dw, NULL))
+	      {
+		syslog(LOG_ERR, "Cannot dismount filesystem on %s.\n",
+		       argv[2]);
+
+		if (~devio_info.flags & IMDPROXY_FLAG_RO)
+		  return 9;
+	      }
+	  }
+	else
+	  switch (GetLastError())
+	    {
+	    case ERROR_NOT_SUPPORTED:
+	    case ERROR_INVALID_FUNCTION:
+	    case ERROR_INVALID_HANDLE:
+	    case ERROR_INVALID_PARAMETER:
+	      break;
+
+	    default:
+	      {
+		syslog(LOG_ERR, "Cannot dismount filesystem on %s.\n",
+		       argv[2]);
+
+		if (~devio_info.flags & IMDPROXY_FLAG_RO)
+		  return 9;
+	      }
+	    }
+
+	if (devio_info.file_size == 0)
+	  {
+	    PARTITION_INFORMATION partition_info = { 0 };
+	    DWORD dw;
+
+	    if (!DeviceIoControl(h, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0,
+				 &partition_info, sizeof(partition_info), &dw,
+				 NULL))
+	      syslog(LOG_ERR, "Cannot determine size of image/partition.\n");
+	    else
+	      devio_info.file_size = partition_info.PartitionLength.QuadPart;
+	  }
+      }
+    else if (devio_info.file_size == 0)
+      {
+	LARGE_INTEGER file_size;
+	file_size.HighPart = by_handle_file_info.nFileSizeHigh;
+	file_size.LowPart = by_handle_file_info.nFileSizeLow;
+
+	devio_info.file_size = file_size.QuadPart;
+      }
+  }
+#endif
 
   if (argc > 4)
     {

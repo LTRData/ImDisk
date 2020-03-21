@@ -16,10 +16,13 @@ C_DEFINES = $(C_DEFINES) /DUNICODE /D_UNICODE
 
 _NT_TARGET_VERSION=0x500
 
+LINKER_FLAGS=/osversion:4.00 /LARGEADDRESSAWARE
+
 TARGETLIBS=crthlp.lib \
            $(SDK_LIB_PATH)\kernel32.lib \
            $(SDK_LIB_PATH)\advapi32.lib \
            $(SDK_LIB_PATH)\user32.lib \
+           $(SDK_LIB_PATH)\shell32.lib \
            $(SDK_LIB_PATH)\comctl32.lib \
            $(SDK_LIB_PATH)\comdlg32.lib \
            $(SDK_LIB_PATH)\ntdll.lib

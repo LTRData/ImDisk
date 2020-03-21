@@ -5,6 +5,7 @@ EXPORTS
 
 	RunDLL_MountFile=_RunDLL_MountFile@16
 	RunDLL_RemoveDevice=_RunDLL_RemoveDevice@16
+	RunDLL_SaveImageFile=_RunDLL_SaveImageFile@16
 
 	MsgBoxPrintF
 	_MsgBoxLastError@8
@@ -19,6 +20,8 @@ EXPORTS
 	_ImDiskFindFreeDriveLetter@0
 	_ImDiskGetDeviceList@0
 	_ImDiskQueryDevice@12
-	_ImDiskCreateDevice@24
+	_ImDiskCreateDevice@28
 	_ImDiskRemoveDevice@12
+	_ImDiskChangeFlags@20
 	_ImDiskExtendDevice@12
+	_ImDiskSaveImageFile@16

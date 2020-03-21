@@ -1,7 +1,7 @@
 [Version]
 signature = "$Windows NT$"
 Provider = "Olof Lagerkvist"
-DriverVer = 04/23/2007,1,00,02,0001
+DriverVer = 05/30/2007,1,00,03,0009
 
 
 [SourceDisksNames]
@@ -67,6 +67,9 @@ HKCR, "*\shell\ImDiskMountFile\command", , 0, "rundll32.exe imdisk.cpl,RunDLL_Mo
 HKCR, "Drive\shell\ImDiskUnmount", , 0, "Unmount ImDisk Virtual Disk"
 HKCR, "Drive\shell\ImDiskUnmount\command", , 0, "rundll32.exe imdisk.cpl,RunDLL_RemoveDevice %%L"
 
+HKCR, "Drive\shell\ImDiskSaveImage", , 0, "Save disk contents as image file"
+HKCR, "Drive\shell\ImDiskSaveImage\command", , 0, "rundll32.exe imdisk.cpl,RunDLL_SaveImageFile %%L"
+
 
 [ImDiskDelOldReg]
 HKCR, "*\shell\ImDiskMountFileWriteable"
@@ -80,6 +83,8 @@ HKCR, "*\shell\ImDiskMountFile"
 HKCR, "*\shell\ImDiskMountFileWriteable"
 
 HKCR, "Drive\shell\ImDiskUnmount"
+
+HKCR, "Drive\shell\ImDiskSaveImage"
 
 
 [ImDskDrv]

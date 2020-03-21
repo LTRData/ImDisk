@@ -30,6 +30,8 @@
 #include <winioctl.h>
 #include <commctrl.h>
 #include <commdlg.h>
+#include <shellapi.h>
+#include <shlobj.h>
 #include <cpl.h>
 
 #include <stdio.h>
@@ -61,6 +63,37 @@
 	       (n)==1 ? L"byte" : L"bytes")
 
 extern "C" HINSTANCE hInstance = NULL;
+
+// Define DEBUG if you want debug output.
+//#define DEBUG
+
+#ifndef DEBUG
+
+#define KdPrint(x)
+
+#else
+
+#define KdPrint(x)          DbgPrintF          x
+
+BOOL
+DbgPrintF(LPCSTR Message, ...)
+{
+  va_list param_list;
+  LPSTR lpBuf = NULL;
+
+  va_start(param_list, Message);
+
+  if (!FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+		      FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		      FORMAT_MESSAGE_FROM_STRING, Message, 0, 0,
+		      (LPSTR) &lpBuf, 0, &param_list))
+    return FALSE;
+
+  OutputDebugStringA(lpBuf);
+  LocalFree(lpBuf);
+  return TRUE;
+}
+#endif
 
 void
 LoadDeviceToList(HWND hWnd, int iDeviceNumber)
@@ -179,11 +212,36 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
   ListView_SetItem(hWnd, &lvi);
 
   WCHAR wcBuffer[128];
-  _snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer),
-	     L"%.4g %s",
-	     _h(create_data->DiskGeometry.Cylinders.QuadPart),
-	     _p(create_data->DiskGeometry.Cylinders.QuadPart));
-  wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer)] = 0;
+  switch (create_data->DiskGeometry.Cylinders.QuadPart)
+    {
+    case 2880 << 10:
+      wcscpy(wcBuffer, L"2,880 KB");
+      break;
+
+    case 1722 << 10:
+      wcscpy(wcBuffer, L"1,722 KB");
+      break;
+
+    case 1680 << 10:
+      wcscpy(wcBuffer, L"1,680 KB");
+      break;
+
+    case 1440 << 10:
+      wcscpy(wcBuffer, L"1,440 KB");
+      break;
+
+    case 1200 << 10:
+      wcscpy(wcBuffer, L"1,200 KB");
+      break;
+
+    default:
+      _snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
+		 L"%.4g %s",
+		 _h(create_data->DiskGeometry.Cylinders.QuadPart),
+		 _p(create_data->DiskGeometry.Cylinders.QuadPart));
+    }
+
+  wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
 
   lvi.iSubItem = 2;
   lvi.pszText = wcBuffer;
@@ -201,6 +259,17 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
     else
       lvi.pszText = L"Read/write";
 
+  ListView_SetItem(hWnd, &lvi);
+
+  lvi.iSubItem = 4;
+  if (create_data->DriveLetter != 0)
+    if (GetVolumeInformation(wcMountPoint, NULL, 0, NULL, NULL, NULL,
+			     wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)))
+      lvi.pszText = wcBuffer;
+    else
+      lvi.pszText = L"N/A";
+  else
+    lvi.pszText = L"";
   ListView_SetItem(hWnd, &lvi);
 }
 
@@ -232,6 +301,185 @@ RefreshList(HWND hWnd)
   return true;
 }
 
+BOOL
+CALLBACK
+AboutDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+  switch (uMsg)
+    {
+    case WM_INITDIALOG:
+      {
+	LPWSTR *argv = (LPWSTR*) lParam;
+	LPWSTR lpBuf = NULL;
+
+	SetWindowText(hWnd, argv[0]);
+
+	if (!FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+			   FORMAT_MESSAGE_ARGUMENT_ARRAY |
+			   FORMAT_MESSAGE_FROM_STRING, argv[1], 0, 0,
+			   (LPWSTR) &lpBuf, 0, (va_list*) (argv+2)))
+	  return TRUE;
+
+	SetDlgItemText(hWnd, IDC_EDT_ABOUTTEXT, lpBuf);
+	LocalFree(lpBuf);
+	return TRUE;
+      }
+
+    case WM_COMMAND:
+      switch (LOWORD(wParam))
+	{
+	case IDCANCEL:
+	case IDOK:
+	  EndDialog(hWnd, IDOK);
+	  return TRUE;
+	}
+
+      return TRUE;
+
+    case WM_CLOSE:
+      EndDialog(hWnd, IDCANCEL);
+      return TRUE;
+    }
+
+  return FALSE;
+}
+
+int
+CDECL
+DisplayAboutBox(HWND hWnd, LPCWSTR Title, LPCWSTR /*Message*/, ...)
+{
+  return DialogBoxParam(hInstance, MAKEINTRESOURCE(IDD_ABOUT_BOX), hWnd,
+			AboutDlgProc, (LPARAM) &Title);
+}
+
+void
+SaveSelectedDeviceToImageFile(HWND hWnd)
+{
+  LVITEM lvi = { 0 };
+  lvi.mask = LVIF_IMAGE | LVIF_TEXT | LVIF_PARAM;
+  lvi.iItem = (int)
+    SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM, (WPARAM) -1,
+		       MAKELPARAM((UINT) LVNI_SELECTED, 0));
+
+  if (lvi.iItem == -1)
+    return;
+
+  lvi.iSubItem = 0;
+  WCHAR wcBuffer[3] = L"";
+  lvi.pszText = wcBuffer;
+  lvi.cchTextMax = sizeof(wcBuffer)/sizeof(*wcBuffer);
+  SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETITEM, 0, (LPARAM) &lvi);
+
+  WCHAR file_name[MAX_PATH + 1] = L"";
+  OPENFILENAME_NT4 ofn = { sizeof ofn };
+  ofn.hwndOwner = hWnd;
+  ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
+  ofn.lpstrFile = file_name;
+  ofn.nMaxFile = sizeof(file_name)/sizeof(*file_name);
+  ofn.lpstrTitle = L"Save contents of virtual disk to image file";
+  ofn.Flags = OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT |
+    OFN_PATHMUSTEXIST;
+  ofn.lpstrDefExt = L"img";
+
+  if (lvi.iImage == 2)
+    {
+      ofn.lpstrFilter = L"ISO image (*.iso)\0*.iso\0";
+      ofn.lpstrDefExt = L"iso";
+    }
+
+  HANDLE hDev = ImDiskOpenDeviceByNumber(lvi.lParam, GENERIC_READ);
+
+  if (hDev == INVALID_HANDLE_VALUE)
+    {
+      MsgBoxLastError(hWnd, L"Cannot open drive for direct access:");
+      return;
+    }
+
+  if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
+    {
+      CloseHandle(hDev);
+      return;
+    }
+
+  HANDLE hImage = CreateFile(ofn.lpstrFile,
+			     GENERIC_WRITE,
+			     FILE_SHARE_READ | FILE_SHARE_DELETE,
+			     NULL,
+			     CREATE_ALWAYS,
+			     FILE_ATTRIBUTE_NORMAL,
+			     NULL);
+
+  if (hImage == INVALID_HANDLE_VALUE)
+    {
+      MsgBoxLastError(hWnd, L"Cannot create image file:");
+      CloseHandle(hDev);
+      return;
+    }
+
+  DWORD dwRet;
+  if (DeviceIoControl(hDev, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dwRet, NULL))
+    DeviceIoControl(hDev, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0, &dwRet,
+		    NULL);
+  else
+    if (MessageBox(hWnd,
+		   L"Cannot lock the drive. It may be in use by another "
+		   L"program. Do you want to continue anyway?",
+		   L"ImDisk Virtual Disk Driver",
+		   MB_ICONEXCLAMATION | MB_OKCANCEL | MB_DEFBUTTON2) != IDOK)
+      {
+	CloseHandle(hDev);
+	CloseHandle(hImage);
+	return;
+      }
+
+  BOOL bCancelFlag = FALSE;
+
+  EnableWindow(hWnd, FALSE);
+  HWND hWndStatus =
+    CreateDialogParam(hInstance, MAKEINTRESOURCE(IDD_DLG_STATUS), hWnd,
+		      StatusDlgProc, (LPARAM) &bCancelFlag);
+
+  SetDlgItemText(hWndStatus, IDC_STATUS_MSG, L"Saving image file...");
+
+  if (ImDiskSaveImageFile(hDev, hImage, 2 << 20, &bCancelFlag))
+    {
+      DestroyWindow(hWndStatus);
+      EnableWindow(hWnd, TRUE);
+      CloseHandle(hDev);
+
+      if (GetFileSize(hImage, NULL) == 0)
+	{
+	  DeleteFile(ofn.lpstrFile);
+	  CloseHandle(hImage);
+
+	  MsgBoxPrintF(hWnd, MB_ICONEXCLAMATION, L"ImDisk Virtual Disk Driver",
+		       L"The contents of drive '%1' could not be saved. Check "
+		       L"that the drive contains a supported filesystem.",
+		       lvi.pszText);
+
+	  return;
+	}
+
+      CloseHandle(hImage);
+      MsgBoxPrintF(hWnd, MB_ICONINFORMATION,
+		   L"ImDisk Virtual Disk Driver",
+		   L"Successfully saved the contents of drive '%1' to "
+		   L"image file '%2'.", lvi.pszText, ofn.lpstrFile);
+      return;
+    }
+
+  MsgBoxLastError(hWnd, L"Error saving image:");
+
+  DestroyWindow(hWndStatus);
+  EnableWindow(hWnd, TRUE);
+  CloseHandle(hDev);
+
+  if (GetFileSize(hImage, NULL) == 0)
+    DeleteFile(ofn.lpstrFile);
+
+  CloseHandle(hImage);
+}
+
 BOOL CALLBACK
 NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -253,6 +501,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			   0);
 
 	CheckDlgButton(hWnd, IDC_UNIT_B, BST_CHECKED);
+	CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_CHECKED);
 	CheckDlgButton(hWnd, IDC_DT_AUTO, BST_CHECKED);
 
 	return TRUE;
@@ -277,8 +526,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	    {
 	      WCHAR file_name[MAX_PATH+1] = L"*";
 
-	      OPENFILENAME_NT4 ofn = { 0 };
-	      ofn.lStructSize = sizeof ofn;
+	      OPENFILENAME_NT4 ofn = { sizeof ofn };
 	      ofn.hwndOwner = hWnd;
 	      ofn.lpstrFile = file_name;
 	      ofn.nMaxFile = sizeof(file_name)/sizeof(*file_name);
@@ -310,6 +558,19 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		disk_geometry.Cylinders.QuadPart <<= 10;
 	      else if (IsDlgButtonChecked(hWnd, IDC_UNIT_BLOCKS))
 		disk_geometry.Cylinders.QuadPart <<= 9;
+
+	      LARGE_INTEGER image_offset = { 0 };
+	      image_offset.QuadPart =
+		GetDlgItemInt(hWnd, IDC_EDT_IMAGE_OFFSET, NULL, FALSE);
+
+	      if (IsDlgButtonChecked(hWnd, IDC_OFFSET_UNIT_GB))
+		image_offset.QuadPart <<= 30;
+	      else if (IsDlgButtonChecked(hWnd, IDC_OFFSET_UNIT_MB))
+		image_offset.QuadPart <<= 20;
+	      else if (IsDlgButtonChecked(hWnd, IDC_OFFSET_UNIT_KB))
+		image_offset.QuadPart <<= 10;
+	      else if (IsDlgButtonChecked(hWnd, IDC_OFFSET_UNIT_BLOCKS))
+		image_offset.QuadPart <<= 9;
 
 	      DWORD flags = 0;
 	      
@@ -343,6 +604,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	      BOOL status =
 		ImDiskCreateDevice(GetDlgItem(hWndStatus, IDC_STATUS_MSG),
 				   &disk_geometry,
+				   &image_offset,
 				   flags,
 				   file_name[0] == 0 ? NULL : file_name,
 				   FALSE,
@@ -371,7 +633,19 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	      case EN_KILLFOCUS:
 		if (GetDlgItemInt(hWnd, IDC_EDT_SIZE, NULL, FALSE) == 0)
-		  SetDlgItemText(hWnd, IDC_EDT_SIZE, L"(current)");
+		  SetDlgItemText(hWnd, IDC_EDT_SIZE,
+				 L"(current image file size)");
+		return TRUE;
+	      }
+	    return TRUE;
+
+	  case IDC_EDT_IMAGE_OFFSET:
+	    switch (HIWORD(wParam))
+	      {
+	      case EN_KILLFOCUS:
+		if (GetDlgItemInt(hWnd, IDC_EDT_IMAGE_OFFSET, NULL, FALSE) ==
+		    0)
+		  SetDlgItemText(hWnd, IDC_EDT_IMAGE_OFFSET, L"0");
 		return TRUE;
 	      }
 	    return TRUE;
@@ -418,6 +692,12 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 		SendDlgItemMessage(GetParent(hWnd), IDC_LISTVIEW,
 				   LVM_GETNEXTITEM, (WPARAM) -1,
 				   MAKELPARAM((UINT) LVNI_SELECTED, 0));
+
+	      if (lvi.iItem == -1)
+		{
+		  EndDialog(hWnd, IDCANCEL);
+		  return TRUE;
+		}
 
 	      lvi.iSubItem = 0;
 	      lvi.mask = LVIF_PARAM;
@@ -471,12 +751,16 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 }
 
 BOOL CALLBACK
-CplAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
+CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
   switch (uMsg)
     {
     case WM_INITDIALOG:
       {
+	SetClassLong(hWnd, GCL_HICON,
+		     (LONG) LoadIcon(hInstance,
+				     MAKEINTRESOURCE(IDI_APPICON)));
+
 	HWND hWndListView = GetDlgItem(hWnd, IDC_LISTVIEW);
 
 	LVCOLUMN lvc = { 0 };
@@ -487,27 +771,33 @@ CplAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 	ListView_InsertColumn(hWndListView, 0, &lvc);
 
 	lvc.mask = LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
-	lvc.cx = 280;
+	lvc.cx = 255;
 	lvc.pszText = L"Image file";
 
 	ListView_InsertColumn(hWndListView, 1, &lvc);
 
 	lvc.mask = LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
-	lvc.cx = 90;
+	lvc.cx = 60;
 	lvc.pszText = L"Size";
 
 	ListView_InsertColumn(hWndListView, 2, &lvc);
 
 	lvc.mask = LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
-	lvc.cx = 130;
+	lvc.cx = 135;
 	lvc.pszText = L"Properties";
 
 	ListView_InsertColumn(hWndListView, 3, &lvc);
 
+	lvc.mask = LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
+	lvc.cx = 60;
+	lvc.pszText = L"Filesystem";
+
+	ListView_InsertColumn(hWndListView, 4, &lvc);
+
 	HIMAGELIST hImageList =
 	  ImageList_Create(GetSystemMetrics(SM_CXSMICON),
 			   GetSystemMetrics(SM_CYSMICON),
-			   ILC_MASK, 1, 1);
+			   ILC_COLOR8 | ILC_MASK, 1, 1);
 
 	ImageList_AddIcon(hImageList,
 			  LoadIcon(hInstance, MAKEINTRESOURCE(IDI_ICONHD)));
@@ -519,7 +809,7 @@ CplAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 	ListView_SetImageList(hWndListView, hImageList, LVSIL_SMALL);
 
 	RefreshList(hWndListView);
-	
+
 	return TRUE;
       }
 
@@ -527,39 +817,145 @@ CplAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
       switch ((int) wParam)
 	{
 	case IDC_LISTVIEW:
-	  if (SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM,
-				 (WPARAM) -1,
-				 MAKELPARAM((UINT) LVNI_SELECTED, 0)) != -1)
+	  switch (((LPNMHDR) lParam)->code)
 	    {
-	      EnableWindow(GetDlgItem(hWnd, IDC_BTN_DELETE), TRUE);
-	      EnableWindow(GetDlgItem(hWnd, IDC_BTN_EXTEND), TRUE);
-	    }
-	  else
-	    {
-	      EnableWindow(GetDlgItem(hWnd, IDC_BTN_DELETE), FALSE);
-	      EnableWindow(GetDlgItem(hWnd, IDC_BTN_EXTEND), FALSE);
+	    case NM_CUSTOMDRAW:
+	      {
+		BOOL item_selected =
+		  SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM,
+				     (WPARAM) -1,
+				     MAKELPARAM((UINT) LVNI_SELECTED, 0)) !=
+		  -1;
+
+		EnableMenuItem(GetMenu(hWnd), CM_CPL_APPLET_SELECTED,
+			       (item_selected ? MF_ENABLED : MF_GRAYED) |
+			       MF_BYCOMMAND);
+
+		EnableWindow(GetDlgItem(hWnd, CM_CPL_APPLET_SELECTED_UNMOUNT),
+			     item_selected);
+		EnableWindow(GetDlgItem(hWnd,
+					CM_CPL_APPLET_SELECTED_EXTEND_SIZE),
+			     item_selected);
+		EnableWindow(GetDlgItem(hWnd, CM_CPL_APPLET_SELECTED_FORMAT),
+			     item_selected);
+		EnableWindow(GetDlgItem(hWnd,
+					CM_CPL_APPLET_SELECTED_SAVE_IMAGE),
+			     item_selected);
+	      }
+
+	      DrawMenuBar(hWnd);
+
+	      return TRUE;
+
+	    case NM_RCLICK:
+	      {
+		int item_selected =
+		  SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM,
+				     (WPARAM) -1,
+				     MAKELPARAM((UINT) LVNI_SELECTED, 0));
+		if (item_selected == -1)
+		  return TRUE;
+
+		POINT item_pos = { 0, 0 };
+		SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETITEMPOSITION,
+				   (WPARAM) item_selected, (LPARAM) &item_pos);
+
+		item_pos.x = 35;
+
+		MapWindowPoints(GetDlgItem(hWnd, IDC_LISTVIEW), NULL,
+				&item_pos, 1);
+		
+		TrackPopupMenu(GetSubMenu(GetMenu(hWnd), 1), TPM_RIGHTBUTTON,
+			       item_pos.x, item_pos.y, 0, hWnd, NULL);
+	      }
+	      return TRUE;
+
+	    case NM_DBLCLK:
+	      wParam = IDOK;
+	      break;
+
+	    case LVN_KEYDOWN:
+	      switch (((LV_KEYDOWN *) lParam)->wVKey)
+		{
+		  // The Delete and F5 keys in the listview translates into
+		  // buttons/menu items and then passed to the WM_COMMAND
+		  // case handler following this WM_NOTIFY case handler.
+		case VK_DELETE:
+		  wParam = CM_CPL_APPLET_SELECTED_UNMOUNT;
+		  break;
+
+		case VK_F5:
+		  wParam = CM_CPL_APPLET_WINDOW_REFRESH;
+		  break;
+
+		default:
+		  return FALSE;
+		}
+
+	      break;
+
+	    default:
+	      return FALSE;
 	    }
 
+	  break;
+
+	default:
 	  return TRUE;
 	}
-
-      return TRUE;
 
     case WM_COMMAND:
       switch (LOWORD(wParam))
 	{
-	case IDOK:
-	  EndDialog(hWnd, IDOK);
-	  return TRUE;
-
-	case IDC_BTN_NEW:
+	case CM_CPL_APPLET_FILE_MOUNT_NEW:
 	  if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_NEWDIALOG), hWnd,
 			NewDlgProc) == IDOK)
 	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
 
 	  return TRUE;
 
-	case IDC_BTN_DELETE:
+	case IDCANCEL:
+	case CM_CPL_APPLET_FILE_EXIT:
+	  EndDialog(hWnd, IDOK);
+
+	  return TRUE;
+
+	case IDOK:
+	case CM_CPL_APPLET_SELECTED_OPEN:
+	  {
+	    WCHAR mount_point[3] = L"";
+	    LVITEM lvi = { 0 };
+	    lvi.iItem = (int)
+	      SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM,
+				 (WPARAM) -1,
+				 MAKELPARAM((UINT) LVNI_SELECTED, 0));
+
+	    if (lvi.iItem == -1)
+	      return TRUE;
+	    
+	    lvi.iSubItem = 0;
+	    lvi.mask = LVIF_TEXT;
+	    lvi.pszText = mount_point;
+	    lvi.cchTextMax = sizeof(mount_point) / sizeof(*mount_point);
+	    SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETITEM, 0,
+			       (LPARAM) &lvi);
+
+	    if (mount_point[0] == 0)
+	      return TRUE;
+	    
+	    if ((int) ShellExecute(hWnd, L"open", mount_point, NULL, NULL,
+				   SW_SHOWNORMAL) <= 32)
+	      MessageBox(hWnd,
+			 L"Cannot open the drive. Check that the drive is "
+			 L"formatted with a compatible filesystem and that it "
+			 L"is not locked by another process.",
+			 L"ImDisk Virtual Disk Driver",
+			 MB_ICONEXCLAMATION);
+	  }
+
+	  return TRUE;
+
+	case CM_CPL_APPLET_SELECTED_UNMOUNT:
 	  {
 	    LVITEM lvi = { 0 };
 	    lvi.mask = LVIF_TEXT | LVIF_PARAM;
@@ -598,10 +994,123 @@ CplAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 	    return TRUE;
 	  }
 
-	case IDC_BTN_ABOUT:
-	  MsgBoxPrintF
+	case CM_CPL_APPLET_SELECTED_SET_RO:
+	case CM_CPL_APPLET_SELECTED_SET_RW:
+	case CM_CPL_APPLET_SELECTED_SET_REM:
+	case CM_CPL_APPLET_SELECTED_SET_FIXED:
+	  {
+	    LVITEM lvi = { 0 };
+	    lvi.mask = LVIF_TEXT | LVIF_PARAM;
+	    lvi.iItem = (int)
+	      SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM,
+				 (WPARAM) -1,
+				 MAKELPARAM((UINT) LVNI_SELECTED, 0));
+	    if (lvi.iItem == -1)
+	      return TRUE;
+
+	    lvi.iSubItem = 0;
+	    WCHAR wcBuffer[3] = L"";
+	    lvi.pszText = wcBuffer;
+	    lvi.cchTextMax = sizeof(wcBuffer)/sizeof(*wcBuffer);
+	    SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETITEM, 0,
+			       (LPARAM) &lvi);
+
+	    EnableWindow(hWnd, FALSE);
+	    HWND hWndStatus =
+	      CreateDialog(hInstance, MAKEINTRESOURCE(IDD_DLG_STATUS), hWnd,
+			   StatusDlgProc);
+
+	    DWORD flags_to_change = 0;
+	    DWORD flags = 0;
+
+	    switch (LOWORD(wParam))
+	      {
+	      case CM_CPL_APPLET_SELECTED_SET_RO:
+		flags = IMDISK_OPTION_RO;
+	      case CM_CPL_APPLET_SELECTED_SET_RW:
+		flags_to_change = IMDISK_OPTION_RO;
+		break;
+
+	      case CM_CPL_APPLET_SELECTED_SET_REM:
+		flags = IMDISK_OPTION_REMOVABLE;
+	      case CM_CPL_APPLET_SELECTED_SET_FIXED:
+		flags_to_change = IMDISK_OPTION_REMOVABLE;
+		break;
+	      }
+
+	    ImDiskChangeFlags(GetDlgItem(hWndStatus, IDC_STATUS_MSG),
+			      lvi.lParam,
+			      lvi.pszText[0] == 0 ? NULL : lvi.pszText,
+			      flags_to_change, flags);
+
+	    Sleep(100);
+
+	    EnableWindow(hWnd, TRUE);
+	    DestroyWindow(hWndStatus);
+
+	    DoEvents(NULL);
+
+	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+
+	    return TRUE;
+	  }
+
+	case CM_CPL_APPLET_SELECTED_EXTEND_SIZE:
+	  if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_DLG_EXTEND), hWnd,
+			ExtendDlgProc) == IDOK)
+	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+
+	  return TRUE;
+
+	case CM_CPL_APPLET_SELECTED_FORMAT:
+	  {
+	    WCHAR mount_point[3] = L"";
+	    LVITEM lvi = { 0 };
+	    lvi.iItem = (int)
+	      SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM,
+				 (WPARAM) -1,
+				 MAKELPARAM((UINT) LVNI_SELECTED, 0));
+
+	    if (lvi.iItem == -1)
+	      return TRUE;
+	    
+	    lvi.iSubItem = 0;
+	    lvi.mask = LVIF_TEXT;
+	    lvi.pszText = mount_point;
+	    lvi.cchTextMax = sizeof(mount_point) / sizeof(*mount_point);
+	    SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETITEM, 0,
+			       (LPARAM) &lvi);
+
+	    if ((mount_point[0] < 'A') | (mount_point[0] > 'Z'))
+	      {
+		MsgBoxPrintF(hWnd, MB_ICONSTOP, L"Unsupported mount point",
+			     L"It is only possible to format drives with a "
+			     L"drive letter A: - Z:. This mount point, '%1' "
+			     L"is not supported.", mount_point);
+		return TRUE;
+	      }
+
+	    SHFormatDrive(hWnd, (mount_point[0] & 0x1F) - 1, SHFMT_ID_DEFAULT,
+			  SHFMT_OPT_FULL);
+
+	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+	  }
+
+	  return TRUE;
+
+	case CM_CPL_APPLET_SELECTED_SAVE_IMAGE:
+	  SaveSelectedDeviceToImageFile(hWnd);
+
+	  return TRUE;
+
+	case CM_CPL_APPLET_WINDOW_REFRESH:
+	  RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+
+	  return TRUE;
+
+	case CM_CPL_APPLET_HELP_ABOUT:
+	  DisplayAboutBox
 	    (hWnd,
-	     MB_ICONINFORMATION,
 	     L"About ImDisk Virtual Disk Driver",
 	     L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
 	     L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
@@ -647,15 +1156,10 @@ CplAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 	     __TIMESTAMP__);
 
 	  return TRUE;
-
-	case IDC_BTN_EXTEND:
-	  if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_DLG_EXTEND), hWnd,
-			ExtendDlgProc) == IDOK)
-	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
-
-	  return TRUE;
 	}
-      
+
+      return TRUE;
+
     case WM_CLOSE:
       EndDialog(hWnd, IDOK);
       return TRUE;
@@ -676,17 +1180,21 @@ CPlApplet(HWND hwndCPl,	// handle to Control Panel window
     case CPL_DBLCLK:
       {
 	if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_CPLAPPLET), hwndCPl,
-		      CplAppletDlgProc) == -1)
+		      CPlAppletDlgProc) == -1)
 	  MessageBox(hwndCPl, L"Error loading dialog box.", L"ImDisk",
 		     MB_ICONSTOP);
 	return 0;
       }
+
     case CPL_EXIT:
       return 0;
+
     case CPL_GETCOUNT:
       return 1;
+
     case CPL_INIT:
       return 1;
+
     case CPL_INQUIRE:
       {
         LPCPLINFO lpcpli = (LPCPLINFO)lParam2;
@@ -696,15 +1204,17 @@ CPlApplet(HWND hwndCPl,	// handle to Control Panel window
         lpcpli->lData = 0;
         return 0;
       }
+
     case CPL_STOP:
       return 0;
+
     default:
       return 1;
     }
 }
 
 EXTERN_C BOOL WINAPI
-DllMain(HINSTANCE hinstDLL,  DWORD, LPVOID)
+DllMain(HINSTANCE hinstDLL, DWORD, LPVOID)
 {
   hInstance = hinstDLL;
   return TRUE;

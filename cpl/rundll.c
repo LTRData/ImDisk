@@ -28,6 +28,7 @@
 
 #include <windows.h>
 #include <winioctl.h>
+#include <commdlg.h>
 
 #include <malloc.h>
 
@@ -117,4 +118,155 @@ RunDLL_RemoveDevice(HWND hWnd,
   Sleep(100);
 
   DestroyWindow(hWndStatus);
+}
+
+void
+WINAPI
+RunDLL_SaveImageFile(HWND hWnd,
+		     HINSTANCE hInst,
+		     LPSTR lpszCmdLine,
+		     int nCmdShow)
+{
+  WCHAR file_name[MAX_PATH + 1] = L"";
+  WCHAR mount_point[] = L"\\\\.\\ :";
+  HWND hWndStatus;
+  HANDLE hDev;
+  HANDLE hImage;
+  BOOL bCancelFlag = FALSE;
+  DWORD dwRet;
+  OPENFILENAME_NT4 ofn = { sizeof ofn };
+  WCHAR dlg_title[] = L"Save drive  : to image file";
+  dlg_title[11] = lpszCmdLine[0];
+
+  ofn.hwndOwner = hWnd;
+  ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
+  ofn.lpstrFile = file_name;
+  ofn.nMaxFile = sizeof(file_name)/sizeof(*file_name);
+  ofn.lpstrTitle = dlg_title;
+  ofn.Flags = OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT |
+    OFN_PATHMUSTEXIST;
+  ofn.lpstrDefExt = L"img";
+
+  switch (GetDriveTypeA(lpszCmdLine))
+    {
+    case DRIVE_CDROM:
+      ofn.lpstrFilter = L"ISO image (*.iso)\0*.iso\0";
+      ofn.lpstrDefExt = L"iso";
+      break;
+
+    case DRIVE_REMOTE:
+      MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+		   L"Unsupported drive type: '%1!hs!'", lpszCmdLine);
+      return;
+    }
+
+  // If user right-clicked in Windows Explorer the drive we are dismounting is
+  // the current directory in this process. Change to Windows directory.
+  if (GetWindowsDirectory(file_name, sizeof(file_name) / sizeof(*file_name)))
+    {
+      file_name[(sizeof(file_name) / sizeof(*file_name)) - 1] = 0;
+      SetCurrentDirectory(file_name);
+    }
+  file_name[0] = 0;
+
+  if (strlen(lpszCmdLine) < 2 ? TRUE : lpszCmdLine[1] != L':')
+    {
+      MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+		   L"Unsupported mount point: '%1!hs!'", lpszCmdLine);
+      return;
+    }
+
+  mount_point[4] = lpszCmdLine[0];
+
+  hDev = CreateFile(mount_point,
+		    GENERIC_READ,
+		    FILE_SHARE_READ | FILE_SHARE_WRITE,
+		    NULL,
+		    OPEN_EXISTING,
+		    FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN,
+		    NULL);
+
+  if (hDev == INVALID_HANDLE_VALUE)
+    {
+      MsgBoxLastError(hWnd, L"Cannot open drive for direct access:");
+      return;
+    }
+
+  if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
+    {
+      CloseHandle(hDev);
+      return;
+    }
+
+  hImage = CreateFile(ofn.lpstrFile,
+		      GENERIC_WRITE,
+		      FILE_SHARE_READ | FILE_SHARE_DELETE,
+		      NULL,
+		      CREATE_ALWAYS,
+		      FILE_ATTRIBUTE_NORMAL,
+		      NULL);
+
+  if (hImage == INVALID_HANDLE_VALUE)
+    {
+      MsgBoxLastError(hWnd, L"Cannot create image file:");
+      CloseHandle(hDev);
+      return;
+    }
+
+  if (DeviceIoControl(hDev, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dwRet, NULL))
+    DeviceIoControl(hDev, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0, &dwRet,
+		    NULL);
+  else
+    if (MsgBoxPrintF(hWnd, MB_ICONEXCLAMATION | MB_OKCANCEL | MB_DEFBUTTON2,
+		     L"ImDisk Virtual Disk Driver",
+		     L"Cannot lock drive '%1!hs!'. It may be in use by "
+		     L"another program. Do you want to continue anyway?",
+		     lpszCmdLine) != IDOK)
+      {
+	CloseHandle(hDev);
+	CloseHandle(hImage);
+	return;
+      }
+
+  hWndStatus = CreateDialogParam(hInstance, MAKEINTRESOURCE(IDD_DLG_STATUS),
+				 hWnd, StatusDlgProc, (LPARAM) &bCancelFlag);
+
+
+  SetDlgItemText(hWndStatus, IDC_STATUS_MSG, L"Saving image file...");
+
+  if (ImDiskSaveImageFile(hDev, hImage, 2 << 20, &bCancelFlag))
+    {
+      DestroyWindow(hWndStatus);
+      CloseHandle(hDev);
+
+      if (GetFileSize(hImage, NULL) == 0)
+	{
+	  DeleteFile(ofn.lpstrFile);
+	  CloseHandle(hImage);
+
+	  MsgBoxPrintF(hWnd, MB_ICONEXCLAMATION, L"ImDisk Virtual Disk Driver",
+		       L"The contents of drive '%1!hs!' could not be saved. "
+		       L"Check that the drive contains a supported "
+		       L"filesystem.", lpszCmdLine);
+
+	  return;
+	}
+
+      CloseHandle(hImage);
+      MsgBoxPrintF(hWnd, MB_ICONINFORMATION,
+		   L"ImDisk Virtual Disk Driver",
+		   L"Successfully saved the contents of drive '%1!hs!' to "
+		   L"image file '%2'.", lpszCmdLine, ofn.lpstrFile);
+      return;
+    }
+
+  MsgBoxLastError(hWnd, L"Error saving image:");
+
+  DestroyWindow(hWndStatus);
+  CloseHandle(hDev);
+
+  if (GetFileSize(hImage, NULL) == 0)
+    DeleteFile(ofn.lpstrFile);
+
+  CloseHandle(hImage);
 }

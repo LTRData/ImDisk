@@ -28,6 +28,7 @@
 #include <windows.h>
 #include <winioctl.h>
 #include <shellapi.h>
+#include <dbt.h>
 
 #include <stdio.h>
 
@@ -55,8 +56,38 @@ BOOL
 CALLBACK
 StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-  if (uMsg == WM_INITDIALOG)
-    ShowWindow(hWnd, SW_SHOW);
+  switch (uMsg)
+    {
+    case WM_INITDIALOG:
+      ShowWindow(hWnd, SW_SHOW);
+
+      if (lParam != 0)
+	{
+	  SetProp(hWnd, L"CancelFlag", (HANDLE) lParam);
+	  ShowWindow(GetDlgItem(hWnd, IDCANCEL), SW_SHOW);
+	}
+
+      return TRUE;
+
+    case WM_COMMAND:
+      switch (LOWORD(wParam))
+	{
+	case IDCANCEL:
+	  {
+	    LPBOOL cancel_flag = (LPBOOL) GetProp(hWnd, L"CancelFlag");
+	    if (cancel_flag != NULL)
+	      *cancel_flag = TRUE;
+
+	    return TRUE;
+	  }
+	}
+
+      return TRUE;
+
+    case WM_DESTROY:
+      RemoveProp(hWnd, L"CancelFlag");
+      return TRUE;
+    }
 
   return FALSE;
 }
@@ -67,17 +98,18 @@ MsgBoxPrintF(HWND hWnd, UINT uStyle, LPCWSTR lpTitle, LPCWSTR lpMessage, ...)
 {
   va_list param_list;
   LPWSTR lpBuf = NULL;
+  int msg_result;
 
   va_start(param_list, lpMessage);
 
   if (!FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
 		     FORMAT_MESSAGE_FROM_STRING, lpMessage, 0, 0,
 		     (LPWSTR) &lpBuf, 0, &param_list))
-    return FALSE;
+    return 0;
 
-  MessageBox(hWnd, lpBuf, lpTitle, uStyle);
+  msg_result = MessageBox(hWnd, lpBuf, lpTitle, uStyle);
   LocalFree(lpBuf);
-  return TRUE;
+  return msg_result;
 }
 
 VOID
@@ -436,7 +468,7 @@ ImDiskQueryDevice(DWORD DeviceNumber,
 		  PIMDISK_CREATE_DATA CreateData,
 		  ULONG CreateDataSize)
 {
-  HANDLE device = ImDiskOpenDeviceByNumber(DeviceNumber, GENERIC_READ);
+  HANDLE device = ImDiskOpenDeviceByNumber(DeviceNumber, FILE_READ_ATTRIBUTES);
   DWORD dw;
 
   if (device == INVALID_HANDLE_VALUE)
@@ -469,6 +501,7 @@ BOOL
 WINAPI
 ImDiskCreateDevice(HWND hWnd,
 		   PDISK_GEOMETRY DiskGeometry,
+		   PLARGE_INTEGER ImageOffset,
 		   DWORD Flags,
 		   LPCWSTR FileName,
 		   BOOL NativePath,
@@ -549,9 +582,11 @@ ImDiskCreateDevice(HWND hWnd,
 	MessageBox(hWnd,
 		   L"The version of the ImDisk Virtual Disk Driver "
 		   L"(imdisk.sys) installed on this system does not match "
-		   L"the version of this Control Panel applet. Please "
-		   L"reinstall ImDisk to make sure that all components of it "
-		   L"on this system are from the same install package.",
+		   L"the version of this control program. Please reinstall "
+		   L"ImDisk to make sure that all components of it on this "
+		   L"system are from the same install package. You may have "
+		   L"to restart your computer if you still see this message "
+		   L"after reinstalling.",
 		   L"ImDisk Virtual Disk Driver", MB_ICONSTOP);
 
       SetLastError(ERROR_INVALID_FUNCTION);
@@ -667,6 +702,9 @@ ImDiskCreateDevice(HWND hWnd,
     if ((wcslen(MountPoint) == 2) ? MountPoint[1] == L':' : FALSE)
       create_data->DriveLetter = MountPoint[0];
 
+  if (ImageOffset != NULL)
+    create_data->ImageOffset = *ImageOffset;
+
   create_data->DeviceNumber   = IMDISK_AUTO_DEVICE_NUMBER;
   create_data->DiskGeometry   = *DiskGeometry;
   create_data->Flags          = Flags;
@@ -725,6 +763,188 @@ ImDiskRemoveDevice(HWND hWnd,
 {
   HANDLE device;
   DWORD dw;
+
+  if (hWnd != NULL)
+    SetWindowText(hWnd, L"Opening device...");
+
+  if (MountPoint == NULL)
+    {
+      device = ImDiskOpenDeviceByNumber(DeviceNumber,
+					GENERIC_READ | GENERIC_WRITE);
+      if (device == INVALID_HANDLE_VALUE)
+	device = ImDiskOpenDeviceByNumber(DeviceNumber,
+					  GENERIC_READ);
+    }
+  else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
+	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
+	   FALSE)
+    {
+      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	sizeof(DEV_BROADCAST_VOLUME),
+	DBT_DEVTYP_VOLUME
+      };
+      WCHAR drive_letter_path[] = L"\\\\.\\ :";
+      drive_letter_path[4] = MountPoint[0];
+
+      // Notify processes that this device is about to be removed.
+      if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
+	{
+	  dev_broadcast_volume.dbcv_unitmask =
+	    1 << (MountPoint[0] - L'A') >> 1;
+
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVICEQUERYREMOVE,
+			     (LPARAM)&dev_broadcast_volume,
+			     SMTO_BLOCK,
+			     2000,
+			     &dw);
+
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVICEREMOVEPENDING,
+			     (LPARAM)&dev_broadcast_volume,
+			     SMTO_BLOCK,
+			     4000,
+			     &dw);
+	}
+
+      device = CreateFile(drive_letter_path,
+			  GENERIC_READ | GENERIC_WRITE,
+			  FILE_SHARE_READ | FILE_SHARE_WRITE,
+			  NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = CreateFile(drive_letter_path,
+			    GENERIC_READ,
+			    FILE_SHARE_READ | FILE_SHARE_WRITE,
+			    NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+    }
+  else
+    {
+      if (hWnd != NULL)
+	MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+		     L"Unsupported mount point: '%1'", MountPoint);
+      SetLastError(ERROR_INVALID_FUNCTION);
+      return FALSE;
+    }
+
+  if (device == INVALID_HANDLE_VALUE)
+    {
+      if (hWnd != NULL)
+	MsgBoxLastError(hWnd, L"Error opening device:");
+      return FALSE;
+    }
+
+  if (!ImDiskCheckDriverVersion(device))
+    if (GetLastError() != NO_ERROR)
+      {
+	if (hWnd != NULL)
+	  MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+		       L"Not an ImDisk Virtual Disk: '%1'", MountPoint);
+
+	return FALSE;
+      }
+
+  if (hWnd != NULL)
+    SetWindowText(hWnd, L"Flushing file buffers...");
+
+  FlushFileBuffers(device);
+
+  if (hWnd != NULL)
+    SetWindowText(hWnd, L"Locking volume...");
+
+  if (!DeviceIoControl(device,
+                       FSCTL_LOCK_VOLUME,
+                       NULL,
+		       0,
+		       NULL,
+		       0,
+		       &dw,
+		       NULL))
+    if (hWnd == NULL)
+      return FALSE;
+    else
+      if (MessageBox(hWnd,
+		     L"Cannot lock the device. The device may be in use by "
+		     L"another process or you may not have permission to lock "
+		     L"it. Do you want do try to force dismount of the "
+		     L"volume? (Unsaved data on the volume will be lost.)",
+		     L"ImDisk Virtual Disk Driver",
+		     MB_ICONEXCLAMATION | MB_YESNO | MB_DEFBUTTON2) != IDYES)
+	{
+	  NtClose(device);
+	  return FALSE;
+	}
+
+  if (hWnd != NULL)
+    SetWindowText(hWnd, L"Dismounting filesystem...");
+
+  DeviceIoControl(device,
+		  FSCTL_DISMOUNT_VOLUME,
+		  NULL,
+		  0,
+		  NULL,
+		  0,
+		  &dw,
+		  NULL);
+
+  if (hWnd != NULL)
+    SetWindowText(hWnd, L"Removing device...");
+
+  if (!DeviceIoControl(device,
+                       IOCTL_STORAGE_EJECT_MEDIA,
+                       NULL,
+		       0,
+		       NULL,
+		       0,
+		       &dw,
+		       NULL))
+    {
+      if (hWnd != NULL)
+	MsgBoxLastError(hWnd, L"Error removing device:");
+      NtClose(device);
+      return FALSE;
+    }
+
+  DeviceIoControl(device,
+		  FSCTL_UNLOCK_VOLUME,
+		  NULL,
+		  0,
+		  NULL,
+		  0,
+		  &dw,
+		  NULL);
+
+  NtClose(device);
+
+  if (MountPoint != NULL)
+    {
+      if (hWnd != NULL)
+	SetWindowText(hWnd, L"Removing drive letter...");
+
+      if (!DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL))
+	if (hWnd != NULL)
+	  MsgBoxLastError(hWnd, L"Error removing drive letter:");
+    }
+
+  if (hWnd != NULL)
+    SetWindowText(hWnd, L"OK.");
+
+  return TRUE;
+}
+
+BOOL
+WINAPI
+ImDiskChangeFlags(HWND hWnd,
+		  DWORD DeviceNumber,
+		  LPCWSTR MountPoint,
+		  DWORD FlagsToChange,
+		  DWORD Flags)
+{
+  HANDLE device;
+  DWORD dw;
+  IMDISK_SET_DEVICE_FLAGS device_flags;
 
   if (hWnd != NULL)
     SetWindowText(hWnd, L"Opening device...");
@@ -801,72 +1021,67 @@ ImDiskRemoveDevice(HWND hWnd,
     if (hWnd == NULL)
       return FALSE;
     else
-      if (MessageBox(hWnd,
-		     L"Cannot lock the device. The device may be in use by "
-		     L"another process or you may not have permission to lock "
-		     L"it. Do you want do try to force dismount of the "
-		     L"volume? (Unsaved data on the volume will be lost.)",
-		     L"ImDisk Virtual Disk Driver",
-		     MB_ICONEXCLAMATION | MB_YESNO | MB_DEFBUTTON2) == IDNO)
-	{
-	  NtClose(device);
-	  return FALSE;
-	}
+      {
+	NtClose(device);
+
+	MessageBox(hWnd,
+		   L"Cannot lock the device. The device may be in use by "
+		   L"another process or you may not have permission to lock "
+		   L"it.",
+		   L"ImDisk Virtual Disk Driver",
+		   MB_ICONEXCLAMATION);
+
+	return FALSE;
+      }
 
   if (hWnd != NULL)
     SetWindowText(hWnd, L"Dismounting filesystem...");
 
-  DeviceIoControl(device,
-		  FSCTL_DISMOUNT_VOLUME,
-		  NULL,
-		  0,
-		  NULL,
-		  0,
-		  &dw,
-		  NULL);
-
-  if (hWnd != NULL)
-    SetWindowText(hWnd, L"Removing device...");
-
   if (!DeviceIoControl(device,
-                       IOCTL_STORAGE_EJECT_MEDIA,
-                       NULL,
+		       FSCTL_DISMOUNT_VOLUME,
+		       NULL,
 		       0,
 		       NULL,
 		       0,
 		       &dw,
 		       NULL))
+    if (hWnd == NULL)
+      return FALSE;
+    else
+      {
+	NtClose(device);
+
+	MessageBox(hWnd,
+		   L"Cannot lock dismount the filesystem on the device.",
+		   L"ImDisk Virtual Disk Driver",
+		   MB_ICONEXCLAMATION);
+
+	return FALSE;
+      }
+
+  if (hWnd != NULL)
+    SetWindowText(hWnd, L"Setting device flags...");
+
+  device_flags.FlagsToChange = FlagsToChange;
+  device_flags.FlagValues = Flags;
+
+  if (!DeviceIoControl(device,
+                       IOCTL_IMDISK_SET_DEVICE_FLAGS,
+                       &device_flags,
+                       sizeof(device_flags),
+                       NULL,
+                       0,
+                       &dw,
+		       NULL))
     {
       if (hWnd != NULL)
-	MsgBoxLastError(hWnd, L"Error removing device:");
+	MsgBoxLastError(hWnd, L"Error setting device flags:");
+
       NtClose(device);
       return FALSE;
     }
 
-  DeviceIoControl(device,
-		  FSCTL_UNLOCK_VOLUME,
-		  NULL,
-		  0,
-		  NULL,
-		  0,
-		  &dw,
-		  NULL);
-
   NtClose(device);
-
-  if (MountPoint != NULL)
-    {
-      if (hWnd != NULL)
-	SetWindowText(hWnd, L"Removing drive letter...");
-
-      if (!DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL))
-	if (hWnd != NULL)
-	  MsgBoxLastError(hWnd, L"Error removing drive letter:");
-    }
-
-  if (hWnd != NULL)
-    SetWindowText(hWnd, L"OK.");
-
   return TRUE;
 }
 
@@ -914,16 +1129,7 @@ ImDiskExtendDevice(HWND hWnd,
                        &dw, NULL))
     {
       if (hWnd != NULL)
-	if (GetLastError() == ERROR_INVALID_FUNCTION)
-	  MessageBox
-	    (hWnd,
-	     L"It is only possible to extend the size of a virtual disk that "
-	     L"is backed by a physical file. It is not possible to extend "
-	     L"virtual disks backed by virtual memory.",
-	     L"ImDisk Virtual Disk Driver",
-	     MB_ICONSTOP);
-	else
-	  MsgBoxLastError(hWnd, L"Error extending the virtual disk size:");
+	MsgBoxLastError(hWnd, L"Error extending the virtual disk size:");
 
       NtClose(device);
       return FALSE;
@@ -988,4 +1194,72 @@ ImDiskExtendDevice(HWND hWnd,
 
   NtClose(device);
   return TRUE;
+}
+
+BOOL
+WINAPI
+ImDiskSaveImageFile(IN HANDLE DeviceHandle,
+		    IN HANDLE FileHandle,
+		    IN DWORD BufferSize,
+		    IN LPBOOL CancelFlag OPTIONAL)
+{
+  LPBYTE buffer;
+
+  if (BufferSize == 0)
+    {
+      SetLastError(ERROR_INVALID_PARAMETER);
+      return FALSE;
+    }
+
+  buffer = VirtualAlloc(NULL, BufferSize, MEM_COMMIT, PAGE_READWRITE);
+  if (buffer == NULL)
+    return FALSE;
+
+  for (;;)
+    {
+      DWORD dwReadSize;
+      DWORD dwWriteSize;
+
+      if (CancelFlag != NULL)
+	{
+	  DoEvents(NULL);
+
+	  if (*CancelFlag)
+	    {
+	      VirtualFree(buffer, 0, MEM_RELEASE);
+	      SetLastError(ERROR_CANCELLED);
+	      return FALSE;
+	    }
+	}
+
+      if (!ReadFile(DeviceHandle, buffer, BufferSize, &dwReadSize, NULL))
+	{
+	  DWORD dwLastError = GetLastError();
+	  VirtualFree(buffer, 0, MEM_RELEASE);
+	  SetLastError(dwLastError);
+	  return FALSE;
+	}
+
+      if (dwReadSize == 0)
+	{
+	  VirtualFree(buffer, 0, MEM_RELEASE);
+	  return TRUE;
+	}
+
+      if (!WriteFile(FileHandle, buffer, dwReadSize, &dwWriteSize, NULL))
+	{
+	  DWORD dwLastError = GetLastError();
+	  VirtualFree(buffer, 0, MEM_RELEASE);
+	  SetLastError(dwLastError);
+	  return FALSE;
+	}
+
+      if (dwWriteSize != dwReadSize)
+	{
+	  DWORD dwLastError = GetLastError();
+	  VirtualFree(buffer, 0, MEM_RELEASE);
+	  SetLastError(dwLastError);
+	  return FALSE;
+	}
+    }
 }

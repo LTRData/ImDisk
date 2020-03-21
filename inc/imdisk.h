@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0102
+#define IMDISK_VERSION                 0x0103
 
 ///
 /// The base names for the device objects created in \Device
@@ -72,6 +72,7 @@
 #define IMDISK_CFG_IMAGE_FILE_PREFIX   _T("FileName")
 #define IMDISK_CFG_SIZE_PREFIX         _T("Size")
 #define IMDISK_CFG_FLAGS_PREFIX        _T("Flags")
+#define IMDISK_CFG_DRIVE_LETTER_PREFIX _T("DriveLetter")
 
 ///
 /// Base value for the IOCTL's.
@@ -80,9 +81,10 @@
 
 #define IOCTL_IMDISK_QUERY_VERSION     ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x800, METHOD_BUFFERED, 0))
 #define IOCTL_IMDISK_CREATE_DEVICE     ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x801, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
-#define IOCTL_IMDISK_QUERY_DEVICE      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x802, METHOD_BUFFERED, FILE_READ_ACCESS))
-#define IOCTL_IMDISK_QUERY_DRIVER      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x803, METHOD_BUFFERED, FILE_READ_ACCESS))
+#define IOCTL_IMDISK_QUERY_DEVICE      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x802, METHOD_BUFFERED, 0))
+#define IOCTL_IMDISK_QUERY_DRIVER      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x803, METHOD_BUFFERED, 0))
 #define IOCTL_IMDISK_REFERENCE_HANDLE  ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x804, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_IMDISK_SET_DEVICE_FLAGS  ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x805, METHOD_BUFFERED, 0)) // Not yet supported
 
 ///
 /// Bit constants for the Flags field in IMDISK_CREATE_DATA
@@ -141,8 +143,10 @@ typedef struct _IMDISK_CREATE_DATA
 {
   /// On create this can be set to IMDISK_AUTO_DEVICE_NUMBER
   ULONG           DeviceNumber;
-  /// Total size and virtual geometry.
+  /// Total size in bytes (in the Cylinders field) and virtual geometry.
   DISK_GEOMETRY   DiskGeometry;
+  /// The byte offset in the image file where the virtual disk begins.
+  LARGE_INTEGER   ImageOffset;
   /// Creation flags. Type of device and type of connection.
   ULONG           Flags;
   /// Driveletter (if used, otherwise zero).
@@ -152,6 +156,12 @@ typedef struct _IMDISK_CREATE_DATA
   /// Dynamically-sized member that specifies the image file name.
   WCHAR           FileName[1];
 } IMDISK_CREATE_DATA, *PIMDISK_CREATE_DATA;
+
+typedef struct _IMDISK_SET_DEVICE_FLAGS
+{
+  ULONG FlagsToChange;
+  ULONG FlagValues;
+} IMDISK_SET_DEVICE_FLAGS, *PIMDISK_SET_DEVICE_FLAGS;
 
 #ifdef WINAPI
 
@@ -412,6 +422,7 @@ BOOL
 WINAPI
 ImDiskCreateDevice(IN HWND hWndStatusText OPTIONAL,
 		   IN OUT PDISK_GEOMETRY DiskGeometry OPTIONAL,
+		   IN PLARGE_INTEGER ImageOffset OPTIONAL,
 		   IN DWORD Flags OPTIONAL,
 		   IN LPCWSTR FileName OPTIONAL,
 		   IN BOOL NativePath,
@@ -438,6 +449,38 @@ ImDiskRemoveDevice(IN HWND hWndStatusText OPTIONAL,
 		   IN LPCWSTR MountPoint OPTIONAL);
 
 /**
+   This function changes the device characteristics of an existing ImDisk
+   virtual disk device.
+
+   hWndStatusText  A handle to a window that can display status message text.
+                   The function will send WM_SETTEXT messages to this window.
+		   If this parameter is NULL no WM_SETTEXT messages are sent
+		   and the function acts non-interactive.
+
+   DeviceNumber    Number of the ImDisk device to change. This parameter is
+                   only used if MountPoint parameter is null.
+
+   MountPoint      Drive letter of the device to change. It can be specified
+                   on the form F: or F:\.
+
+   FlagsToChange   A bit-field specifying which flags to edit. The flags are
+                   the same as the option flags in the Flags parameter used
+		   when a new virtual disk is created. Only flags set in this
+		   parameter are changed to the corresponding flag value in the
+		   Flags parameter.
+
+   Flags           New values for the flags specified by the FlagsToChange
+                   parameter.
+*/
+BOOL
+WINAPI
+ImDiskChangeFlags(HWND hWndStatusText OPTIONAL,
+		  DWORD DeviceNumber OPTIONAL,
+		  LPCWSTR MountPoint OPTIONAL,
+		  DWORD FlagsToChange,
+		  DWORD Flags);
+
+/**
    This function extends the size of an existing ImDisk virtual disk device.
 
    hWndStatusText  A handle to a window that can display status message text.
@@ -455,6 +498,40 @@ WINAPI
 ImDiskExtendDevice(IN HWND hWndStatusText OPTIONAL,
 		   IN DWORD DeviceNumber,
 		   IN CONST PLARGE_INTEGER ExtendSize);
+
+/**
+   This function saves the contents of a device to an image file.
+
+   DeviceHandle    Handle to a device for which the contents are to be saved to
+                   an image file. The handle must be opened for reading, may be
+		   opened for sequential scan and/or without intermediate
+		   buffering but cannot be opened for overlapped operation.
+
+   FileHandle      Handle to an image file opened for writing. The handle
+                   can be opened for operation without intermediate buffering
+		   but performance is usually better if the handle is opened
+		   with intermediate buffering. The handle cannot be opened for
+		   overlapped operation.
+
+   BufferSize      Buffer size for reading and writing. If DeviceHandle or
+                   FileHandle are opened for operation without intermediate
+		   buffering the BufferSize must be a multiple of the sector
+		   sizes of the devices accessed without intermediate
+		   buffering.
+
+   CancelFlag      Optional pointer to a BOOL value. If this BOOL value is set
+                   to TRUE during the function call the operation is cancelled,
+		   the function returns FALSE and GetLastError() will return
+		   ERROR_CANCELLED. If this parameter is non-null the function
+		   will also dispatch window messages for the current thread
+		   between each I/O operation.
+*/
+BOOL
+WINAPI
+ImDiskSaveImageFile(IN HANDLE DeviceHandle,
+		    IN HANDLE FileHandle,
+		    IN DWORD BufferSize,
+		    IN LPBOOL CancelFlag OPTIONAL);
 
 #ifdef __cplusplus
 }

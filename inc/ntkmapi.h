@@ -197,6 +197,9 @@ MmGetSystemAddressForMdlPrettySafe(PMDL Mdl)
   CSHORT MdlMappingCanFail;
   PVOID MappedSystemVa;
 
+  if (Mdl == NULL)
+    return NULL;
+
   if (Mdl->MdlFlags & (MDL_MAPPED_TO_SYSTEM_VA | MDL_SOURCE_IS_NONPAGED_POOL))
     return Mdl->MappedSystemVa;
 
