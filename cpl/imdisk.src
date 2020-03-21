@@ -11,6 +11,7 @@ EXPORTS
 	RunDLL_SaveImageFile=_RunDLL_SaveImageFile@16
 
 	MsgBoxPrintF
+
 	_MsgBoxLastError@8
 	_ImDiskGetPartitionTypeName@12
 	_ImDiskGetOffsetByFileExt@8
@@ -41,6 +42,36 @@ EXPORTS
 	_ImDiskNativePathToWin32@4
 	_ImDiskSaveImageFileInteractive@16
 
+	MsgBoxLastError=_MsgBoxLastError@8
+	ImDiskGetPartitionTypeName=_ImDiskGetPartitionTypeName@12
+	ImDiskGetOffsetByFileExt=_ImDiskGetOffsetByFileExt@8
+	ImDiskGetPartitionInformation=_ImDiskGetPartitionInformation@16
+	ImDiskStartService=_ImDiskStartService@4
+	ImDiskCreateMountPoint=_ImDiskCreateMountPoint@8
+	ImDiskRemoveMountPoint=_ImDiskRemoveMountPoint@4
+	ImDiskOpenDeviceByName=_ImDiskOpenDeviceByName@8
+	ImDiskOpenDeviceByNumber=_ImDiskOpenDeviceByNumber@8
+	ImDiskOpenDeviceByMountPoint=_ImDiskOpenDeviceByMountPoint@8
+	ImDiskCheckDriverVersion=_ImDiskCheckDriverVersion@4
+	ImDiskGetVersion=_ImDiskGetVersion@8
+	ImDiskFindFreeDriveLetter=_ImDiskFindFreeDriveLetter@0
+	ImDiskGetDeviceList=_ImDiskGetDeviceList@0
+	ImDiskQueryDevice=_ImDiskQueryDevice@12
+	ImDiskCreateDevice=_ImDiskCreateDevice@28
+	ImDiskCreateDeviceEx=_ImDiskCreateDeviceEx@32
+	ImDiskForceRemoveDevice=_ImDiskForceRemoveDevice@8
+	ImDiskRemoveDevice=_ImDiskRemoveDevice@12
+	ImDiskChangeFlags=_ImDiskChangeFlags@20
+	ImDiskExtendDevice=_ImDiskExtendDevice@12
+	ImDiskSaveImageFile=_ImDiskSaveImageFile@16
+	ImDiskGetVolumeSize=_ImDiskGetVolumeSize@8
+	ImDiskBuildMBR=_ImDiskBuildMBR@20
+	ImDiskConvertCHSToLBA=_ImDiskConvertCHSToLBA@8
+	ImDiskConvertLBAToCHS=_ImDiskConvertLBAToCHS@8
+	ImDiskAdjustImageFileSize=_ImDiskAdjustImageFileSize@8
+	ImDiskNativePathToWin32=_ImDiskNativePathToWin32@4
+	ImDiskSaveImageFileInteractive=_ImDiskSaveImageFileInteractive@16
+
 #else
 
 	CPlApplet
@@ -50,6 +81,7 @@ EXPORTS
 	RunDLL_SaveImageFile
 
 	MsgBoxPrintF
+
 	MsgBoxLastError
 	ImDiskGetPartitionTypeName
 	ImDiskGetOffsetByFileExt

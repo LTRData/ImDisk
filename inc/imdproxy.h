@@ -51,6 +51,7 @@ typedef enum _IMDPROXY_REQ
     IMDPROXY_REQ_READ,
     IMDPROXY_REQ_WRITE,
     IMDPROXY_REQ_CONNECT,
+    IMDPROXY_REQ_CLOSE,
   } IMDPROXY_REQ;
 
 typedef struct _IMDPROXY_CONNECT_REQ
@@ -98,5 +99,9 @@ typedef struct _IMDPROXY_WRITE_RESP
   ULONGLONG errorno;
   ULONGLONG length;
 } IMDPROXY_WRITE_RESP, *PIMDPROXY_WRITE_RESP;
+
+// For shared memory proxy communication only. Offset to data area in
+// shared memory.
+#define IMDPROXY_HEADER_SIZE 4096
 
 #endif

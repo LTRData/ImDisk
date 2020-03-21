@@ -707,16 +707,16 @@ ImDiskSaveImageFileInteractive(IN HANDLE hDev,
 
 	  if (!ImDiskAdjustImageFileSize(hImage, &save_offset))
 	    {
+	      DWORD dwLastError = GetLastError();
+
 	      DeleteFile(ofn.lpstrFile);
 	      CloseHandle(hImage);
 
-	      MsgBoxPrintF(hWnd,
-			   MB_ICONEXCLAMATION,
-			   L"ImDisk Virtual Disk Driver",
-			   L"The contents of drive '%1!c!:' could not be "
-			   L"saved. Check that the drive contains a supported "
-			   L"filesystem.",
-			   create_data->DriveLetter);
+	      SetLastError(dwLastError);
+
+	      MsgBoxLastError(hWnd,
+			      L"Drive contents could not be saved. Check that "
+			      L"it contains a supported filesystem.");
 
 	      return;
 	    }
@@ -726,7 +726,8 @@ ImDiskSaveImageFileInteractive(IN HANDLE hDev,
       MsgBoxPrintF(hWnd, MB_ICONINFORMATION,
 		   L"ImDisk Virtual Disk Driver",
 		   L"Successfully saved the contents of drive '%1!c!:' to "
-		   L"image file '%2'.", create_data->DriveLetter,
+		   L"image file '%2'.",
+		   create_data->DriveLetter ? create_data->DriveLetter : L' ',
 		   ofn.lpstrFile);
       return;
     }

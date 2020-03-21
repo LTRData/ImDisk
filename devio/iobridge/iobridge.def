@@ -1,0 +1,5 @@
+LIBRARY iobridge.dll
+
+EXPORTS
+
+	dllopen=?dllopen@@YAHPBDHPAP6AIHPAXI_J@Z3PAP6AHH@ZPA_J@Z

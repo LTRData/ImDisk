@@ -1,7 +1,7 @@
 /*
     Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2004-2010 Olof Lagerkvist.
+    Copyright (C) 2004-2011 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -261,6 +261,10 @@ ImDiskSyntaxHelp()
      "        a space, and then a device settings string with the same syntax as the\r\n"
      "        MODE command.\r\n"
      "\n"
+     "shm     Can only be used with proxy-type virtual disks. With this option, the\r\n"
+     "        driver communicates with a storage server on the same computer using\r\n"
+     "        shared memory block to transfer I/O data.\r\n"
+     "\n"
      "-u unit\r\n"
      "        Along with -a, request a specific unit number for the ImDisk device\r\n"
      "        instead of automatic allocation. Along with -d or -l specifies the\r\n"
@@ -427,7 +431,8 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 
   // Proxy reconnection types requires the user mode service.
   if ((IMDISK_TYPE(Flags) == IMDISK_TYPE_PROXY) &
-      (IMDISK_PROXY_TYPE(Flags) != IMDISK_PROXY_TYPE_DIRECT))
+      ((IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_TCP) |
+       (IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_COMM)))
     {
       if (!WaitNamedPipe(IMDPROXY_SVC_PIPE_DOSDEV_NAME, 0))
 	if (GetLastError() == ERROR_FILE_NOT_FOUND)
@@ -477,25 +482,48 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 
   if (FileName == NULL)
     RtlInitUnicodeString(&file_name, NULL);
+  else if (NativePath)
+    {
+      if (!RtlCreateUnicodeString(&file_name, FileName))
+	{
+	  CloseHandle(driver);
+	  fputs("Memory allocation error.\r\n", stderr);
+	  return IMDISK_CLI_ERROR_FATAL;
+	}
+    }
+  else if ((IMDISK_TYPE(Flags) == IMDISK_TYPE_PROXY) &
+	   (IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_SHM))
+    {
+      WCHAR prefix[] = L"\\BaseNamedObjects\\";
+      LPWSTR prefixed_name = (LPWSTR)
+	_alloca((wcslen(FileName) << 1) + sizeof(prefix));
+
+      if (prefixed_name == NULL)
+	{
+	  CloseHandle(driver);
+	  fputs("Memory allocation error.\r\n", stderr);
+	  return IMDISK_CLI_ERROR_FATAL;
+	}
+
+      wcscpy(prefixed_name, prefix);
+      wcscat(prefixed_name, FileName);
+
+      if (!RtlCreateUnicodeString(&file_name, prefixed_name))
+	{
+	  CloseHandle(driver);
+	  fputs("Memory allocation error.\r\n", stderr);
+	  return IMDISK_CLI_ERROR_FATAL;
+	}
+    }
   else
-    if (NativePath)
-      {
-	if (!RtlCreateUnicodeString(&file_name, FileName))
-	  {
-	    CloseHandle(driver);
-	    fputs("Memory allocation error.\r\n", stderr);
-	    return IMDISK_CLI_ERROR_FATAL;
-	  }
-      }
-    else
-      {
-	if (!RtlDosPathNameToNtPathName_U(FileName, &file_name, NULL, NULL))
-	  {
-	    CloseHandle(driver);
-	    fputs("Memory allocation error.\r\n", stderr);
-	    return IMDISK_CLI_ERROR_FATAL;
-	  }
-      }
+    {
+      if (!RtlDosPathNameToNtPathName_U(FileName, &file_name, NULL, NULL))
+	{
+	  CloseHandle(driver);
+	  fputs("Memory allocation error.\r\n", stderr);
+	  return IMDISK_CLI_ERROR_FATAL;
+	}
+    }
 
   create_data = _alloca(sizeof(IMDISK_CREATE_DATA) + file_name.Length);
   if (create_data == NULL)
@@ -1693,6 +1721,14 @@ wmain(int argc, LPWSTR argv[])
 
 		    native_path = TRUE;
 		    flags |= IMDISK_PROXY_TYPE_COMM;
+		  }
+		else if (wcscmp(opt, L"shm") == 0)
+		  {
+		    if ((IMDISK_TYPE(flags) != IMDISK_TYPE_PROXY) |
+			(IMDISK_PROXY_TYPE(flags) != IMDISK_PROXY_TYPE_DIRECT))
+		      ImDiskSyntaxHelp();
+
+		    flags |= IMDISK_PROXY_TYPE_SHM;
 		  }
 		else if (IMDISK_DEVICE_TYPE(flags) != 0)
 		  ImDiskSyntaxHelp();

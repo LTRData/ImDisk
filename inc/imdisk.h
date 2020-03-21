@@ -40,8 +40,12 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0142
+#define IMDISK_VERSION                 0x0143
 #define IMDISK_DRIVER_VERSION          0x0103
+
+#ifndef ZERO_STRUCT
+#define ZERO_STRUCT { 0 }
+#endif
 
 ///
 /// The base names for the device objects created in \Device
@@ -131,6 +135,8 @@
 #define IMDISK_PROXY_TYPE_COMM          0x00001000
 /// Proxy connection is over TCP/IP
 #define IMDISK_PROXY_TYPE_TCP           0x00002000
+/// Proxy connection uses shared memory
+#define IMDISK_PROXY_TYPE_SHM           0x00003000
 
 /// Extracts the IMDISK_PROXY_TYPE_xxx from flags
 #define IMDISK_PROXY_TYPE(x)            ((ULONG)(x) & 0x0000F000)

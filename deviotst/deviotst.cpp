@@ -59,7 +59,14 @@ int __cdecl
 wmain(int argc, LPWSTR *argv)
 {
   if (argc < 2)
-    return 1;
+    {
+      fputs("Usage:\r\n"
+	    "deviotst host[:port] [info]\r\n"
+	    "deviotst host[:port] read|write offset size\r\n",
+	    stderr);
+
+      return 1;
+    }
 
   WSADATA wd;
   if (WSAStartup(0x0101, &wd))

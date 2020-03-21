@@ -109,6 +109,19 @@ typedef struct _STORAGE_HOTPLUG_INFO {
 NTSYSAPI
 NTSTATUS
 NTAPI
+ZwSetEvent(IN HANDLE EventHandle,
+	   OUT PLONG PreviousState OPTIONAL);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwWaitForSingleObject(IN HANDLE Handle,
+		      IN BOOLEAN Alertable,
+		      IN PLARGE_INTEGER Timeout OPTIONAL);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
 ZwAllocateVirtualMemory(IN HANDLE               ProcessHandle,
 			IN OUT PVOID            *BaseAddress,
 			IN ULONG_PTR            ZeroBits,
