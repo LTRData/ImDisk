@@ -218,6 +218,13 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 					IN HANDLE ParameterKey,
 					IN ULONG DeviceNumber);
 
+NTSTATUS
+ImDiskCreateDriveLetter(IN WCHAR DriveLetter,
+			IN ULONG DeviceNumber);
+
+NTSTATUS
+ImDiskRemoveDriveLetter(IN WCHAR DriveLetter);
+
 VOID
 ImDiskRemoveVirtualDisk(IN PDEVICE_OBJECT DeviceObject);
 
@@ -795,61 +802,71 @@ ImDiskAddVirtualDisk(IN PDRIVER_OBJECT DriverObject,
 
   if (CreateData->DriveLetter != 0)
     if (KeGetCurrentIrql() <= PASSIVE_LEVEL)
-      {
-	WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
-	WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
-	UNICODE_STRING sym_link;
-	PWCHAR device_name_buffer;
-	UNICODE_STRING device_name;
-
-	// Buffer for device name
-	device_name_buffer = ExAllocatePool(PagedPool,
-					    MAXIMUM_FILENAME_LENGTH *
-					    sizeof(*device_name_buffer));
-
-	if (device_name_buffer == NULL)
-	  KdPrint(("ImDisk: Insufficient pool memory.\n"));
-	else
-	  {
-	    _snwprintf(device_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
-		       IMDISK_DEVICE_BASE_NAME L"%u",
-		       CreateData->DeviceNumber);
-	    device_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
-	    RtlInitUnicodeString(&device_name, device_name_buffer);
-
-	    sym_link_wchar[12] = CreateData->DriveLetter;
-
-	    KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",
-		     sym_link_wchar, device_name_buffer));
-
-	    RtlInitUnicodeString(&sym_link, sym_link_wchar);
-	    status = IoCreateUnprotectedSymbolicLink(&sym_link, &device_name);
-
-	    if (!NT_SUCCESS(status))
-	      {
-		KdPrint(("ImDisk: Cannot symlink '%ws' to '%ws'. (%#x)\n",
-			 sym_link_global_wchar, device_name_buffer, status));
-	      }
-
-	    sym_link_global_wchar[19] = CreateData->DriveLetter;
-
-	    KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",
-		     sym_link_global_wchar, device_name_buffer));
-
-	    RtlInitUnicodeString(&sym_link, sym_link_global_wchar);
-	    status = IoCreateUnprotectedSymbolicLink(&sym_link, &device_name);
-
-	    if (!NT_SUCCESS(status))
-	      {
-		KdPrint(("ImDisk: Cannot symlink '%ws' to '%ws'. (%#x)\n",
-			 sym_link_global_wchar, device_name_buffer, status));
-	      }
-
-	    ExFreePool(device_name_buffer);
-	  }
-      }
+      ImDiskCreateDriveLetter(CreateData->DriveLetter,
+			      CreateData->DeviceNumber);
 
   return STATUS_SUCCESS;
+}
+
+NTSTATUS
+ImDiskCreateDriveLetter(IN WCHAR DriveLetter,
+			IN ULONG DeviceNumber)
+{
+  WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
+  WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
+  UNICODE_STRING sym_link;
+  PWCHAR device_name_buffer;
+  UNICODE_STRING device_name;
+  NTSTATUS status;
+
+  // Buffer for device name
+  device_name_buffer = ExAllocatePool(PagedPool,
+				      MAXIMUM_FILENAME_LENGTH *
+				      sizeof(*device_name_buffer));
+
+  if (device_name_buffer == NULL)
+    {
+      KdPrint(("ImDisk: Insufficient pool memory.\n"));
+      return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+  _snwprintf(device_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
+	     IMDISK_DEVICE_BASE_NAME L"%u",
+	     DeviceNumber);
+  device_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
+  RtlInitUnicodeString(&device_name, device_name_buffer);
+
+  sym_link_wchar[12] = DriveLetter;
+
+  KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",
+	   sym_link_wchar, device_name_buffer));
+
+  RtlInitUnicodeString(&sym_link, sym_link_wchar);
+  status = IoCreateUnprotectedSymbolicLink(&sym_link, &device_name);
+
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint(("ImDisk: Cannot symlink '%ws' to '%ws'. (%#x)\n",
+	       sym_link_global_wchar, device_name_buffer, status));
+    }
+
+  sym_link_global_wchar[19] = DriveLetter;
+
+  KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",
+	   sym_link_global_wchar, device_name_buffer));
+
+  RtlInitUnicodeString(&sym_link, sym_link_global_wchar);
+  status = IoCreateUnprotectedSymbolicLink(&sym_link, &device_name);
+
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint(("ImDisk: Cannot symlink '%ws' to '%ws'. (%#x)\n",
+	       sym_link_global_wchar, device_name_buffer, status));
+    }
+
+  ExFreePool(device_name_buffer);
+
+  return status;
 }
 
 NTSTATUS
@@ -1961,46 +1978,47 @@ ImDiskRemoveVirtualDisk(IN PDEVICE_OBJECT DeviceObject)
 
   if (device_extension->drive_letter != 0)
     if (KeGetCurrentIrql() <= PASSIVE_LEVEL)
-      {
-	NTSTATUS status;
-	WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
-	WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
-	UNICODE_STRING sym_link;
-
-	sym_link_global_wchar[19] = device_extension->drive_letter;
-
-	KdPrint(("ImDisk: Removing symlink '%ws'.\n", sym_link_global_wchar));
-
-	RtlInitUnicodeString(&sym_link, sym_link_global_wchar);
-	status = IoDeleteSymbolicLink(&sym_link);
-
-	if (!NT_SUCCESS(status))
-	  {
-	    KdPrint
-	      (("ImDisk: Cannot remove symlink '%ws'. (%#x)\n",
-		sym_link_global_wchar, status));
-	  }
-
-	sym_link_wchar[12] = device_extension->drive_letter;
-
-	KdPrint(("ImDisk: Removing symlink '%ws'.\n", sym_link_wchar));
-
-	RtlInitUnicodeString(&sym_link, sym_link_wchar);
-	status = IoDeleteSymbolicLink(&sym_link);
-
-	if (!NT_SUCCESS(status))
-	  {
-	    KdPrint
-	      (("ImDisk: Cannot remove symlink '%ws'. (%#x)\n",
-		sym_link_wchar, status));
-	  }
-
-	device_extension->drive_letter = 0;
-      }
+      ImDiskRemoveDriveLetter(device_extension->drive_letter);
 
   device_extension->terminate_thread = TRUE;
 
   KeSetEvent(&device_extension->request_event, (KPRIORITY) 0, FALSE);
+}
+
+NTSTATUS
+ImDiskRemoveDriveLetter(IN WCHAR DriveLetter)
+{
+  NTSTATUS status;
+  WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
+  WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
+  UNICODE_STRING sym_link;
+
+  sym_link_global_wchar[19] = DriveLetter;
+
+  KdPrint(("ImDisk: Removing symlink '%ws'.\n", sym_link_global_wchar));
+
+  RtlInitUnicodeString(&sym_link, sym_link_global_wchar);
+  status = IoDeleteSymbolicLink(&sym_link);
+
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint
+	(("ImDisk: Cannot remove symlink '%ws'. (%#x)\n",
+	  sym_link_global_wchar, status));
+    }
+
+  sym_link_wchar[12] = DriveLetter;
+
+  KdPrint(("ImDisk: Removing symlink '%ws'.\n", sym_link_wchar));
+
+  RtlInitUnicodeString(&sym_link, sym_link_wchar);
+  status = IoDeleteSymbolicLink(&sym_link);
+
+  if (!NT_SUCCESS(status))
+    KdPrint(("ImDisk: Cannot remove symlink '%ws'. (%#x)\n",
+	     sym_link_wchar, status));
+
+  return status;
 }
 
 NTSTATUS
@@ -3425,6 +3443,7 @@ ImDiskDeviceThread(IN PVOID Context)
   PIRP irp;
   PIO_STACK_LOCATION io_stack;
   LARGE_INTEGER time_out;
+  BOOLEAN system_drive_letter;
 
   PAGED_CODE();
 
@@ -3433,6 +3452,8 @@ ImDiskDeviceThread(IN PVOID Context)
   KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);
 
   device_thread_data = (PDEVICE_THREAD_DATA) Context;
+
+  system_drive_letter = !device_thread_data->caller_waiting;
 
   // This is in case this thread is created by
   // ImDiskAddVirtualDiskAfterInitialization() when called from DriverEntry().
@@ -3478,6 +3499,9 @@ ImDiskDeviceThread(IN PVOID Context)
     KeSetEvent(&device_thread_data->created_event, (KPRIORITY) 0, FALSE);
   else
     {
+      ImDiskCreateDriveLetter(device_thread_data->create_data->DriveLetter,
+			      device_thread_data->create_data->DeviceNumber);
+
       ExFreePool(device_thread_data->create_data);
       ExFreePool(device_thread_data);
     }
@@ -3490,7 +3514,8 @@ ImDiskDeviceThread(IN PVOID Context)
   time_out.QuadPart = -1000000;
 
   // If this is a VM backed disk that should be pre-loaded with an image file
-  // we have to load the contents of that file now.
+  // we have to load the contents of that file now before entering the service
+  // loop.
   if (device_extension->vm_disk && (device_extension->file_handle != NULL))
     {
       LARGE_INTEGER byte_offset = device_extension->image_offset;
@@ -3537,6 +3562,10 @@ ImDiskDeviceThread(IN PVOID Context)
 
 	  KdPrint(("ImDisk: Device %i thread is shutting down.\n",
 		   device_extension->device_number));
+
+	  if (device_extension->drive_letter != 0)
+	    if (system_drive_letter)
+	      ImDiskRemoveDriveLetter(device_extension->drive_letter);
 
 	  if (device_extension->proxy_device != NULL)
 	    {
