@@ -25,9 +25,14 @@ Namespace IO.ImDisk
       Dim Handle As New SafeFileHandle(DLL.ImDiskOpenDeviceByNumber(DeviceNumber, NativeAccessMode), ownsHandle:=True)
       If Handle.IsInvalid Then
         Throw New Win32Exception
-      Else
-        Return Handle
       End If
+
+      If Handle.IsInvalid Then
+        Throw New Win32Exception
+      End If
+
+      NativeFileIO.Win32API.DeviceIoControl(Handle.DangerousGetHandle(), NativeFileIO.Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, Nothing, 0, Nothing, 0, 0, Nothing)
+      Return Handle
 
     End Function
 
@@ -44,9 +49,10 @@ Namespace IO.ImDisk
       Dim Handle As New SafeFileHandle(DLL.ImDiskOpenDeviceByMountPoint(MountPoint, NativeAccessMode), ownsHandle:=True)
       If Handle.IsInvalid Then
         Throw New Win32Exception
-      Else
-        Return Handle
       End If
+
+      NativeFileIO.Win32API.DeviceIoControl(Handle.DangerousGetHandle(), NativeFileIO.Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, Nothing, 0, Nothing, 0, 0, Nothing)
+      Return Handle
 
     End Function
 

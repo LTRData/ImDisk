@@ -34,6 +34,8 @@ Namespace IO
       Public Const COMPRESSION_FORMAT_NONE As UShort = 0US
       Public Const COMPRESSION_FORMAT_DEFAULT As UShort = 1US
 
+      Public Const FSCTL_ALLOW_EXTENDED_DASD_IO As UInt32 = &H90083
+
       <StructLayout(LayoutKind.Sequential)> _
       Public Structure COMMTIMEOUTS
         Public ReadIntervalTimeout As UInt32
@@ -316,6 +318,25 @@ Namespace IO
     Public Shared Sub UncompressFile(SafeFileHandle As SafeFileHandle)
 
       SetFileCompressionState(SafeFileHandle, Win32API.COMPRESSION_FORMAT_NONE)
+
+    End Sub
+
+    Public Shared Sub AllowExtendedDASDIO(SafeFileHandle As SafeFileHandle)
+
+      Dim HandleReferenced As Boolean
+      Try
+        SafeFileHandle.DangerousAddRef(HandleReferenced)
+        If SafeFileHandle.IsInvalid OrElse SafeFileHandle.IsClosed Then
+          Throw New ArgumentException("Handle is invalid")
+        End If
+        Win32Try(Win32API.DeviceIoControl(SafeFileHandle.DangerousGetHandle(), Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, Nothing, 0, Nothing, 0, 0, Nothing))
+
+      Finally
+        If HandleReferenced Then
+          SafeFileHandle.DangerousRelease()
+        End If
+
+      End Try
 
     End Sub
 

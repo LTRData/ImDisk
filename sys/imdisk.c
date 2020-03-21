@@ -1293,7 +1293,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   file_name.MaximumLength = CreateData->FileNameLength;
   file_name.Buffer = NULL;
 
-  // If a file is to be opened or created, allocated name buffer and open that
+  // If a file is to be opened or created, allocate name buffer and open that
   // file...
   if (CreateData->FileNameLength > 0)
     {
@@ -1411,8 +1411,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	{
 	  KdPrint(("ImDisk: Passing WriteMode=%#x and WriteShare=%#x\n",
 		   (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) |
-		   !((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) |
-		     IMDISK_READONLY(CreateData->Flags)),
+		   ((IMDISK_TYPE(CreateData->Flags) != IMDISK_TYPE_VM) &
+		    !IMDISK_READONLY(CreateData->Flags)),
 		   IMDISK_READONLY(CreateData->Flags) |
 		   (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM)));
 
@@ -1421,9 +1421,9 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			 GENERIC_READ |
 			 ((IMDISK_TYPE(CreateData->Flags) ==
 			   IMDISK_TYPE_PROXY) |
-			  !((IMDISK_TYPE(CreateData->Flags) ==
-			     IMDISK_TYPE_VM) |
-			    IMDISK_READONLY(CreateData->Flags)) ?
+			  (((IMDISK_TYPE(CreateData->Flags) !=
+			     IMDISK_TYPE_VM) &
+			    !IMDISK_READONLY(CreateData->Flags))) ?
 			  GENERIC_WRITE : 0),
 			 &object_attributes,
 			 &io_status,
@@ -1478,9 +1478,9 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			     GENERIC_READ |
 			     ((IMDISK_TYPE(CreateData->Flags) ==
 			       IMDISK_TYPE_PROXY) |
-			      !((IMDISK_TYPE(CreateData->Flags) ==
-				 IMDISK_TYPE_VM) |
-				IMDISK_READONLY(CreateData->Flags)) ?
+			      (((IMDISK_TYPE(CreateData->Flags) !=
+				 IMDISK_TYPE_VM) &
+				!IMDISK_READONLY(CreateData->Flags))) ?
 			      GENERIC_WRITE : 0),
 			     &object_attributes,
 			     &io_status,
@@ -1508,6 +1508,16 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	    }
 	}
 #endif
+
+      if (!NT_SUCCESS(status))
+	KdPrint(("ImDisk: Error opening file '%.*ws'. Status: %#x SpecSize: %i WritableFile: %i DevTypeFile: %i Flags: %#x\n",
+		 (int)(real_file_name.Length / sizeof(WCHAR)),
+		 real_file_name.Buffer,
+		 status,
+		 CreateData->DiskGeometry.Cylinders.QuadPart != 0,
+		 !IMDISK_READONLY(CreateData->Flags),
+		 IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE,
+		 CreateData->Flags));
 
       // If not found we will create the file if a new non-zero size is
       // specified, read-only virtual disk is not specified and we are
@@ -1537,8 +1547,6 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       
 	  if (!NT_SUCCESS(status))
 	    {
-	      ExFreePool(file_name.Buffer);
-
 	      ImDiskLogError((DriverObject,
 			      0,
 			      0,
@@ -1559,13 +1567,13 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		       CreateData->FileName,
 		       status));
 	      
+	      ExFreePool(file_name.Buffer);
+
 	      return status;
 	    }
 	}
       else if (!NT_SUCCESS(status))
 	{
-	  ExFreePool(file_name.Buffer);
-	  
 	  ImDiskLogError((DriverObject,
 			  0,
 			  0,
@@ -1585,6 +1593,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		   real_file_name.Buffer,
 		   status));
 
+	  ExFreePool(file_name.Buffer);
+	  
 	  return status;
 	}
 
@@ -3963,7 +3973,14 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME for device %i.\n",
 		 device_extension->device_number));
 
-	if (device_extension->drive_letter == 0)
+	if ((io_stack->Parameters.DeviceIoControl.OutputBufferLength == 4) &
+	    (device_extension->drive_letter != 0))
+	  {
+	    mountdev_name->Name[0] = device_extension->drive_letter;
+	    mountdev_name->Name[1] = L':';
+	    chars = 2;
+	  }
+	else
 	  chars =
 	    _snwprintf(mountdev_name->Name,
 		       (io_stack->
@@ -3971,14 +3988,16 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 			FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1,
 		       IMDISK_DEVICE_BASE_NAME L"%u",
 		       device_extension->device_number);
-	else
+	/*
+	  else
 	  chars =
-	    _snwprintf(mountdev_name->Name,
-		       (io_stack->
-			Parameters.DeviceIoControl.OutputBufferLength -
-			FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1,
-		       L"\\DosDevices\\%wc:",
-		       device_extension->drive_letter);
+	  _snwprintf(mountdev_name->Name,
+	  (io_stack->
+	  Parameters.DeviceIoControl.OutputBufferLength -
+	  FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1,
+	  L"\\DosDevices\\%wc:",
+	  device_extension->drive_letter);
+	*/
 
 	if (chars < 0)
 	  {
