@@ -1711,7 +1711,7 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 {
   LPBYTE buffer;
   IMDISK_SET_DEVICE_FLAGS device_flags = { 0 };
-  LONGLONG disk_size = 0;
+  LONGLONG disk_size;
   DWORD dwReadSize;
   DWORD dwWriteSize;
 
@@ -1724,6 +1724,17 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
   buffer = VirtualAlloc(NULL, BufferSize, MEM_COMMIT, PAGE_READWRITE);
   if (buffer == NULL)
     return FALSE;
+
+  // Turn on FSCTL_ALLOW_EXTENDED_DASD_IO so that we can make sure that we
+  // read the entire drive
+  DeviceIoControl(DeviceHandle,
+		  FSCTL_ALLOW_EXTENDED_DASD_IO,
+		  NULL,
+		  0,
+		  NULL,
+		  0,
+		  &dwReadSize,
+		  NULL);
 
   for (;;)
     {

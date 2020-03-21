@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0126
+#define IMDISK_VERSION                 0x0127
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -238,7 +238,7 @@ void
 WINAPI
 RunDLL_SaveImageFile(HWND hWnd,
 		     HINSTANCE hInst,
-		     LPSTR lpszCmdLine,
+	             LPSTR lpszCmdLine,
 		     int nCmdShow);
 
 /**
@@ -607,9 +607,13 @@ ImDiskExtendDevice(IN HWND hWndStatusText OPTIONAL,
    This function saves the contents of a device to an image file.
 
    DeviceHandle    Handle to a device for which the contents are to be saved to
-                   an image file. The handle must be opened for reading, may be
+                   an image file.
+
+		   The handle must be opened for reading, may be
 		   opened for sequential scan and/or without intermediate
 		   buffering but cannot be opened for overlapped operation.
+		   Please note that a call to this function will turn on
+		   FSCTL_ALLOW_EXTENDED_DASD_IO on for this handle.
 
    FileHandle      Handle to an image file opened for writing. The handle
                    can be opened for operation without intermediate buffering
