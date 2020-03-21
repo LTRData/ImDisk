@@ -693,7 +693,7 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 			     DBT_DEVICEQUERYREMOVE,
 			     (LPARAM)&dev_broadcast_volume,
 			     SMTO_BLOCK,
-			     2000,
+			     4000,
 			     &dwp);
 
 	  DbgOemPrintF((stdout, "Sending DBT_DEVICEREMOVEPENDING...\n"));
@@ -2052,11 +2052,11 @@ wmain(int argc, LPWSTR argv[])
 	      (wcslen(mount_point) == 3) ?
 	      wcscmp(mount_point + 1, L":\\") == 0 : FALSE)
 	    {
+	      DWORD_PTR dwp;
 	      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
 		sizeof(DEV_BROADCAST_VOLUME),
 		DBT_DEVTYP_VOLUME
 	      };
-	      DWORD_PTR dwp;
 
 	      puts("Notifying applications...");
 
@@ -2068,7 +2068,7 @@ wmain(int argc, LPWSTR argv[])
 				 DBT_DEVICEARRIVAL,
 				 (LPARAM)&dev_broadcast_volume,
 				 SMTO_BLOCK,
-				 2000,
+				 4000,
 				 &dwp);
 
 	      dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
@@ -2078,8 +2078,22 @@ wmain(int argc, LPWSTR argv[])
 				 DBT_DEVICEARRIVAL,
 				 (LPARAM)&dev_broadcast_volume,
 				 SMTO_BLOCK,
-				 2000,
+				 4000,
 				 &dwp);
+
+	      /*
+	      PostMessage(HWND_BROADCAST,
+			  WM_DEVICECHANGE,
+			  DBT_DEVICEARRIVAL,
+			  (LPARAM)&dev_broadcast_volume);
+
+	      dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
+
+	      PostMessage(HWND_BROADCAST,
+			  WM_DEVICECHANGE,
+			  DBT_DEVICEARRIVAL,
+			  (LPARAM)&dev_broadcast_volume);
+	      */
 	    }
 
 	puts("Done.");

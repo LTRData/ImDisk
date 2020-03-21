@@ -1011,11 +1011,11 @@ ImDiskCreateDevice(HWND hWnd,
       // Notify processes that new device has arrived.
       if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
 	{
+	  DWORD_PTR dwp;
 	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
 	    sizeof(DEV_BROADCAST_VOLUME),
 	    DBT_DEVTYP_VOLUME
 	  };
-	  DWORD_PTR dwp;
 
 	  if (hWnd != NULL)
 	    SetWindowText
@@ -1029,7 +1029,7 @@ ImDiskCreateDevice(HWND hWnd,
 			     DBT_DEVICEARRIVAL,
 			     (LPARAM)&dev_broadcast_volume,
 			     SMTO_BLOCK,
-			     2000,
+			     4000,
 			     &dwp);
 
 	  dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
@@ -1039,8 +1039,22 @@ ImDiskCreateDevice(HWND hWnd,
 			     DBT_DEVICEARRIVAL,
 			     (LPARAM)&dev_broadcast_volume,
 			     SMTO_BLOCK,
-			     2000,
+			     4000,
 			     &dwp);
+
+	  /* Tried PostMessage instead of SendMessageTimeout
+	  PostMessage(HWND_BROADCAST,
+		      WM_DEVICECHANGE,
+		      DBT_DEVICEARRIVAL,
+		      (LPARAM)&dev_broadcast_volume);
+
+	  dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
+
+	  PostMessage(HWND_BROADCAST,
+		      WM_DEVICECHANGE,
+		      DBT_DEVICEARRIVAL,
+		      (LPARAM)&dev_broadcast_volume);
+	  */
 	}
     }
 
@@ -1156,7 +1170,7 @@ ImDiskRemoveDevice(HWND hWnd,
 			     DBT_DEVICEQUERYREMOVE,
 			     (LPARAM)&dev_broadcast_volume,
 			     SMTO_BLOCK,
-			     2000,
+			     4000,
 			     &dwp);
 
 	  SendMessageTimeout(HWND_BROADCAST,

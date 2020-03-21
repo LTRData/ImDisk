@@ -121,7 +121,7 @@ NTSTATUS
 NTAPI
 ZwFreeVirtualMemory(IN HANDLE               ProcessHandle,
 		    IN PVOID                *BaseAddress,
-		    IN OUT PULONG           RegionSize,
+		    IN OUT PSIZE_T          RegionSize,
 		    IN ULONG                FreeType);
 
 typedef enum _TOKEN_TYPE {

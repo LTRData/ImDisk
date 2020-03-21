@@ -302,7 +302,7 @@ NTSTATUS
 ImDiskSafeReadFile(IN HANDLE FileHandle,
 		   OUT PIO_STATUS_BLOCK IoStatusBlock,
 		   OUT PVOID Buffer,
-		   IN ULONG Length,
+		   IN SIZE_T Length,
 		   IN PLARGE_INTEGER Offset);
 
 NTSTATUS
@@ -1887,7 +1887,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
       if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
 	{
-	  ULONG free_size = 0;
+	  SIZE_T free_size = 0;
       
 	  ImDiskLogError((DriverObject,
 			  0,
@@ -2266,7 +2266,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   if (device_name_buffer == NULL)
     {
-      ULONG free_size = 0;
+      SIZE_T free_size = 0;
       if (proxy_device != NULL)
 	ObDereferenceObject(proxy_device);
       if (file_handle != NULL)
@@ -2320,7 +2320,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   if (!NT_SUCCESS(status))
     {
-      ULONG free_size = 0;
+      SIZE_T free_size = 0;
 
       ExFreePool(device_name_buffer);
       if (proxy_device != NULL)
@@ -4195,6 +4195,11 @@ ImDiskDeviceThread(IN PVOID Context)
       LARGE_INTEGER byte_offset = device_extension->image_offset;
       IO_STATUS_BLOCK io_status;
       NTSTATUS status;
+#ifdef _WIN64
+      SIZE_T disk_size = device_extension->disk_geometry.Cylinders.QuadPart;
+#else
+      SIZE_T disk_size = device_extension->disk_geometry.Cylinders.LowPart;
+#endif
 
       KdPrint(("ImDisk: Reading image file into vm disk buffer.\n"));
 
@@ -4202,7 +4207,7 @@ ImDiskDeviceThread(IN PVOID Context)
 	ImDiskSafeReadFile(device_extension->file_handle,
 			   &io_status,
 			   device_extension->image_buffer,
-			   device_extension->disk_geometry.Cylinders.LowPart,
+			   disk_size,
 			   &byte_offset);
 
       ZwClose(device_extension->file_handle);
@@ -4249,7 +4254,7 @@ ImDiskDeviceThread(IN PVOID Context)
 
 	  if (device_extension->vm_disk)
 	    {
-	      ULONG free_size = 0;
+	      SIZE_T free_size = 0;
 	      if (device_extension->image_buffer != NULL)
 		ZwFreeVirtualMemory(NtCurrentProcess(),
 				    &device_extension->image_buffer,
@@ -4321,9 +4326,17 @@ ImDiskDeviceThread(IN PVOID Context)
 
 	    if (device_extension->vm_disk)
 	      {
+#ifdef _WIN64
+		ULONG_PTR vm_offset =
+		  io_stack->Parameters.Read.ByteOffset.QuadPart;
+#else
+		ULONG_PTR vm_offset =
+		  io_stack->Parameters.Read.ByteOffset.LowPart;
+#endif
+
 		RtlCopyMemory(system_buffer,
 			      device_extension->image_buffer +
-			      io_stack->Parameters.Read.ByteOffset.LowPart,
+			      vm_offset,
 			      io_stack->Parameters.Read.Length);
 
 		irp->IoStatus.Status = STATUS_SUCCESS;
@@ -4407,8 +4420,16 @@ ImDiskDeviceThread(IN PVOID Context)
 
 	    if (device_extension->vm_disk)
 	      {
+#ifdef _WIN64
+		ULONG_PTR vm_offset =
+		  io_stack->Parameters.Write.ByteOffset.QuadPart;
+#else
+		ULONG_PTR vm_offset =
+		  io_stack->Parameters.Write.ByteOffset.LowPart;
+#endif
+
 		RtlCopyMemory(device_extension->image_buffer +
-			      io_stack->Parameters.Write.ByteOffset.LowPart,
+			      vm_offset,
 			      system_buffer,
 			      io_stack->Parameters.Write.Length);
 
@@ -4585,10 +4606,14 @@ ImDiskDeviceThread(IN PVOID Context)
 		if (device_extension->vm_disk)
 		  {
 		    PVOID new_image_buffer = NULL;
-		    ULONG free_size = 0;
+		    SIZE_T free_size = 0;
 #ifdef _WIN64
+		    ULONG_PTR old_size =
+		      device_extension->disk_geometry.Cylinders.QuadPart;
 		    SIZE_T max_size = new_size.EndOfFile.QuadPart;
 #else
+		    ULONG_PTR old_size =
+		      device_extension->disk_geometry.Cylinders.LowPart;
 		    SIZE_T max_size = new_size.EndOfFile.LowPart;
 
 		    // A vm type disk cannot be extened to a larger size than
@@ -4616,10 +4641,9 @@ ImDiskDeviceThread(IN PVOID Context)
 			break;
 		      }
 
-		    RtlCopyMemory
-		      (new_image_buffer,
-		       device_extension->image_buffer,
-		       device_extension->disk_geometry.Cylinders.LowPart);
+		    RtlCopyMemory(new_image_buffer,
+				  device_extension->image_buffer,
+				  old_size);
 
 		    ZwFreeVirtualMemory(NtCurrentProcess(),
 					&device_extension->image_buffer,
@@ -4721,11 +4745,11 @@ NTSTATUS
 ImDiskSafeReadFile(IN HANDLE FileHandle,
 		   OUT PIO_STATUS_BLOCK IoStatusBlock,
 		   OUT PVOID Buffer,
-		   IN ULONG Length,
+		   IN SIZE_T Length,
 		   IN PLARGE_INTEGER Offset)
 {
   NTSTATUS status;
-  ULONG LengthDone = 0;
+  SIZE_T LengthDone = 0;
 
   PAGED_CODE();
 
@@ -4735,7 +4759,12 @@ ImDiskSafeReadFile(IN HANDLE FileHandle,
 
   while (LengthDone < Length)
     {
-      ULONG RequestLength = Length - LengthDone;
+      SIZE_T LongRequestLength = Length - LengthDone;
+      ULONG RequestLength;
+      if (LongRequestLength > 0x0000000080000000)
+	RequestLength = 0x80000000;
+      else
+	RequestLength = (ULONG) LongRequestLength;
 
       for (;;)
 	{
@@ -4801,7 +4830,7 @@ ImDiskSafeReadFile(IN HANDLE FileHandle,
 	  return IoStatusBlock->Status;
 	}
 
-      LengthDone += (ULONG) IoStatusBlock->Information;
+      LengthDone += IoStatusBlock->Information;
     }
 
   IoStatusBlock->Status = STATUS_SUCCESS;
