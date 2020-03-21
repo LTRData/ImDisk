@@ -28,6 +28,7 @@
 #include <windows.h>
 #include <winioctl.h>
 #include <shellapi.h>
+#include <commdlg.h>
 #include <dbt.h>
 
 #include <stdio.h>
@@ -64,7 +65,7 @@ DoEvents(HWND hWnd)
     }
 }
 
-BOOL
+INT_PTR
 CALLBACK
 StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -150,7 +151,8 @@ ImDiskGetPartitionTypeName(IN BYTE PartitionType,
 {
   LPWSTR name;
 
-  switch (PartitionType & 0x3F)
+  // Clear out NTFT signature if present.
+  switch (PartitionType & 0x7F)
     {
     case PARTITION_ENTRY_UNUSED:
       name = L"Unused";
@@ -182,6 +184,14 @@ ImDiskGetPartitionTypeName(IN BYTE PartitionType,
 
     case PARTITION_IFS:
       name = L"NTFS or HPFS";
+      break;
+
+    case PARTITION_PREP:
+      name = L"PReP";
+      break;
+
+    case PARTITION_LDM:
+      name = L"LDM";
       break;
 
     case PARTITION_UNIX:
@@ -279,7 +289,9 @@ ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
       return FALSE;
     }
 
-  if (*(LPWORD)(buffer + SectorSize - 2) != 0xAA55)
+  // Check if MBR signature is there, otherwise this is not an MBR
+  if ((*(LPWORD)(buffer + 0x01FE) != 0xAA55) |
+      (*(LPBYTE)(buffer + 0x01BD) != 0x00))
     {
       CloseHandle(hImageFile);
       return FALSE;
@@ -326,7 +338,9 @@ ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 	      return FALSE;
 	    }
 
-	  if (*(LPWORD)(buffer + (SectorSize << 1) - 2) != 0xAA55)
+	  // Check if MBR signature is there, otherwise this is not an MBR
+	  if ((*(LPWORD)(buffer + SectorSize + 0x01FE) != 0xAA55) |
+	      (*(LPBYTE)(buffer + SectorSize + 0x01BD) != 0x00))
 	    {
 	      CloseHandle(hImageFile);
 	      return FALSE;
@@ -395,7 +409,7 @@ BOOL
 WINAPI
 ImDiskCreateMountPoint(LPCWSTR Directory, LPCWSTR Target)
 {
-  int iSize = (wcslen(Target) + 1) << 1;
+  WORD iSize = (WORD) ((wcslen(Target) + 1) << 1);
   REPARSE_DATA_JUNCTION ReparseData = { 0 };
   HANDLE hDir;
   DWORD dw;
@@ -990,12 +1004,13 @@ ImDiskRemoveDevice(HWND hWnd,
 {
   HANDLE device;
   DWORD dw;
-
-  if (hWnd != NULL)
-    SetWindowText(hWnd, L"Opening device...");
+  DWORD_PTR dwp;
 
   if (MountPoint == NULL)
     {
+      if (hWnd != NULL)
+	SetWindowText(hWnd, L"Opening device...");
+
       device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					GENERIC_READ | GENERIC_WRITE);
       if (device == INVALID_HANDLE_VALUE)
@@ -1016,6 +1031,11 @@ ImDiskRemoveDevice(HWND hWnd,
       // Notify processes that this device is about to be removed.
       if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
 	{
+	  if (hWnd != NULL)
+	    SetWindowText
+	      (hWnd,
+	       L"Notifying applications that device is being removed...");
+
 	  dev_broadcast_volume.dbcv_unitmask =
 	    1 << (MountPoint[0] - L'A') >> 1;
 
@@ -1025,7 +1045,7 @@ ImDiskRemoveDevice(HWND hWnd,
 			     (LPARAM)&dev_broadcast_volume,
 			     SMTO_BLOCK,
 			     2000,
-			     &dw);
+			     &dwp);
 
 	  SendMessageTimeout(HWND_BROADCAST,
 			     WM_DEVICECHANGE,
@@ -1033,8 +1053,11 @@ ImDiskRemoveDevice(HWND hWnd,
 			     (LPARAM)&dev_broadcast_volume,
 			     SMTO_BLOCK,
 			     4000,
-			     &dw);
+			     &dwp);
 	}
+
+      if (hWnd != NULL)
+	SetWindowText(hWnd, L"Opening device...");
 
       device = CreateFile(drive_letter_path,
 			  GENERIC_READ | GENERIC_WRITE,
@@ -1066,6 +1089,7 @@ ImDiskRemoveDevice(HWND hWnd,
   if (!ImDiskCheckDriverVersion(device))
     if (GetLastError() != NO_ERROR)
       {
+	NtClose(device);
 	if (hWnd != NULL)
 	  MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
 		       L"Not an ImDisk Virtual Disk: '%1'", MountPoint);
@@ -1090,7 +1114,10 @@ ImDiskRemoveDevice(HWND hWnd,
 		       &dw,
 		       NULL))
     if (hWnd == NULL)
-      return FALSE;
+      {
+	NtClose(device);
+	return FALSE;
+      }
     else
       if (MessageBox(hWnd,
 		     L"Cannot lock the device. The device may be in use by "
@@ -1115,6 +1142,132 @@ ImDiskRemoveDevice(HWND hWnd,
 		  0,
 		  &dw,
 		  NULL);
+
+  if (hWnd != NULL)
+    SetWindowText(hWnd, L"");
+
+  // If interactive mode, check if image has been modified and if so ask user
+  // if it should be saved first.
+  if (hWnd != NULL)
+    {
+      DWORD create_data_size = sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2);
+      PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
+	_alloca(create_data_size);
+
+      if (create_data == NULL)
+	{
+	  NtClose(device);
+	  MessageBox(hWnd, L"Memory allocation error.", L"ImDisk",
+		     MB_ICONSTOP);
+	  return FALSE;
+	}
+
+      if (!DeviceIoControl(device,
+			   IOCTL_IMDISK_QUERY_DEVICE,
+			   NULL,
+			   0,
+			   create_data,
+			   create_data_size,
+			   &dw, NULL))
+	{
+	  MsgBoxLastError(hWnd, L"Error communicating with device:");
+	  NtClose(device);
+	  return FALSE;
+	}
+
+      create_data->FileName[create_data->FileNameLength /
+			    sizeof(*create_data->FileName)] = 0;
+
+      if ((IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM) &&
+	  (create_data->Flags & IMDISK_IMAGE_MODIFIED))
+	switch (MessageBox(hWnd,
+		       L"The virtual disk has been modified. Do you "
+		       L"want to save it as an image file before unmounting "
+		       L"it?", L"ImDisk Virtual Disk Driver",
+		       MB_ICONINFORMATION | MB_YESNOCANCEL))
+	  {
+	  case IDYES:
+	    {
+	      OPENFILENAME_NT4 ofn = { sizeof ofn };
+	      HANDLE image = INVALID_HANDLE_VALUE;
+
+	      ofn.hwndOwner = hWnd;
+	      ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
+	      ofn.lpstrFile = create_data->FileName;
+	      ofn.nMaxFile = MAX_PATH;
+	      ofn.lpstrTitle = L"Save to image file";
+	      ofn.Flags = OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT |
+		OFN_PATHMUSTEXIST;
+	      ofn.lpstrDefExt = L"img";
+
+	      if (IMDISK_DEVICE_TYPE(create_data->Flags) ==
+		  IMDISK_DEVICE_TYPE_CD)
+		{
+		  ofn.lpstrFilter = L"ISO image (*.iso)\0*.iso\0";
+		  ofn.lpstrDefExt = L"iso";
+		}
+
+	      if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
+		{
+		  NtClose(device);
+		  return FALSE;
+		}
+
+	      SetWindowText(hWnd, L"Saving image file...");
+
+	      image = CreateFile(ofn.lpstrFile,
+				 GENERIC_WRITE,
+				 FILE_SHARE_READ | FILE_SHARE_DELETE,
+				 NULL,
+				 CREATE_ALWAYS,
+				 FILE_ATTRIBUTE_NORMAL,
+				 NULL);
+
+	      if (image == INVALID_HANDLE_VALUE)
+		{
+		  MsgBoxLastError(hWnd, L"Cannot create image file:");
+		  NtClose(device);
+		  return FALSE;
+		}
+
+	      if (!ImDiskSaveImageFile(device, image, 2 << 20, NULL))
+		{
+		  MsgBoxLastError(hWnd, L"Error saving image:");
+
+		  if (GetFileSize(image, NULL) == 0)
+		    DeleteFile(ofn.lpstrFile);
+
+		  CloseHandle(image);
+		  NtClose(device);
+		  return FALSE;
+		}
+
+	      if (GetFileSize(image, NULL) == 0)
+		{
+		  DeleteFile(ofn.lpstrFile);
+		  CloseHandle(image);
+
+		  MessageBox(hWnd,
+			     L"The drive contents could not be saved. "
+			     L"Check that the drive contains a supported "
+			     L"filesystem.", L"ImDisk Virtual Disk Driver",
+			     MB_ICONEXCLAMATION);
+
+		  NtClose(device);
+		  return FALSE;
+		}
+
+	      CloseHandle(image);
+	    }
+
+	  case IDNO:
+	    break;
+
+	  default:
+	    NtClose(device);
+	    return FALSE;
+	  }
+    }
 
   if (hWnd != NULL)
     SetWindowText(hWnd, L"Removing device...");
@@ -1431,6 +1584,9 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		    IN LPBOOL CancelFlag OPTIONAL)
 {
   LPBYTE buffer;
+  IMDISK_SET_DEVICE_FLAGS device_flags = { 0 };
+  DWORD dwReadSize;
+  DWORD dwWriteSize;
 
   if (BufferSize == 0)
     {
@@ -1444,9 +1600,6 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 
   for (;;)
     {
-      DWORD dwReadSize;
-      DWORD dwWriteSize;
-
       if (CancelFlag != NULL)
 	{
 	  DoEvents(NULL);
@@ -1470,7 +1623,7 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
       if (dwReadSize == 0)
 	{
 	  VirtualFree(buffer, 0, MEM_RELEASE);
-	  return TRUE;
+	  break;
 	}
 
       if (!WriteFile(FileHandle, buffer, dwReadSize, &dwWriteSize, NULL))
@@ -1489,4 +1642,17 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 	  return FALSE;
 	}
     }
+
+  device_flags.FlagsToChange = IMDISK_IMAGE_MODIFIED;
+
+  DeviceIoControl(DeviceHandle,
+		  IOCTL_IMDISK_SET_DEVICE_FLAGS,
+		  &device_flags,
+		  sizeof(device_flags),
+		  NULL,
+		  0,
+		  &dwReadSize,
+		  NULL);
+
+  return TRUE;
 }

@@ -303,7 +303,7 @@ RefreshList(HWND hWnd)
   return true;
 }
 
-BOOL
+INT_PTR
 CALLBACK
 AboutDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -311,19 +311,8 @@ AboutDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
     case WM_INITDIALOG:
       {
-	LPWSTR *argv = (LPWSTR*) lParam;
-	LPWSTR lpBuf = NULL;
-
-	SetWindowText(hWnd, argv[0]);
-
-	if (!FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-			   FORMAT_MESSAGE_ARGUMENT_ARRAY |
-			   FORMAT_MESSAGE_FROM_STRING, argv[1], 0, 0,
-			   (LPWSTR) &lpBuf, 0, (va_list*) (argv+2)))
-	  return TRUE;
-
-	SetDlgItemText(hWnd, IDC_EDT_ABOUTTEXT, lpBuf);
-	LocalFree(lpBuf);
+	SetWindowText(hWnd, wcstok((LPWSTR) lParam, L"|"));
+	SetDlgItemText(hWnd, IDC_EDT_ABOUTTEXT, wcstok(NULL, L""));
 	return TRUE;
       }
 
@@ -346,12 +335,24 @@ AboutDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
   return FALSE;
 }
 
-int
+VOID
 CDECL
-DisplayAboutBox(HWND hWnd, LPCWSTR Title, LPCWSTR /*Message*/, ...)
+DisplayAboutBox(HWND hWnd, LPCWSTR lpMessage, ...)
 {
-  return DialogBoxParam(hInstance, MAKEINTRESOURCE(IDD_ABOUT_BOX), hWnd,
-			AboutDlgProc, (LPARAM) &Title);
+  va_list param_list;
+  LPWSTR lpBuf = NULL;
+
+  va_start(param_list, lpMessage);
+
+  if (!FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		     FORMAT_MESSAGE_FROM_STRING, lpMessage, 0, 0,
+		     (LPWSTR) &lpBuf, 0, &param_list))
+    return;
+
+  DialogBoxParam(hInstance, MAKEINTRESOURCE(IDD_ABOUT_BOX), hWnd,
+		 AboutDlgProc, (LPARAM) lpBuf);
+
+  LocalFree(lpBuf);
 }
 
 void
@@ -389,7 +390,7 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
       ofn.lpstrDefExt = L"iso";
     }
 
-  HANDLE hDev = ImDiskOpenDeviceByNumber(lvi.lParam, GENERIC_READ);
+  HANDLE hDev = ImDiskOpenDeviceByNumber((DWORD) lvi.lParam, GENERIC_READ);
 
   if (hDev == INVALID_HANDLE_VALUE)
     {
@@ -482,7 +483,7 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
   CloseHandle(hImage);
 }
 
-BOOL
+INT_PTR
 CALLBACK
 SelectPartitionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -534,40 +535,41 @@ SelectPartitionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	      has_extended_partition = true;
 	  }
 
-	for (int i = 4; i < 8; i++)
-	  {
-	    PPARTITION_INFORMATION part_rec =
-	      ((PPARTITION_INFORMATION) lParam) + i;
+	if (has_extended_partition)
+	  for (int i = 4; i < 8; i++)
+	    {
+	      PPARTITION_INFORMATION part_rec =
+		((PPARTITION_INFORMATION) lParam) + i;
 
-	    WCHAR part_name[128];
-	    ImDiskGetPartitionTypeName(part_rec->PartitionType,
-				       part_name,
-				       sizeof(part_name)/sizeof(*part_name));
+	      WCHAR part_name[128];
+	      ImDiskGetPartitionTypeName(part_rec->PartitionType,
+					 part_name,
+					 sizeof(part_name)/sizeof(*part_name));
 
-	    if ((part_rec->StartingOffset.QuadPart != 0) &
-		(part_rec->PartitionLength.QuadPart != 0))
-	      {
-		_snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
-			   L"Logical partition %i - %.4g %s %s",
-			   i - 3,
-			   _h(part_rec->PartitionLength.QuadPart),
-			   _p(part_rec->PartitionLength.QuadPart),
-			   part_name);
-		wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
-		SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
-				   LB_ADDSTRING, 0, (LPARAM) wcBuffer);
-	      }
-	    else
-	      {
-		_snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
-			   L"Logical partition %i - %s",
-			   i - 3,
-			   part_name);
-		wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
-		SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
-				   LB_ADDSTRING, 0, (LPARAM) wcBuffer);
-	      }
-	  }
+	      if ((part_rec->StartingOffset.QuadPart != 0) &
+		  (part_rec->PartitionLength.QuadPart != 0))
+		{
+		  _snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
+			     L"Logical partition %i - %.4g %s %s",
+			     i - 3,
+			     _h(part_rec->PartitionLength.QuadPart),
+			     _p(part_rec->PartitionLength.QuadPart),
+			     part_name);
+		  wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
+		  SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+				     LB_ADDSTRING, 0, (LPARAM) wcBuffer);
+		}
+	      else
+		{
+		  _snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
+			     L"Logical partition %i - %s",
+			     i - 3,
+			     part_name);
+		  wcBuffer[sizeof(wcBuffer)/sizeof(*wcBuffer) - 1] = 0;
+		  SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+				     LB_ADDSTRING, 0, (LPARAM) wcBuffer);
+		}
+	    }
 
 	SetFocus(GetDlgItem(hWnd, IDC_SELECT_PARTITION_LIST));
 
@@ -622,10 +624,10 @@ AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
 
   if (found_partitions > 1)
     {
-      int i = DialogBoxParam(hInstance,
-			     MAKEINTRESOURCE(IDD_SELECT_PARTITION_DLG),
-			     hWnd, SelectPartitionDlgProc,
-			     (LPARAM) partition_information);
+      INT_PTR i = DialogBoxParam(hInstance,
+				 MAKEINTRESOURCE(IDD_SELECT_PARTITION_DLG),
+				 hWnd, SelectPartitionDlgProc,
+				 (LPARAM) partition_information);
       if ((i >= 1) & (i <= 8))
 	{
 	  PPARTITION_INFORMATION part_rec = partition_information + i - 1;
@@ -687,7 +689,8 @@ AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
     }
 }
 
-BOOL CALLBACK
+INT_PTR
+CALLBACK
 NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
   switch (uMsg)
@@ -710,8 +713,17 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	if (lParam != 0)
 	  {
-	    SetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, (LPCWSTR) lParam);
-	    AutoFindOffsetAndSize((LPCWSTR) lParam, hWnd);
+	    // Clear any leading and trailing quotes
+	    LPWSTR file_name = (LPWSTR) lParam;
+	    if (file_name[0] == L'"')
+	      {
+		size_t file_name_last_pos = wcslen(file_name) - 1;
+		if (file_name[file_name_last_pos] == L'"')
+		  (file_name++)[file_name_last_pos] = 0;
+	      }
+
+	    SetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, file_name);
+	    AutoFindOffsetAndSize(file_name, hWnd);
 	  }
 
 	return TRUE;
@@ -735,6 +747,12 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	  case IDC_BTN_BROWSE_FILE:
 	    {
 	      WCHAR file_name[MAX_PATH+1] = L"*";
+	      if (GetWindowTextLength(GetDlgItem(hWnd, IDC_EDT_IMAGEFILE)) > 0)
+		{
+		  GetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, file_name,
+				 sizeof(file_name)/sizeof(*file_name)-1);
+		  file_name[sizeof(file_name)/sizeof(*file_name)-1] = 0;
+		}
 
 	      OPENFILENAME_NT4 ofn = { sizeof ofn };
 	      ofn.hwndOwner = hWnd;
@@ -875,7 +893,8 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
   return FALSE;
 }
 
-BOOL CALLBACK
+INT_PTR
+CALLBACK
 ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 {
   switch (uMsg)
@@ -932,7 +951,7 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 
 	      BOOL status =
 		ImDiskExtendDevice(GetDlgItem(hWndStatus, IDC_STATUS_MSG),
-				   lvi.lParam,
+				   (DWORD) lvi.lParam,
 				   &extend_size);
 
 	      Sleep(100);
@@ -963,16 +982,17 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
   return FALSE;
 }
 
-BOOL CALLBACK
+INT_PTR
+CALLBACK
 CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
   switch (uMsg)
     {
     case WM_INITDIALOG:
       {
-	SetClassLong(hWnd, GCL_HICON,
-		     (LONG) LoadIcon(hInstance,
-				     MAKEINTRESOURCE(IDI_APPICON)));
+	SetClassLongPtr(hWnd, GCLP_HICON,
+			(LONG_PTR) LoadIcon(hInstance,
+					    MAKEINTRESOURCE(IDI_APPICON)));
 
 	HWND hWndListView = GetDlgItem(hWnd, IDC_LISTVIEW);
 
@@ -1062,7 +1082,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	    case NM_RCLICK:
 	      {
-		int item_selected =
+		INT_PTR item_selected =
 		  SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM,
 				     (WPARAM) -1,
 				     MAKELPARAM((UINT) LVNI_SELECTED, 0));
@@ -1156,8 +1176,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	    if (mount_point[0] == 0)
 	      return TRUE;
 	    
-	    if ((int) ShellExecute(hWnd, L"open", mount_point, NULL, NULL,
-				   SW_SHOWNORMAL) <= 32)
+	    if ((INT_PTR) ShellExecute(hWnd, L"open", mount_point, NULL, NULL,
+				       SW_SHOWNORMAL) <= 32)
 	      MessageBox(hWnd,
 			 L"Cannot open the drive. Check that the drive is "
 			 L"formatted with a compatible filesystem and that it "
@@ -1192,7 +1212,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			   StatusDlgProc);
 
 	    ImDiskRemoveDevice(GetDlgItem(hWndStatus, IDC_STATUS_MSG),
-			       lvi.lParam,
+			       (DWORD) lvi.lParam,
 			       lvi.pszText[0] == 0 ? NULL : lvi.pszText);
 
 	    Sleep(100);
@@ -1252,7 +1272,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	      }
 
 	    ImDiskChangeFlags(GetDlgItem(hWndStatus, IDC_STATUS_MSG),
-			      lvi.lParam,
+			      (DWORD) lvi.lParam,
 			      lvi.pszText[0] == 0 ? NULL : lvi.pszText,
 			      flags_to_change, flags);
 
@@ -1324,7 +1344,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	case CM_CPL_APPLET_HELP_ABOUT:
 	  DisplayAboutBox
 	    (hWnd,
-	     L"About ImDisk Virtual Disk Driver",
+	     L"About ImDisk Virtual Disk Driver"
+	     L"|"  // Boundary dialog caption text/textbox text
 	     L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
 	     L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
 	     L"\r\n"
@@ -1384,8 +1405,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 EXTERN_C LONG APIENTRY
 CPlApplet(HWND hwndCPl,	// handle to Control Panel window
 	  UINT uMsg,	        // message
-	  LONG /*lParam1*/,	// first message parameter
-	  LONG lParam2 	// second message parameter
+	  LPARAM /*lParam1*/,	// first message parameter
+	  LPARAM lParam2 	// second message parameter
 	  )
 {
   switch (uMsg)

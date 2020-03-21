@@ -228,6 +228,11 @@ ImDiskSyntaxHelp()
      "        with the -e parameter to set an existing removable virtual disk as\r\n"
      "        fixed.\r\n"
      "\n"
+     "saved   Clears the 'image modified' flag from an existing virtual disk. This\r\n"
+     "        flag is set by the driver when an image is modified and is displayed\r\n"
+     "        in the -l output for a virtual disk. The 'saved' option is only valid\r\n"
+     "        with the -e parameter.\r\n"
+     "\n"
      "        Note that virtual floppy or CD/DVD-ROM drives are always read-only and\r\n"
      "        removable devices and that cannot be changed.\r\n"
      "\n"
@@ -643,6 +648,7 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
   WCHAR drive_letter_mount_point[] = L" :";
   HANDLE device;
   DWORD dw;
+  DWORD_PTR dwp;
 
   if (MountPoint == NULL)
     {
@@ -666,6 +672,8 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
       // Notify processes that this device is about to be removed.
       if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
 	{
+	  puts("Sending device removal notifications...");
+
 	  dev_broadcast_volume.dbcv_unitmask =
 	    1 << (MountPoint[0] - L'A') >> 1;
 
@@ -677,7 +685,7 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 			     (LPARAM)&dev_broadcast_volume,
 			     SMTO_BLOCK,
 			     2000,
-			     &dw);
+			     &dwp);
 
 	  DbgOemPrintF((stdout, "Sending DBT_DEVICEREMOVEPENDING...\n"));
 
@@ -687,7 +695,7 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 			     (LPARAM)&dev_broadcast_volume,
 			     SMTO_BLOCK,
 			     4000,
-			     &dw);
+			     &dwp);
 	}
 
       DbgOemPrintF((stdout, "Opening %1!ws!...\n", MountPoint));
@@ -1068,7 +1076,7 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
     }
 
   _snprintf(message_buffer, sizeof message_buffer,
-	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s%s.",
+	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s%s%s.",
 	    create_data->DriveLetter == 0 ?
 	    L' ' : create_data->DriveLetter,
 	    (MountPoint == NULL) | (create_data->DriveLetter != 0) ?
@@ -1092,7 +1100,8 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
 	    IMDISK_DEVICE_TYPE_CD ? ", CD-ROM" :
 	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
-	    IMDISK_DEVICE_TYPE_FD ? ", Floppy" : ", HDD");
+	    IMDISK_DEVICE_TYPE_FD ? ", Floppy" : ", HDD",
+	    create_data->Flags & IMDISK_IMAGE_MODIFIED ? ", Modified" : "");
 
   message_buffer[sizeof(message_buffer)-1] = 0;
 
@@ -1194,40 +1203,43 @@ ImDiskCliChangeFlags(DWORD DeviceNumber, LPCWSTR MountPoint,
       return IMDISK_CLI_ERROR_DRIVER_WRONG_VERSION;
     }
 
-  puts("Flushing file buffers...");
-
-  FlushFileBuffers(device);
-
-  puts("Locking volume...");
-
-  if (!DeviceIoControl(device,
-                       FSCTL_LOCK_VOLUME,
-                       NULL,
-		       0,
-		       NULL,
-		       0,
-		       &dw,
-		       NULL))
+  if (FlagsToChange & (IMDISK_OPTION_RO | IMDISK_OPTION_REMOVABLE))
     {
-      PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-      CloseHandle(device);
-      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-    }
+      puts("Flushing file buffers...");
 
-  puts("Dismounting filesystem...");
+      FlushFileBuffers(device);
 
-  if (!DeviceIoControl(device,
-                       FSCTL_DISMOUNT_VOLUME,
-                       NULL,
-		       0,
-		       NULL,
-		       0,
-		       &dw,
-		       NULL))
-    {
-      PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-      CloseHandle(device);
-      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+      puts("Locking volume...");
+
+      if (!DeviceIoControl(device,
+			   FSCTL_LOCK_VOLUME,
+			   NULL,
+			   0,
+			   NULL,
+			   0,
+			   &dw,
+			   NULL))
+	{
+	  PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	  CloseHandle(device);
+	  return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	}
+
+      puts("Dismounting filesystem...");
+
+      if (!DeviceIoControl(device,
+			   FSCTL_DISMOUNT_VOLUME,
+			   NULL,
+			   0,
+			   NULL,
+			   0,
+			   &dw,
+			   NULL))
+	{
+	  PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	  CloseHandle(device);
+	  return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	}
     }
 
   puts("Setting new flags...");
@@ -1609,6 +1621,14 @@ wmain(int argc, LPWSTR argv[])
 		    flags_to_change |= IMDISK_OPTION_REMOVABLE;
 		    flags &= ~IMDISK_OPTION_REMOVABLE;
 		  }
+		else if (wcscmp(opt, L"saved") == 0)
+		  {
+		    if (op_mode != OP_MODE_EDIT)
+		      ImDiskSyntaxHelp();
+
+		    flags_to_change |= IMDISK_IMAGE_MODIFIED;
+		    flags &= ~IMDISK_IMAGE_MODIFIED;
+		  }
 	      // None of the other options are valid with the -e parameter.
 		else if (op_mode != OP_MODE_CREATE)
 		  ImDiskSyntaxHelp();
@@ -1893,7 +1913,8 @@ wmain(int argc, LPWSTR argv[])
 
 	    mount_point = argv[1];
 
-	    if (wcscmp(mount_point, L"#:") == 0)
+	    if ((op_mode == OP_MODE_CREATE) &
+		(wcscmp(mount_point, L"#:") == 0))
 	      mount_point[0] = ImDiskFindFreeDriveLetter();
 
 	    argc--;
@@ -2031,6 +2052,7 @@ wmain(int argc, LPWSTR argv[])
   ImDiskSyntaxHelp();
 }
 
+#ifndef _WIN64
 __declspec(noreturn)
 void
 __cdecl
@@ -2051,3 +2073,4 @@ wmainCRTStartup()
 
   exit(wmain(argc, argv));
 }
+#endif

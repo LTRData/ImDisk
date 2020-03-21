@@ -54,7 +54,7 @@ RunDLL_MountFile(HWND hWnd,
   int file_name_length;
   LPWSTR file_name;
 
-  file_name_length = strlen(lpszCmdLine) + 1;
+  file_name_length = (int) (strlen(lpszCmdLine) + 1);
   file_name = (LPWSTR) malloc(file_name_length << 1);
 
   if (file_name == NULL)

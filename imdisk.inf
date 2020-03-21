@@ -8,11 +8,27 @@ DriverVer = 05/30/2007,1,00,03,0009
 1 = "ImDisk Virtual Disk Driver Installation disk"
 
 
-[SourceDisksFiles]
+[SourceDisksFiles.x86]
 imdisk.sys = 1,sys\i386
 imdsksvc.exe = 1,svc\i386
 imdisk.cpl = 1,cpl\i386
 imdisk.exe = 1,cli\i386
+imdisk.inf = 1
+
+
+[SourceDisksFiles.ia64]
+imdisk.sys = 1,sys\ia64
+imdsksvc.exe = 1,svc\ia64
+imdisk.cpl = 1,cpl\ia64
+imdisk.exe = 1,cli\ia64
+imdisk.inf = 1
+
+
+[SourceDisksFiles.amd64]
+imdisk.sys = 1,sys\amd64
+imdsksvc.exe = 1,svc\amd64
+imdisk.cpl = 1,cpl\amd64
+imdisk.exe = 1,cli\amd64
 imdisk.inf = 1
 
 
