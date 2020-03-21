@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0111
+#define IMDISK_VERSION                 0x0113
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -132,6 +132,9 @@
 
 /// Extracts the IMDISK_PROXY_TYPE_xxx from flags
 #define IMDISK_PROXY_TYPE(x)            ((ULONG)(x) & 0x0000F000)
+
+/// Extracts the IMDISK_PROXY_TYPE_xxx from flags
+#define IMDISK_IMAGE_MODIFIED           0x00010000
 
 /// Specify as device number to automatically select first free.
 #define IMDISK_AUTO_DEVICE_NUMBER       ((ULONG)-1)

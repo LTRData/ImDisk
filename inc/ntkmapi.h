@@ -6,9 +6,11 @@
 // Ensures that we build a pre Win 2000 compatible
 // sys file (without ExFreePoolWithTag()). // Olof Lagerkvist
 //
+#ifndef _WIN64
 #ifdef POOL_TAGGING
 #undef ExFreePool
 #undef POOL_TAGGING
+#endif
 #endif
 
 #pragma warning(disable: 4996)
@@ -109,8 +111,8 @@ NTSTATUS
 NTAPI
 ZwAllocateVirtualMemory(IN HANDLE               ProcessHandle,
 			IN OUT PVOID            *BaseAddress,
-			IN ULONG                ZeroBits,
-			IN OUT PULONG           RegionSize,
+			IN ULONG_PTR            ZeroBits,
+			IN OUT PSIZE_T          RegionSize,
 			IN ULONG                AllocationType,
 			IN ULONG                Protect);
 
@@ -185,6 +187,7 @@ SeTokenType(IN PACCESS_TOKEN Token);
 //
 // For backward compatibility with <= Windows NT 4.0 by Bruce Engle.
 //
+#ifndef _WIN64
 #ifdef MmGetSystemAddressForMdlSafe
 #undef MmGetSystemAddressForMdlSafe
 #endif
@@ -214,3 +217,4 @@ MmGetSystemAddressForMdlPrettySafe(PMDL Mdl)
 
   return MappedSystemVa;
 }
+#endif

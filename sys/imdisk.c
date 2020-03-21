@@ -194,6 +194,7 @@ typedef struct _DEVICE_EXTENSION
   BOOLEAN read_only;
   BOOLEAN vm_disk;             // TRUE if this device is a virtual memory disk
   BOOLEAN use_proxy;           // TRUE if this device uses proxy device for I/O
+  BOOLEAN image_modified;      // TRUE if this device has been written to
   PKTHREAD device_thread;      // Pointer to the dispatch thread object
 } DEVICE_EXTENSION, *PDEVICE_EXTENSION;
 
@@ -595,7 +596,8 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 			   &required_size);
 
   if ((!NT_SUCCESS(status)) |
-      (value_info_size->Type != REG_BINARY) |
+      ((value_info_size->Type != REG_BINARY) &
+       (value_info_size->Type != REG_QWORD)) |
       (value_info_size->DataLength != sizeof(LARGE_INTEGER)))
     {
       KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
@@ -851,6 +853,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
     }
 
   // Cannot create >= 2 GB VM disk in 32 bit version.
+#ifndef _WIN64
   if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
       ((CreateData->DiskGeometry.Cylinders.QuadPart & 0xFFFFFFFF80000000) !=
        0))
@@ -859,6 +862,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
       return STATUS_INVALID_PARAMETER;
     }
+#endif
 
   // Auto-find first free device number
   if ((CreateData->DeviceNumber == IMDISK_AUTO_DEVICE_NUMBER) |
@@ -1102,8 +1106,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	  // Allocate virtual memory for 'vm' type.
 	  if (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM)
 	    {
-	      ULONG max_size;
+	      SIZE_T max_size;
 
+#ifdef _WIN64
+	      max_size = CreateData->DiskGeometry.Cylinders.QuadPart;
+#else
 	      // Check that file size < 2 GB.
 	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
 		if ((file_standard.EndOfFile.QuadPart -
@@ -1122,6 +1129,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		    CreateData->ImageOffset.QuadPart;
 
 	      max_size = CreateData->DiskGeometry.Cylinders.LowPart;
+#endif
+
 	      status =
 		ZwAllocateVirtualMemory(NtCurrentProcess(),
 					&image_buffer,
@@ -1291,8 +1300,12 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   // Blank vm-disk, just allocate...
   else
     {
-      ULONG max_size;
+      SIZE_T max_size;
+#ifdef _WIN64
+      max_size = CreateData->DiskGeometry.Cylinders.QuadPart;
+#else
       max_size = CreateData->DiskGeometry.Cylinders.LowPart;
+#endif
 
       image_buffer = NULL;
       status =
@@ -2028,7 +2041,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
   if (device_extension->terminate_thread)
     {
-      KdPrint(("ImDisk: IOCTL attempt on device %i with no media.\n",
+      KdPrint(("ImDisk: IOCTL attempt on device %i that is being removed.\n",
 	       device_extension->device_number));
 
       Irp->IoStatus.Status = STATUS_NO_MEDIA_IN_DEVICE;
@@ -2077,27 +2090,6 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
 	return Irp->IoStatus.Status;
-
-	// The only IOCTL codes available without mounted image file.
-      case IOCTL_IMDISK_QUERY_VERSION:
-      case IOCTL_DISK_EJECT_MEDIA:
-      case IOCTL_STORAGE_EJECT_MEDIA:
-	break;
-
-      default:
-	if (device_extension->terminate_thread)
-	  {
-	    KdPrint(("ImDisk: Invalid IOCTL %#x for device %i. No media.\n",
-		     io_stack->Parameters.DeviceIoControl.IoControlCode,
-		     device_extension->device_number));
-
-	    Irp->IoStatus.Status = STATUS_NO_MEDIA_IN_DEVICE;
-	    Irp->IoStatus.Information = 0;
-	    
-	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-	    return Irp->IoStatus.Status;
-	  }
       }
   
   switch (io_stack->Parameters.DeviceIoControl.IoControlCode)
@@ -2158,6 +2150,16 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 	      device_flags->FlagsToChange &= ~IMDISK_OPTION_REMOVABLE;
 	    }
+
+	if (device_flags->FlagsToChange & IMDISK_IMAGE_MODIFIED)
+	  {
+	    if (device_flags->FlagValues & IMDISK_IMAGE_MODIFIED)
+	      device_extension->image_modified = TRUE;
+	    else
+	      device_extension->image_modified = FALSE;
+
+	    device_flags->FlagsToChange &= ~IMDISK_IMAGE_MODIFIED;
+	  }
 
 	if (device_flags->FlagsToChange)
 	  status = STATUS_INVALID_DEVICE_REQUEST;
@@ -2361,6 +2363,9 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	  create_data->Flags |= IMDISK_TYPE_PROXY;
 	else
 	  create_data->Flags |= IMDISK_TYPE_FILE;
+
+	if (device_extension->image_modified)
+	  create_data->Flags |= IMDISK_IMAGE_MODIFIED;
 
 	create_data->DriveLetter = device_extension->drive_letter;
 
@@ -3413,6 +3418,8 @@ ImDiskDeviceThread(IN PVOID Context)
 		break;
 	      }
 
+	    device_extension->image_modified = TRUE;
+
 	    if (device_extension->vm_disk)
 	      {
 		RtlCopyMemory(device_extension->image_buffer +
@@ -3591,8 +3598,12 @@ ImDiskDeviceThread(IN PVOID Context)
 
 		if (device_extension->vm_disk)
 		  {
-		    ULONG max_size = new_size.EndOfFile.LowPart;
 		    PVOID new_image_buffer = NULL;
+		    ULONG free_size = 0;
+#ifdef _WIN64
+		    SIZE_T max_size = new_size.EndOfFile.QuadPart;
+#else
+		    SIZE_T max_size = new_size.EndOfFile.LowPart;
 
 		    // A vm type disk cannot be extened to a larger size than
 		    // 2 GB.
@@ -3602,6 +3613,7 @@ ImDiskDeviceThread(IN PVOID Context)
 			irp->IoStatus.Information = 0;
 			break;
 		      }
+#endif // _WIN64
 
 		    status = ZwAllocateVirtualMemory(NtCurrentProcess(),
 						     &new_image_buffer,
@@ -3622,10 +3634,10 @@ ImDiskDeviceThread(IN PVOID Context)
 		       device_extension->image_buffer,
 		       device_extension->disk_geometry.Cylinders.LowPart);
 
-		    max_size = 0;
 		    ZwFreeVirtualMemory(NtCurrentProcess(),
 					&device_extension->image_buffer,
-					&max_size, MEM_RELEASE);
+					&free_size,
+					MEM_RELEASE);
 
 		    device_extension->image_buffer = new_image_buffer;
 		    device_extension->disk_geometry.Cylinders =
@@ -3766,7 +3778,7 @@ ImDiskSafeReadFile(IN HANDLE FileHandle,
 	  return IoStatusBlock->Status;
 	}
 
-      LengthDone += IoStatusBlock->Information;
+      LengthDone += (ULONG) IoStatusBlock->Information;
     }
 
   IoStatusBlock->Status = STATUS_SUCCESS;
@@ -3874,7 +3886,7 @@ ImDiskSafeIOStream(IN PFILE_OBJECT FileObject,
 	  return IoStatusBlock->Status;
 	}
 
-      length_done += IoStatusBlock->Information;
+      length_done += (ULONG) IoStatusBlock->Information;
     }
 
   KdPrint2(("ImDiskSafeIOStream: I/O complete.\n"));
@@ -3968,7 +3980,7 @@ ImDiskConnectProxy(IN OUT PFILE_OBJECT *ProxyDevice,
   if (connect_resp.object_ptr != 0)
     {
       ObDereferenceObject(*ProxyDevice);
-      *ProxyDevice = (PFILE_OBJECT)(ULONG) connect_resp.object_ptr;
+      *ProxyDevice = (PFILE_OBJECT)(ULONG_PTR) connect_resp.object_ptr;
     }
 
   KdPrint(("ImDisk Proxy Client: Got ok response IMDPROXY_CONNECT_RESP.\n"));
@@ -4111,19 +4123,17 @@ ImDiskReadProxy(IN PFILE_OBJECT ProxyDevice,
       return IoStatusBlock->Status;
     }
 
-  if (read_resp.length != Length)
+  if (read_resp.length > Length)
     {
       KdPrint(("ImDisk Proxy Client: IMDPROXY_REQ_READ %u bytes, "
 	       "IMDPROXY_RESP_READ %u bytes.\n",
 	       Length, (ULONG) read_resp.length));
- 
-      /* No longer a fatal error...
+
       IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
       IoStatusBlock->Information = 0;
       return IoStatusBlock->Status;
-      */
     }
-  
+
   KdPrint2
     (("ImDisk Proxy Client: Got ok response. Waiting for data stream.\n"));
 
@@ -4240,7 +4250,7 @@ ImDiskWriteProxy(IN PFILE_OBJECT ProxyDevice,
       IoStatusBlock->Information = 0;
       return IoStatusBlock->Status;
     }
-  
+
   KdPrint2(("ImDisk Proxy Client: Got ok response. "
 	    "Resetting IoStatusBlock fields.\n"));
 
