@@ -2,7 +2,7 @@
     Control Panel Applet for the ImDisk Virtual Disk Driver for
     Windows NT/2000/XP.
 
-    Copyright (C) 2007-2009 Olof Lagerkvist.
+    Copyright (C) 2007-2010 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -41,6 +41,7 @@
 #include "..\inc\imdisk.h"
 
 #include "drvio.h"
+#include "mbr.h"
 
 #include "imdisk.rc.h"
 
@@ -164,16 +165,7 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
 	      create_data->FileNameLength >> 1);
       lvi.pszText[create_data->FileNameLength >> 1] = 0;
 
-      if (wcsncmp(lvi.pszText, L"\\??\\", 4) == 0)
-	lvi.pszText += 4;
-      else if (wcsncmp(lvi.pszText, L"\\DosDevices\\", 12) == 0)
-	lvi.pszText += 12;
-
-      if (wcsncmp(lvi.pszText, L"UNC\\", 4) == 0)
-	{
-	  lvi.pszText += 2;
-	  lvi.pszText[0] = L'\\';
-	}
+      ImDiskNativePathToWin32(&lvi.pszText);
 
       if (IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM)
 	{
@@ -191,20 +183,20 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
       break;
 
     case IMDISK_TYPE_PROXY:
-	{
-	  WCHAR Text[] = L"Proxy through ";
-	  lvi.pszText = (LPWSTR) _alloca(create_data->FileNameLength +
-					 sizeof(*create_data->FileName) +
-					 sizeof(Text));
-	  if (lvi.pszText == NULL)
-	    return;
-	  wcsncpy(lvi.pszText, Text, sizeof(Text) >> 1);
-	  lvi.pszText[sizeof(Text) >> 1] = 0;
-	  wcsncat(lvi.pszText, create_data->FileName,
-		  create_data->FileNameLength >> 1);
-	  lvi.pszText[(create_data->FileNameLength + sizeof(Text) - 1) >> 1] =
-	    0;
-	}
+      {
+	WCHAR Text[] = L"Proxy through ";
+	lvi.pszText = (LPWSTR) _alloca(create_data->FileNameLength +
+				       sizeof(*create_data->FileName) +
+				       sizeof(Text));
+	if (lvi.pszText == NULL)
+	  return;
+	wcsncpy(lvi.pszText, Text, sizeof(Text) >> 1);
+	lvi.pszText[sizeof(Text) >> 1] = 0;
+	wcsncat(lvi.pszText, create_data->FileName,
+		create_data->FileNameLength >> 1);
+	lvi.pszText[(create_data->FileNameLength + sizeof(Text) - 1) >> 1] =
+	  0;
+      }
       break;
 
     default:
@@ -355,6 +347,141 @@ DisplayAboutBox(HWND hWnd, LPCWSTR lpMessage, ...)
   LocalFree(lpBuf);
 }
 
+INT_PTR
+CALLBACK
+OptionsSaveDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+  switch (uMsg)
+    {
+    case WM_INITDIALOG:
+      {
+	PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA) lParam;
+
+	SetProp(hWnd, L"create_data", create_data);
+
+	LONGLONG new_offset = (LONGLONG)
+	  create_data->DiskGeometry.BytesPerSector *
+	  create_data->DiskGeometry.SectorsPerTrack;
+
+	WCHAR buffer[MAX_PATH << 1];
+
+	if (create_data->FileNameLength > 0)
+	  if (create_data->ImageOffset.QuadPart > 0)
+	    {
+	      _snwprintf(buffer, sizeof(buffer) / sizeof(*buffer),
+			 L"Save disk image at offset %I64i in image file "
+			 L"%.*ws (where it was originally loaded from). "
+			 L"Original MBR or header will be left untouched.",
+			 create_data->ImageOffset,
+			 create_data->FileNameLength >> 1,
+			 create_data->FileName);
+	      buffer[sizeof(buffer)/sizeof(*buffer)-1] = 0;
+	      SetDlgItemText(hWnd, IDC_BTN_ORIG_FILE_ORIG_OFFSET, buffer);
+	      ShowWindow(GetDlgItem(hWnd, IDC_BTN_ORIG_FILE_ORIG_OFFSET),
+			 SW_SHOWNORMAL);
+
+	      _snwprintf(buffer, sizeof(buffer) / sizeof(*buffer),
+			 L"Save disk image at offset 0 in image file %.*ws "
+			 L"(destroying original MBR or other header).",
+			 create_data->FileNameLength >> 1,
+			 create_data->FileName);
+	      buffer[sizeof(buffer)/sizeof(*buffer)-1] = 0;
+	      SetDlgItemText(hWnd, IDC_BTN_ORIG_FILE_BASE, buffer);
+	      ShowWindow(GetDlgItem(hWnd, IDC_BTN_ORIG_FILE_BASE),
+			 SW_SHOWNORMAL);
+
+	      CheckDlgButton(hWnd, IDC_BTN_ORIG_FILE_ORIG_OFFSET, BST_CHECKED);
+	      SetFocus(GetDlgItem(hWnd, IDC_BTN_ORIG_FILE_ORIG_OFFSET));
+	    }
+	  else
+	    {
+	      _snwprintf(buffer, sizeof(buffer) / sizeof(*buffer),
+			 L"Save disk image at offset 0 in image file %.*ws "
+			 L"(where it was originally loaded from).",
+			 create_data->FileNameLength >> 1,
+			 create_data->FileName);
+	      buffer[sizeof(buffer)/sizeof(*buffer)-1] = 0;
+	      SetDlgItemText(hWnd, IDC_BTN_ORIG_FILE_BASE, buffer);
+	      ShowWindow(GetDlgItem(hWnd, IDC_BTN_ORIG_FILE_BASE),
+			 SW_SHOWNORMAL);
+
+	      CheckDlgButton(hWnd, IDC_BTN_ORIG_FILE_BASE, BST_CHECKED);
+	      SetFocus(GetDlgItem(hWnd, IDC_BTN_ORIG_FILE_BASE));
+	    }
+	else
+	  {
+	    CheckDlgButton(hWnd, IDC_BTN_NEW_FILE_BASE, BST_CHECKED);
+	    SetFocus(GetDlgItem(hWnd, IDC_BTN_NEW_FILE_BASE));
+	  }
+
+	_snwprintf(buffer, sizeof(buffer) / sizeof(*buffer),
+		   L"Save disk image at offset %I64i in new image file. New "
+		   L"MBR will be created at beginning of new image file. "
+		   L"Existing file contents will be overwritten.",
+		   new_offset);
+	buffer[sizeof(buffer)/sizeof(*buffer)-1] = 0;
+	SetDlgItemText(hWnd, IDC_BTN_NEW_FILE_WITH_MBR, buffer);
+
+	_snwprintf(buffer, sizeof(buffer) / sizeof(*buffer),
+		   L"Save disk image at offset 0 in new image file. No MBR "
+		   L"will be created. Existing file contents will be "
+		   L"overwritten.");
+	buffer[sizeof(buffer)/sizeof(*buffer)-1] = 0;
+	SetDlgItemText(hWnd, IDC_BTN_NEW_FILE_BASE, buffer);
+
+	return FALSE;
+      }
+
+    case WM_COMMAND:
+      switch (LOWORD(wParam))
+	{
+	case IDOK:
+	  {
+	    PIMDISK_CREATE_DATA create_data =
+	      (PIMDISK_CREATE_DATA) GetProp(hWnd, L"create_data");
+
+	    if (IsDlgButtonChecked(hWnd, IDC_BTN_ORIG_FILE_BASE) ==
+		BST_CHECKED)
+	      create_data->ImageOffset.QuadPart = 0;
+	    else if (IsDlgButtonChecked(hWnd, IDC_BTN_NEW_FILE_WITH_MBR) ==
+		     BST_CHECKED)
+	      {
+		create_data->FileNameLength = 0;
+		create_data->ImageOffset.QuadPart =
+		  (LONGLONG)
+		  create_data->DiskGeometry.SectorsPerTrack *
+		  create_data->DiskGeometry.BytesPerSector;
+	      }
+	    else if (IsDlgButtonChecked(hWnd, IDC_BTN_NEW_FILE_BASE) ==
+		     BST_CHECKED)
+	      {
+		create_data->FileNameLength = 0;
+		create_data->ImageOffset.QuadPart = 0;
+	      }
+
+	    EndDialog(hWnd, IDOK);
+	    return TRUE;
+	  }
+
+	case IDCANCEL:
+	  EndDialog(hWnd, IDCANCEL);
+	  return TRUE;
+	}
+
+      return TRUE;
+
+    case WM_NCDESTROY:
+      RemoveProp(hWnd, L"create_data");
+      return TRUE;
+
+    case WM_CLOSE:
+      EndDialog(hWnd, IDCANCEL);
+      return TRUE;
+    }
+
+  return FALSE;
+}
+
 void
 SaveSelectedDeviceToImageFile(HWND hWnd)
 {
@@ -373,23 +500,6 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
   lvi.cchTextMax = sizeof(wcBuffer)/sizeof(*wcBuffer);
   SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETITEM, 0, (LPARAM) &lvi);
 
-  WCHAR file_name[MAX_PATH + 1] = L"";
-  OPENFILENAME_NT4 ofn = { sizeof ofn };
-  ofn.hwndOwner = hWnd;
-  ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
-  ofn.lpstrFile = file_name;
-  ofn.nMaxFile = sizeof(file_name)/sizeof(*file_name);
-  ofn.lpstrTitle = L"Save contents of virtual disk to image file";
-  ofn.Flags = OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT |
-    OFN_PATHMUSTEXIST;
-  ofn.lpstrDefExt = L"img";
-
-  if (lvi.iImage == 2)
-    {
-      ofn.lpstrFilter = L"ISO image (*.iso)\0*.iso\0";
-      ofn.lpstrDefExt = L"iso";
-    }
-
   HANDLE hDev = ImDiskOpenDeviceByNumber((DWORD) lvi.lParam, GENERIC_READ);
 
   if (hDev == INVALID_HANDLE_VALUE)
@@ -398,28 +508,86 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
       return;
     }
 
-  if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
+  ImDiskSaveImageFileInteractive(hDev, hWnd, 0, FALSE);
+
+  CloseHandle(hDev);
+}
+
+VOID
+WINAPI
+ImDiskSaveImageFileInteractive(IN HANDLE hDev,
+			       IN HWND hWnd,
+			       IN DWORD BufferSize,
+			       IN BOOL IsCdRomType)
+{
+  DWORD create_data_size = sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2);
+  PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
+    _alloca(create_data_size);
+  PDISK_GEOMETRY disk_geometry = &create_data->DiskGeometry;
+
+  if (create_data == NULL)
     {
-      CloseHandle(hDev);
+      MessageBox(hWnd, L"Memory allocation error.", L"ImDisk", MB_ICONSTOP);
       return;
     }
-
-  HANDLE hImage = CreateFile(ofn.lpstrFile,
-			     GENERIC_WRITE,
-			     FILE_SHARE_READ | FILE_SHARE_DELETE,
-			     NULL,
-			     CREATE_ALWAYS,
-			     FILE_ATTRIBUTE_NORMAL,
-			     NULL);
-
-  if (hImage == INVALID_HANDLE_VALUE)
-    {
-      MsgBoxLastError(hWnd, L"Cannot create image file:");
-      CloseHandle(hDev);
-      return;
-    }
+  
+  ZeroMemory(create_data, create_data_size);
 
   DWORD dwRet;
+
+  if (!DeviceIoControl(hDev, IOCTL_IMDISK_QUERY_DEVICE, NULL, 0, create_data,
+		       create_data_size, &dwRet,
+		       NULL))
+    if (!DeviceIoControl(hDev, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0,
+			 disk_geometry,
+			 sizeof(DISK_GEOMETRY),
+			 &dwRet, NULL))
+      return;
+
+  LARGE_INTEGER disk_size;
+  if (!ImDiskGetVolumeSize(hDev, &disk_size.QuadPart))
+    return;
+
+  WCHAR file_name[MAX_PATH + 1] = L"";
+
+  if (IMDISK_TYPE(create_data->Flags) != IMDISK_TYPE_VM)
+    create_data->FileNameLength = 0;
+
+  if (create_data->FileNameLength > 0)
+    if (create_data->FileNameLength >= sizeof file_name)
+      create_data->FileNameLength = 0;
+    else
+      {
+	wcsncpy(file_name, create_data->FileName,
+		create_data->FileNameLength >> 1);
+
+	LPWSTR win32_path = file_name;
+	ImDiskNativePathToWin32(&win32_path);
+	if (win32_path != file_name)
+	  wcscpy(file_name, win32_path);
+
+	create_data->FileNameLength = (USHORT) wcslen(file_name) << 1;
+	memcpy(create_data->FileName, file_name, create_data->FileNameLength);
+      }
+
+  BOOL use_original_file_name = FALSE;
+  LARGE_INTEGER save_offset = { 0 };
+  if ((IMDISK_DEVICE_TYPE(create_data->Flags) == IMDISK_DEVICE_TYPE_HD) ?
+      TRUE : !IsCdRomType)
+    {
+      INT_PTR i = DialogBoxParam(hInstance,
+				 MAKEINTRESOURCE(IDD_DLG_OPTIONS_SAVE),
+				 hWnd, OptionsSaveDlgProc,
+				 (LPARAM) create_data);
+
+      if (i == IDCANCEL)
+	return;
+
+      save_offset = create_data->ImageOffset;
+      if (create_data->FileNameLength > 0)
+	use_original_file_name = TRUE;
+    }
+
   if (DeviceIoControl(hDev, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dwRet, NULL))
     DeviceIoControl(hDev, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0, &dwRet,
 		    NULL);
@@ -429,11 +597,95 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
 		   L"program. Do you want to continue anyway?",
 		   L"ImDisk Virtual Disk Driver",
 		   MB_ICONEXCLAMATION | MB_OKCANCEL | MB_DEFBUTTON2) != IDOK)
-      {
-	CloseHandle(hDev);
-	CloseHandle(hImage);
+      return;
+
+  OPENFILENAME_NT4 ofn = { sizeof ofn };
+  ofn.hwndOwner = hWnd;
+  ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
+  ofn.lpstrFile = file_name;
+  ofn.nMaxFile = sizeof(file_name)/sizeof(*file_name);
+  ofn.lpstrTitle = L"Save contents of virtual disk to image file";
+  ofn.Flags =
+    OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+  ofn.lpstrDefExt = L"img";
+
+  if ((IMDISK_DEVICE_TYPE(create_data->Flags) == IMDISK_DEVICE_TYPE_CD) ?
+      TRUE : IsCdRomType)
+    {
+      ofn.lpstrFilter = L"ISO image (*.iso)\0*.iso\0";
+      ofn.lpstrDefExt = L"iso";
+    }
+
+  DWORD dwCreationDisposition;
+  if (use_original_file_name)
+    dwCreationDisposition = OPEN_EXISTING;
+  else
+    {
+      if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
 	return;
-      }
+
+      dwCreationDisposition = CREATE_ALWAYS;
+    }
+
+  HANDLE hImage = CreateFile(ofn.lpstrFile,
+			     GENERIC_WRITE,
+			     FILE_SHARE_READ | FILE_SHARE_DELETE,
+			     NULL,
+			     dwCreationDisposition,
+			     FILE_ATTRIBUTE_NORMAL,
+			     NULL);
+
+  if (hImage == INVALID_HANDLE_VALUE)
+    {
+      MsgBoxLastError(hWnd, L"Cannot open image file:");
+      return;
+    }
+
+  // Saving to an image file with offset
+  if (save_offset.QuadPart > 0)
+    {
+      // Not saving to existing image file? Create new MBR.
+      if (!use_original_file_name)
+	{
+	  LPBYTE mbr = (LPBYTE)_alloca(default_mbr_size);
+	  PARTITION_INFORMATION partition_info = { 0 };
+	  partition_info.StartingOffset.QuadPart =
+	    (LONGLONG)
+	    disk_geometry->BytesPerSector *
+	    disk_geometry->SectorsPerTrack;
+	  partition_info.PartitionLength = disk_size;
+	  partition_info.BootIndicator = 0x80;
+	  partition_info.PartitionType = 0x06;
+
+	  if (!ImDiskBuildMBR(disk_geometry,
+			      &partition_info,
+			      1,
+			      mbr,
+			      default_mbr_size))
+	    {
+	      MsgBoxLastError(hWnd, L"Error creating new MBR:");
+	      CloseHandle(hImage);
+	      return;
+	    }
+
+	  if (!WriteFile(hImage, mbr, default_mbr_size, &dwRet, NULL))
+	    {
+	      MsgBoxLastError(hWnd, L"Error writing new MBR:");
+	      CloseHandle(hImage);
+	      return;
+	    }
+	}
+
+      // Move to position where disk image should begin.
+      if (SetFilePointer(hImage, save_offset.LowPart, &save_offset.HighPart,
+			 FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+	if (GetLastError() != ERROR_SUCCESS)
+	  {
+	    MsgBoxLastError(hWnd, L"Image file error:");
+	    CloseHandle(hImage);
+	    return;
+	  }
+    }
 
   BOOL bCancelFlag = FALSE;
 
@@ -444,30 +696,38 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
 
   SetDlgItemText(hWndStatus, IDC_STATUS_MSG, L"Saving image file...");
 
-  if (ImDiskSaveImageFile(hDev, hImage, 0, &bCancelFlag))
+  if (ImDiskSaveImageFile(hDev, hImage, BufferSize, &bCancelFlag))
     {
       DestroyWindow(hWndStatus);
       EnableWindow(hWnd, TRUE);
-      CloseHandle(hDev);
 
-      if (GetFileSize(hImage, NULL) == 0)
+      if (!use_original_file_name)
 	{
-	  DeleteFile(ofn.lpstrFile);
-	  CloseHandle(hImage);
+	  save_offset.QuadPart += disk_size.QuadPart;
 
-	  MsgBoxPrintF(hWnd, MB_ICONEXCLAMATION, L"ImDisk Virtual Disk Driver",
-		       L"The contents of drive '%1' could not be saved. Check "
-		       L"that the drive contains a supported filesystem.",
-		       lvi.pszText);
+	  if (!ImDiskAdjustImageFileSize(hImage, &save_offset))
+	    {
+	      DeleteFile(ofn.lpstrFile);
+	      CloseHandle(hImage);
 
-	  return;
+	      MsgBoxPrintF(hWnd,
+			   MB_ICONEXCLAMATION,
+			   L"ImDisk Virtual Disk Driver",
+			   L"The contents of drive '%1!c!:' could not be "
+			   L"saved. Check that the drive contains a supported "
+			   L"filesystem.",
+			   create_data->DriveLetter);
+
+	      return;
+	    }
 	}
 
       CloseHandle(hImage);
       MsgBoxPrintF(hWnd, MB_ICONINFORMATION,
 		   L"ImDisk Virtual Disk Driver",
-		   L"Successfully saved the contents of drive '%1' to "
-		   L"image file '%2'.", lvi.pszText, ofn.lpstrFile);
+		   L"Successfully saved the contents of drive '%1!c!:' to "
+		   L"image file '%2'.", create_data->DriveLetter,
+		   ofn.lpstrFile);
       return;
     }
 
@@ -475,7 +735,6 @@ SaveSelectedDeviceToImageFile(HWND hWnd)
 
   DestroyWindow(hWndStatus);
   EnableWindow(hWnd, TRUE);
-  CloseHandle(hDev);
 
   if (GetFileSize(hImage, NULL) == 0)
     DeleteFile(ofn.lpstrFile);
@@ -1371,7 +1630,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	     L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
 	     L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
 	     L"\r\n"
-	     L"Copyright (C) 2004-2009 Olof Lagerkvist.\r\n"
+	     L"Copyright (C) 2004-2010 Olof Lagerkvist.\r\n"
 	     L"http://www.ltr-data.se     olof@ltr-data.se\r\n"
 	     L"\r\n"
 	     L"Permission is hereby granted, free of charge, to any person\r\n"

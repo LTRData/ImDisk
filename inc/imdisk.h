@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0130
+#define IMDISK_VERSION                 0x0140
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -652,6 +652,147 @@ BOOL
 WINAPI
 ImDiskGetVolumeSize(IN HANDLE Handle,
 		    OUT PLONGLONG Size);
+
+/**
+   This function builds a Master Boot Record, MBR, in memory. The MBR will
+   contain a default Initial Program Loader, IPL, which could be used to boot
+   an operating system partition when the MBR is written to a disk.
+
+   DiskGeometry    Pointer to a DISK_GEOMETRY or DISK_GEOMETRY_EX structure
+                   that contains information about logical geometry of the
+		   disk.
+
+		   This function only uses the BytesPerSector, SectorsPerTrack
+		   and TracksPerCylinder members.
+
+		   This parameter can be NULL if NumberOfParts parameter is
+		   zero.
+
+   PartitionInfo   Pointer to an array of up to four PARTITION_INFORMATION
+                   structures containing information about partitions to store
+		   in MBR partition table.
+
+		   This function only uses the StartingOffset, PartitionLength,
+		   BootIndicator and PartitionType members.
+
+		   This parameter can be NULL if NumberOfParts parameter is
+		   zero.
+
+   NumberOfParts   Number of PARTITION_INFORMATION structures in array that
+                   PartitionInfo parameter points to.
+
+		   If this parameter is zero, DiskGeometry and PartitionInfo
+		   parameters are ignored and can be NULL. In that case MBR
+		   will contain an empty partition table when this function
+		   returns.
+
+   MBR             Pointer to memory buffer of at least 512 bytes where MBR
+                   will be built.
+
+   MBRSize         Size of buffer pointed to by MBR parameter. This parameter
+                   must be at least 512.
+*/
+BOOL
+WINAPI
+ImDiskBuildMBR(IN PDISK_GEOMETRY DiskGeometry OPTIONAL,
+	       IN PPARTITION_INFORMATION PartitionInfo OPTIONAL,
+	       IN BYTE NumberOfParts OPTIONAL,
+	       IN OUT LPBYTE MBR,
+	       IN DWORD_PTR MBRSize);
+
+/**
+   This function converts a CHS disk address to LBA format.
+
+   DiskGeometry    Pointer to a DISK_GEOMETRY or DISK_GEOMETRY_EX structure
+                   that contains information about logical geometry of the
+		   disk. This function only uses the SectorsPerTrack and
+		   TracksPerCylinder members.
+
+   CHS             Pointer to CHS disk address in three-byte partition table
+                   style format.
+*/
+DWORD
+WINAPI
+ImDiskConvertCHSToLBA(IN PDISK_GEOMETRY DiskGeometry,
+		      IN LPBYTE CHS);
+
+/**
+   This function converts an LBA disk address to three-byte partition style CHS
+   format. The three bytes are returned in the three lower bytes of a DWORD.
+
+   DiskGeometry    Pointer to a DISK_GEOMETRY or DISK_GEOMETRY_EX structure
+                   that contains information about logical geometry of the
+		   disk. This function only uses the SectorsPerTrack and
+		   TracksPerCylinder members.
+
+   LBA             LBA disk address.
+*/
+DWORD
+WINAPI
+ImDiskConvertLBAToCHS(IN PDISK_GEOMETRY DiskGeometry,
+		      IN DWORD LBA);
+
+/**
+   This function adjusts size of a saved image file. If file size is less than
+   requested disk size, the size will be left unchanged with return value FALSE
+   and GetLastError() will return ERROR_DISK_OPERATION_FAILED.
+
+   FileHandle      Handle to file where disk image has been saved.
+
+   FileSize        Size of original disk which image file should be adjusted
+                   to.
+*/
+BOOL
+WINAPI
+ImDiskAdjustImageFileSize(IN HANDLE FileHandle,
+			  IN PLARGE_INTEGER FileSize);
+
+/**
+   This function converts a native NT-style path to a Win32 DOS-style path. The
+   path string is converted in-place and the start address is adjusted to skip
+   over native directories such as \??\. Because of this, the Path parameter is
+   a pointer to a pointer to a string so that the pointer can be adjusted to
+   the new start address.
+
+   Path            Pointer to pointer to Path string in native NT-style format.
+                   Upon return the pointed address will contain the start
+		   address of the Win32 DOS-style path within the original
+		   buffer.
+*/
+VOID
+WINAPI
+ImDiskNativePathToWin32(IN OUT LPWSTR *Path);
+
+/**
+   This function saves the contents of a device to an image file. This is a
+   user-interactive function that displays dialog boxes where user can select
+   image file and other options.
+
+   DeviceHandle    Handle to a device for which the contents are to be saved to
+                   an image file.
+
+		   The handle must be opened for reading, may be
+		   opened for sequential scan and/or without intermediate
+		   buffering but cannot be opened for overlapped operation.
+		   Please note that a call to this function will turn on
+		   FSCTL_ALLOW_EXTENDED_DASD_IO on for this handle.
+
+   WindowHandle    Handle to existing window that will be parent to dialog
+                   boxes etc.
+
+   BufferSize      I/O buffer size to use when reading source disk. This
+                   parameter is optional, if it is zero the buffer size to use
+                   will automatically choosen.
+
+   IsCdRomType     If this parameter is TRUE and the source device type cannot
+                   be automatically determined this function will ask user for
+		   a .iso suffixed image file name.
+*/
+EXTERN_C VOID WINAPI
+ImDiskSaveImageFileInteractive(IN HANDLE DeviceHandle,
+			       IN HWND WindowHandle OPTIONAL,
+			       IN DWORD BufferSize OPTIONAL,
+			       IN BOOL IsCdRomType OPTIONAL);
 
 #ifdef __cplusplus
 }

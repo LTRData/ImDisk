@@ -129,29 +129,13 @@ RunDLL_SaveImageFile(HWND hWnd,
 {
   WCHAR file_name[MAX_PATH + 1] = L"";
   WCHAR mount_point[] = L"\\\\.\\ :";
-  HWND hWndStatus;
   HANDLE hDev;
-  HANDLE hImage;
-  BOOL bCancelFlag = FALSE;
-  DWORD dwRet;
-  OPENFILENAME_NT4 ofn = { sizeof ofn };
-  WCHAR dlg_title[] = L"Save drive  : to image file";
-  dlg_title[11] = lpszCmdLine[0];
-
-  ofn.hwndOwner = hWnd;
-  ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
-  ofn.lpstrFile = file_name;
-  ofn.nMaxFile = sizeof(file_name)/sizeof(*file_name);
-  ofn.lpstrTitle = dlg_title;
-  ofn.Flags = OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT |
-    OFN_PATHMUSTEXIST;
-  ofn.lpstrDefExt = L"img";
+  BOOL bIsCdRomType = FALSE;
 
   switch (GetDriveTypeA(lpszCmdLine))
     {
     case DRIVE_CDROM:
-      ofn.lpstrFilter = L"ISO image (*.iso)\0*.iso\0";
-      ofn.lpstrDefExt = L"iso";
+      bIsCdRomType = TRUE;
       break;
 
     case DRIVE_REMOTE:
@@ -191,6 +175,29 @@ RunDLL_SaveImageFile(HWND hWnd,
       MsgBoxLastError(hWnd, L"Cannot open drive for direct access:");
       return;
     }
+
+  ImDiskSaveImageFileInteractive(hDev, hWnd, 0, bIsCdRomType);
+
+  CloseHandle(hDev);
+}
+
+/*
+  HANDLE hImage;
+  DWORD dwRet;
+  HWND hWndStatus;
+  BOOL bCancelFlag = FALSE;
+  OPENFILENAME_NT4 ofn = { sizeof ofn };
+  WCHAR dlg_title[] = L"Save drive  : to image file";
+  dlg_title[11] = lpszCmdLine[0];
+
+  ofn.hwndOwner = hWnd;
+  ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
+  ofn.lpstrFile = file_name;
+  ofn.nMaxFile = sizeof(file_name)/sizeof(*file_name);
+  ofn.lpstrTitle = dlg_title;
+  ofn.Flags = OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT |
+    OFN_PATHMUSTEXIST;
+  ofn.lpstrDefExt = L"img";
 
   if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
     {
@@ -270,3 +277,4 @@ RunDLL_SaveImageFile(HWND hWnd,
 
   CloseHandle(hImage);
 }
+*/

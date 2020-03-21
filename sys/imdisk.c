@@ -5,7 +5,7 @@
     requests somewhere else, possibly to another machine, through a
     co-operating user-mode service, ImDskSvc.
 
-    Copyright (C) 2005-2009 Olof Lagerkvist.
+    Copyright (C) 2005-2010 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -84,6 +84,7 @@
 
 // For hard drive partition-style devices
 #define SECTOR_SIZE_HDD                  512
+#define HEAD_SIZE_HDD                    63
 
 // For CD-ROM/DVD-style devices
 #define SECTOR_SIZE_CD_ROM               2048
@@ -2114,6 +2115,13 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       calccyl /= CreateData->DiskGeometry.BytesPerSector;
 
       if (CreateData->DiskGeometry.SectorsPerTrack == 0)
+	CreateData->DiskGeometry.SectorsPerTrack = HEAD_SIZE_HDD;
+
+      calccyl /= CreateData->DiskGeometry.SectorsPerTrack;
+
+      // Former auto-selection of HDD head size
+      /*
+      if (CreateData->DiskGeometry.SectorsPerTrack == 0)
 	{
 	  CreateData->DiskGeometry.SectorsPerTrack = 1;
 
@@ -2147,24 +2155,39 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	}
       else
 	calccyl /= CreateData->DiskGeometry.SectorsPerTrack;
+      */
 
       if (CreateData->DiskGeometry.TracksPerCylinder == 0)
 	{
 	  CreateData->DiskGeometry.TracksPerCylinder = 1;
 
-	  if (calccyl / 17 * 17 == calccyl)
+	  if (calccyl >= 130560)
+	    {
+	      CreateData->DiskGeometry.TracksPerCylinder = 255;
+	      calccyl /= 255;
+	    }
+	  else
+	    while ((calccyl > 128) &
+		   (CreateData->DiskGeometry.TracksPerCylinder < 128))
+	      {
+		CreateData->DiskGeometry.TracksPerCylinder <<= 1;
+		calccyl >>= 1;
+	      }
+
+	  /*
+	  if (calccyl % 17 == 0)
 	    {
 	      CreateData->DiskGeometry.TracksPerCylinder *= 17;
 	      calccyl /= 17;
 	    }
 
-	  if (calccyl / 5 * 5 == calccyl)
+	  if (calccyl % 5 == 0)
 	    {
 	      CreateData->DiskGeometry.TracksPerCylinder *= 5;
 	      calccyl /= 5;
 	    }
 
-	  if (calccyl / 3 * 3 == calccyl)
+	  if (calccyl % 3 == 0)
 	    {
 	      CreateData->DiskGeometry.TracksPerCylinder *= 3;
 	      calccyl /= 3;
@@ -2176,6 +2199,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      CreateData->DiskGeometry.TracksPerCylinder <<= 1;
 	      calccyl >>= 1;
 	    }
+	  */
 	}
 
       if (CreateData->DiskGeometry.MediaType == Unknown)
@@ -2633,6 +2657,7 @@ ImDiskCreateClose(IN PDEVICE_OBJECT DeviceObject,
 {
   PIO_STACK_LOCATION io_stack;
   PDEVICE_EXTENSION device_extension;
+  NTSTATUS status;
 
   ASSERT(DeviceObject != NULL);
   ASSERT(Irp != NULL);
@@ -2649,12 +2674,14 @@ ImDiskCreateClose(IN PDEVICE_OBJECT DeviceObject,
 	       io_stack->FileObject->FileName.Buffer,
 	       device_extension->device_number));
 
-      Irp->IoStatus.Status = STATUS_OBJECT_NAME_NOT_FOUND;
+      status = STATUS_OBJECT_NAME_NOT_FOUND;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return Irp->IoStatus.Status;
+      return status;
     }
 
   if ((io_stack->MajorFunction == IRP_MJ_CREATE) &
@@ -2663,23 +2690,27 @@ ImDiskCreateClose(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: Attempt to open device %i when shut down.\n",
 	       device_extension->device_number));
 
-      Irp->IoStatus.Status = STATUS_DELETE_PENDING;
+      status = STATUS_DELETE_PENDING;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return Irp->IoStatus.Status;
+      return status;
     }
 
   KdPrint(("ImDisk: Successfully created/closed a handle for device %i.\n",
 	   device_extension->device_number));
 
-  Irp->IoStatus.Status = STATUS_SUCCESS;
+  status = STATUS_SUCCESS;
+
+  Irp->IoStatus.Status = status;
   Irp->IoStatus.Information = FILE_OPENED;
 
   IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-  return STATUS_SUCCESS;
+  return status;
 }
 
 NTSTATUS
@@ -2688,6 +2719,7 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
 {
   PDEVICE_EXTENSION device_extension;
   PIO_STACK_LOCATION io_stack;
+  NTSTATUS status;
 
   ASSERT(DeviceObject != NULL);
   ASSERT(Irp != NULL);
@@ -2698,12 +2730,14 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
     {
       KdPrint(("ImDisk: Read/write attempt on ctl device.\n"));
 
-      Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+      status = STATUS_INVALID_DEVICE_REQUEST;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return Irp->IoStatus.Status;
+      return status;
     }
 
   if (device_extension->terminate_thread)
@@ -2711,12 +2745,14 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: Read/write attempt on device %i while removing.\n",
 	       device_extension->device_number));
 
-      Irp->IoStatus.Status = STATUS_NO_MEDIA_IN_DEVICE;
+      status = STATUS_NO_MEDIA_IN_DEVICE;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return Irp->IoStatus.Status;
+      return status;
     }
 
   io_stack = IoGetCurrentIrpStackLocation(Irp);
@@ -2727,12 +2763,14 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: Attempt to write to write-protected device %i.\n",
 	       device_extension->device_number));
 
-      Irp->IoStatus.Status = STATUS_MEDIA_WRITE_PROTECTED;
+      status = STATUS_MEDIA_WRITE_PROTECTED;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return STATUS_MEDIA_WRITE_PROTECTED;
+      return status;
     }
 
   if ((io_stack->Parameters.Read.ByteOffset.QuadPart +
@@ -2742,12 +2780,14 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: Read/write beyond eof on device %i.\n",
 	       device_extension->device_number));
 
-      Irp->IoStatus.Status = STATUS_SUCCESS;
+      status = STATUS_SUCCESS;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return STATUS_SUCCESS;
+      return status;
     }
 
   if (io_stack->Parameters.Read.Length == 0)
@@ -2755,12 +2795,14 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: Read/write zero bytes on device %i.\n",
 	       device_extension->device_number));
 
-      Irp->IoStatus.Status = STATUS_SUCCESS;
+      status = STATUS_SUCCESS;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return STATUS_SUCCESS;
+      return status;
     }
 
   KdPrint2(("ImDisk: Device %i got read/write request Offset=%p%p Len=%p.\n",
@@ -2805,12 +2847,14 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: IOCTL attempt on device %i that is being removed.\n",
 	       device_extension->device_number));
 
-      Irp->IoStatus.Status = STATUS_NO_MEDIA_IN_DEVICE;
+      status = STATUS_NO_MEDIA_IN_DEVICE;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return Irp->IoStatus.Status;
+      return status;
     }
 
   // The control device can only receive version queries, enumeration queries
@@ -2828,13 +2872,15 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
       default:
 	KdPrint(("ImDisk: Invalid IOCTL %#x for control device.\n",
 		 io_stack->Parameters.DeviceIoControl.IoControlCode));
+
+	status = STATUS_INVALID_DEVICE_REQUEST;
 	
-	Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-	return Irp->IoStatus.Status;
+	return status;
       }
   else
     switch (io_stack->Parameters.DeviceIoControl.IoControlCode)
@@ -2846,12 +2892,14 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	KdPrint(("ImDisk: Invalid IOCTL %#x for disk device.\n",
 		 io_stack->Parameters.DeviceIoControl.IoControlCode));
 	
-	Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+	status = STATUS_INVALID_DEVICE_REQUEST;
+	
+	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = 0;
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-	return Irp->IoStatus.Status;
+	return status;
       }
   
   switch (io_stack->Parameters.DeviceIoControl.IoControlCode)
@@ -3960,12 +4008,14 @@ ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: PnP dispatch on device %i that is being removed.\n",
 	       device_extension->device_number));
 
-      Irp->IoStatus.Status = STATUS_DELETE_PENDING;
+      status = STATUS_DELETE_PENDING;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return Irp->IoStatus.Status;
+      return status;
     }
 
   // The control device cannot receive PnP dispatch.
@@ -3974,10 +4024,12 @@ ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
       KdPrint(("ImDisk: PnP function %#x invalid for control device.\n",
 	       io_stack->MinorFunction));
 
-      Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+      status = STATUS_INVALID_DEVICE_REQUEST;
+
+      Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
 
-      return Irp->IoStatus.Status;
+      return status;
     }
 
   switch (io_stack->MinorFunction)
@@ -4523,6 +4575,7 @@ ImDiskDeviceThread(IN PVOID Context)
 	      {
 		NTSTATUS status;
 		FILE_END_OF_FILE_INFORMATION new_size;
+		FILE_STANDARD_INFORMATION file_standard_information;
 
 		new_size.EndOfFile.QuadPart =
 		  device_extension->disk_geometry.Cylinders.QuadPart +
@@ -4582,10 +4635,46 @@ ImDiskDeviceThread(IN PVOID Context)
 		    break;
 		  }
 
-		// For proxy-type disks and file-type disks with offset the
-		// new size is just accepted and that's it.
-		if ((device_extension->use_proxy) |
-		    (device_extension->image_offset.QuadPart != 0))
+		// For proxy-type disks the new size is just accepted and
+		// that's it.
+		if (device_extension->use_proxy)
+		  {
+		    device_extension->disk_geometry.Cylinders =
+		      new_size.EndOfFile;
+	    
+		    irp->IoStatus.Information = 0;
+		    irp->IoStatus.Status = STATUS_SUCCESS;
+		    break;
+		  }
+
+		// Image file backed disks left to do.
+
+		// For disks with offset, refuse to extend size. Otherwise we
+		// could break compatibility with the header data we have
+		// skipped and we don't know about.
+		if (device_extension->image_offset.QuadPart != 0)
+		  {
+		    irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+		    irp->IoStatus.Information = 0;
+		    break;
+		  }
+
+		status =
+		  ZwQueryInformationFile(device_extension->file_handle,
+					 &irp->IoStatus,
+					 &file_standard_information,
+					 sizeof file_standard_information,
+					 FileStandardInformation);
+
+		if (!NT_SUCCESS(status))
+		  {
+		    irp->IoStatus.Status = status;
+		    irp->IoStatus.Information = 0;
+		    break;
+		  }
+
+		if (file_standard_information.EndOfFile.QuadPart >=
+		    new_size.EndOfFile.QuadPart)
 		  {
 		    device_extension->disk_geometry.Cylinders =
 		      new_size.EndOfFile;

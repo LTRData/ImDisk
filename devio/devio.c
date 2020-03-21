@@ -1,7 +1,7 @@
 /*
     Server end for ImDisk Virtual Disk Driver.
 
-    Copyright (C) 2005-2008 Olof Lagerkvist.
+    Copyright (C) 2005-2010 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -218,7 +218,7 @@ struct _VHD_INFO
 
 u_long block_size = 0;
 u_int sector_size = 512;
-u_long table_offset = 0;
+off_t_64 table_offset = 0;
 short block_shift = 0;
 short sector_shift = 0;
 void *geometry = &vhd_info.Footer.DiskGeometry;
@@ -261,6 +261,8 @@ vhd_read(void *buf, size_t size, off_t_64 offset)
   readdone = pread(fd, &block_offset, sizeof(block_offset), data_offset);
   if (readdone != sizeof(block_offset))
     {
+      syslog(LOG_ERR, "vhd_read: Error reading block table: %m\n");
+
       if (errno == 0)
 	errno = E2BIG;
 
@@ -311,6 +313,7 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
   ssize_t readdone;
   ssize_t writedone;
   off_t_64 bitmap_offset;
+  size_t bitmap_datasize;
   size_t first_size_nqwords;
 
   dbglog((LOG_ERR, "vhd_write: Request " SLL_FMT " bytes at " SLL_FMT ".\n",
@@ -333,6 +336,8 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
   readdone = pread(fd, &block_offset, sizeof(block_offset), data_offset);
   if (readdone != sizeof(block_offset))
     {
+      syslog(LOG_ERR, "vhd_write: Error reading block table: %m\n");
+
       if (errno == 0)
 	errno = E2BIG;
 
@@ -349,7 +354,8 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
       // First check if new block is all zeroes, in that case don't allocate
       // a new block in the vhd file
       for (buf_ptr = (long long*)buf;
-	   (buf_ptr < (long long*)buf + first_size_nqwords) & (*buf_ptr == 0);
+	   (buf_ptr < (long long*)buf + first_size_nqwords) ? 0 :
+	     (*buf_ptr == 0);
 	   buf_ptr++);
       if (buf_ptr >= (long long*)buf + first_size_nqwords)
 	{
@@ -381,13 +387,21 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
       new_block_buf = (char *)
 	malloc(sector_size + block_size + sizeof(vhd_info.Footer));
       if (new_block_buf == NULL)
-	return (ssize_t) -1;
+	{
+	  syslog(LOG_ERR, "vhd_write: Error allocating memory buffer for new "
+		 "block: %m\n");
+
+	  return (ssize_t) -1;
+	}
 
       // New block is placed where the footer currently is
       block_offset_bytes =
 	_lseeki64(fd, -(off_t_64) sizeof(vhd_info.Footer), SEEK_END);
       if (block_offset_bytes == -1)
 	{
+	  syslog(LOG_ERR, "vhd_write: Error moving file pointer to last "
+		 "block: %m\n");
+
 	  free(new_block_buf);
 	  return (ssize_t) -1;
 	}
@@ -397,6 +411,8 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
       readdone = pwrite(fd, &block_offset, sizeof(block_offset), data_offset);
       if (readdone != sizeof(block_offset))
 	{
+	  syslog(LOG_ERR, "vhd_write: Error updating BAT: %m\n");
+
 	  free(new_block_buf);
 
 	  if (errno == 0)
@@ -415,6 +431,8 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
 			block_offset_bytes);
       if (readdone != sector_size + block_size + sizeof(vhd_info.Footer))
 	{
+	  syslog(LOG_ERR, "vhd_write: Error writing new block: %m\n");
+
 	  free(new_block_buf);
 
 	  if (errno == 0)
@@ -426,21 +444,32 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
       free(new_block_buf);
     }
 
+  // Calculate where actual data should be written
   block_offset = ntohl(block_offset);
   data_offset = (((off_t_64) block_offset) << sector_shift) + sector_size +
     in_block_offset;
 
+  // Write data
   writedone = pwrite(fd, buf, (size_t) first_size, data_offset);
   if (writedone == -1)
     return (ssize_t) -1;
 
+  // Calculate where and how many bytes in allocation bitmap we need to update
   bitmap_offset = ((off_t_64) block_offset << sector_shift) +
-    (in_block_offset >> 3);
-  memset(buf2, 0xFF, first_size_nqwords);
+    (in_block_offset >> sector_shift >> 3);
 
-  readdone = pwrite(fd, buf2, first_size_nqwords, bitmap_offset);
-  if (readdone != first_size_nqwords)
+  bitmap_datasize =
+    (((first_size + sector_size - 1) >> sector_shift) + 7) >> 3;
+
+  // Set bits as 'allocated'
+  memset(buf2, 0xFF, bitmap_datasize);
+
+  // Update allocation bitmap
+  readdone = pwrite(fd, buf2, bitmap_datasize, bitmap_offset);
+  if (readdone != bitmap_datasize)
     {
+      syslog(LOG_ERR, "vhd_write: Error updating block bitmap: %m\n");
+
       if (errno == 0)
 	errno = E2BIG;
 
@@ -638,6 +667,9 @@ main(int argc, char **argv)
   if ((argc < 3) | (argc > 7))
     {
       fprintf(stderr,
+	      "devio - Device I/O Service ver 1.01 (with Microsoft VHD support)\n"
+	      "Copyright (C) 2005-2010 Olof Lagerkvist.\n"
+	      "\n"
 	      "Usage:\n"
 	      "%s [-r] tcp-port|commdev diskdev [blocks] [offset] [alignm] [buffersize]\n"
 	      "%s [-r] tcp-port|commdev diskdev [partitionnumber] [alignm] [buffersize]\n"
@@ -834,7 +866,10 @@ main(int argc, char **argv)
       if (dev_read(mbr, 512, 0) == -1)
 	syslog(LOG_ERR, "Error reading device: %m\n");
       else if ((*(u_short*)(mbr + 0x01FE) == 0xAA55) &
-	       (*(u_char*)(mbr + 0x01BD) == 0x00))
+	       ((*(u_char*)(mbr + 0x01BE) & 0x7F) == 0) &
+	       ((*(u_char*)(mbr + 0x01CE) & 0x7F) == 0) &
+	       ((*(u_char*)(mbr + 0x01DE) & 0x7F) == 0) &
+	       ((*(u_char*)(mbr + 0x01EE) & 0x7F) == 0))
 	{
 	  puts("Detected a master boot record at sector 0.");
 

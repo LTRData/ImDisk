@@ -21,7 +21,7 @@
   you want to use this product under NT 3.51 you have to manually add the
   registry entries for the driver and the service.
 
-    Copyright (c) 2005-2009 Olof Lagerkvist
+    Copyright (c) 2005-2010 Olof Lagerkvist
     http://www.ltr-data.se      olof@ltr-data.se
 
     Permission is hereby granted, free of charge, to any person

@@ -9,5 +9,5 @@ Z:\ltr-website\files\devio.exe: devio.exe
 	copy /y devio.exe Z:\ltr-website\files\\
 
 devio.exe: devio.c ..\inc\*.h safeio.c safeio.h Makefile.win32
-	cl /WX /W4 /wd4201 /Ox /GFS- /GR- /MD /nologo devio.c safeio_win32.cpp /link /defaultlib:wsock32.lib /defaultlib:user32.lib /opt:ref,nowin98,icf=10 /release /nologo /WX
+	cl /WX /W4 /wd4201 /Ox /GFS- /GR- /MD /nologo devio.c safeio_win32.cpp /link /defaultlib:ws2_32.lib /defaultlib:user32.lib /opt:ref,icf=10 /release /nologo /WX
 	del *.obj

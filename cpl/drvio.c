@@ -38,6 +38,7 @@
 #include "..\inc\imdproxy.h"
 
 #include "drvio.h"
+#include "mbr.h"
 
 #pragma warning(disable: 4100)
 
@@ -97,7 +98,7 @@ StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
       return TRUE;
 
-    case WM_DESTROY:
+    case WM_NCDESTROY:
       RemoveProp(hWnd, L"CancelFlag");
       return TRUE;
     }
@@ -273,7 +274,7 @@ ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 
   if (Offset->QuadPart != 0)
     if (SetFilePointer(hImageFile, Offset->LowPart, &Offset->HighPart,
-		       FILE_BEGIN) == (DWORD)-1)
+		       FILE_BEGIN) == INVALID_SET_FILE_POINTER)
       if (GetLastError() != NO_ERROR)
 	return FALSE;
 
@@ -291,7 +292,10 @@ ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 
   // Check if MBR signature is there, otherwise this is not an MBR
   if ((*(LPWORD)(buffer + 0x01FE) != 0xAA55) |
-      (*(LPBYTE)(buffer + 0x01BD) != 0x00))
+      (*(LPBYTE)(buffer + 0x01BE) & 0x7F) |
+      (*(LPBYTE)(buffer + 0x01CE) & 0x7F) |
+      (*(LPBYTE)(buffer + 0x01DE) & 0x7F) |
+      (*(LPBYTE)(buffer + 0x01EE) & 0x7F))
     {
       CloseHandle(hImageFile);
       return FALSE;
@@ -321,7 +325,7 @@ ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 	  offset.QuadPart += PartitionInformation[i].StartingOffset.QuadPart;
 
 	  if (SetFilePointer(hImageFile, offset.LowPart, &offset.HighPart,
-			     FILE_BEGIN) == (DWORD)-1)
+			     FILE_BEGIN) == INVALID_SET_FILE_POINTER)
 	    if (GetLastError() != NO_ERROR)
 	      return FALSE;
 
@@ -539,40 +543,53 @@ HANDLE
 WINAPI
 ImDiskOpenDeviceByMountPoint(LPCWSTR MountPoint, DWORD AccessMode)
 {
-  REPARSE_DATA_JUNCTION ReparseData = { 0 };
-  HANDLE hDir;
-  DWORD dw;
   UNICODE_STRING DeviceName;
+  WCHAR DriveLetterPath[] = L"\\DosDevices\\ :";
+  REPARSE_DATA_JUNCTION ReparseData = { 0 };
 
-  hDir = CreateFile(MountPoint, GENERIC_READ,
-		    FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
-		    FILE_FLAG_BACKUP_SEMANTICS |
-		    FILE_FLAG_OPEN_REPARSE_POINT, NULL);
-
-  if (hDir == INVALID_HANDLE_VALUE)
-    return INVALID_HANDLE_VALUE;
-
-  if (!DeviceIoControl(hDir, FSCTL_GET_REPARSE_POINT, NULL, 0, &ReparseData,
-		       sizeof ReparseData, &dw, NULL))
-
+  if (wcslen(MountPoint) == 2 ? MountPoint[1] == L':' : FALSE)
     {
-      DWORD last_error = GetLastError();
+      DriveLetterPath[12] = MountPoint[0];
+
+      RtlInitUnicodeString(&DeviceName, DriveLetterPath);
+    }
+  else
+    {
+      HANDLE hDir;
+      DWORD dw;
+
+      hDir = CreateFile(MountPoint, GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+			OPEN_EXISTING,
+			FILE_FLAG_BACKUP_SEMANTICS |
+			FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+
+      if (hDir == INVALID_HANDLE_VALUE)
+	return INVALID_HANDLE_VALUE;
+
+      if (!DeviceIoControl(hDir, FSCTL_GET_REPARSE_POINT,
+			   NULL, 0,
+			   &ReparseData, sizeof ReparseData,
+			   &dw, NULL))
+	{
+	  DWORD last_error = GetLastError();
+	  CloseHandle(hDir);
+	  SetLastError(last_error);
+	  return INVALID_HANDLE_VALUE;
+	}
+
       CloseHandle(hDir);
-      SetLastError(last_error);
-      return INVALID_HANDLE_VALUE;
+
+      if (ReparseData.ReparseTag != IO_REPARSE_TAG_MOUNT_POINT)
+	{
+	  SetLastError(ERROR_NOT_A_REPARSE_POINT);
+	  return INVALID_HANDLE_VALUE;
+	}
+
+      DeviceName.Length = ReparseData.NameLength;
+      DeviceName.Buffer = (PWSTR) ReparseData.Data + ReparseData.NameOffset;
+      DeviceName.MaximumLength = DeviceName.Length;
     }
-
-  CloseHandle(hDir);
-
-  if (ReparseData.ReparseTag != IO_REPARSE_TAG_MOUNT_POINT)
-    {
-      SetLastError(ERROR_NOT_A_REPARSE_POINT);
-      return INVALID_HANDLE_VALUE;
-    }
-
-  DeviceName.Length = ReparseData.NameLength;
-  DeviceName.Buffer = (PWSTR) ReparseData.Data + ReparseData.NameOffset;
-  DeviceName.MaximumLength = DeviceName.Length;
 
   if (DeviceName.Buffer[(DeviceName.Length >> 1) - 1] == L'\\')
     {
@@ -990,41 +1007,41 @@ ImDiskCreateDevice(HWND hWnd,
       if (!DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
 	if (hWnd != NULL)
 	  MsgBoxLastError(hWnd, L"Error creating mount point:");
-    }
 
-  // Notify processes that new device has arrived.
-  if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
-    {
-      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
-	sizeof(DEV_BROADCAST_VOLUME),
-	DBT_DEVTYP_VOLUME
-      };
-      DWORD_PTR dwp;
+      // Notify processes that new device has arrived.
+      if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
+	{
+	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	    sizeof(DEV_BROADCAST_VOLUME),
+	    DBT_DEVTYP_VOLUME
+	  };
+	  DWORD_PTR dwp;
 
-      if (hWnd != NULL)
-	SetWindowText
-	  (hWnd,
-	   L"Notifying applications that device has been created...");
+	  if (hWnd != NULL)
+	    SetWindowText
+	      (hWnd,
+	       L"Notifying applications that device has been created...");
 
-      dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
 
-      SendMessageTimeout(HWND_BROADCAST,
-			 WM_DEVICECHANGE,
-			 DBT_DEVICEARRIVAL,
-			 (LPARAM)&dev_broadcast_volume,
-			 SMTO_BLOCK,
-			 2000,
-			 &dwp);
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVICEARRIVAL,
+			     (LPARAM)&dev_broadcast_volume,
+			     SMTO_BLOCK,
+			     2000,
+			     &dwp);
 
-      dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
+	  dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
 
-      SendMessageTimeout(HWND_BROADCAST,
-			 WM_DEVICECHANGE,
-			 DBT_DEVICEARRIVAL,
-			 (LPARAM)&dev_broadcast_volume,
-			 SMTO_BLOCK,
-			 2000,
-			 &dwp);
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVICEARRIVAL,
+			     (LPARAM)&dev_broadcast_volume,
+			     SMTO_BLOCK,
+			     2000,
+			     &dwp);
+	}
     }
 
   return TRUE;
@@ -1269,9 +1286,11 @@ ImDiskRemoveDevice(HWND hWnd,
 
       if (create_data == NULL)
 	{
+	  DWORD last_error = GetLastError();
 	  NtClose(device);
 	  MessageBox(hWnd, L"Memory allocation error.", L"ImDisk",
 		     MB_ICONSTOP);
+	  SetLastError(last_error);
 	  return FALSE;
 	}
 
@@ -1283,8 +1302,10 @@ ImDiskRemoveDevice(HWND hWnd,
 			   create_data_size,
 			   &dw, NULL))
 	{
+	  DWORD last_error = GetLastError();
 	  MsgBoxLastError(hWnd, L"Error communicating with device:");
 	  NtClose(device);
+	  SetLastError(last_error);
 	  return FALSE;
 	}
 
@@ -1323,7 +1344,9 @@ ImDiskRemoveDevice(HWND hWnd,
 
 	      if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
 		{
+		  DWORD last_error = GetLastError();
 		  NtClose(device);
+		  SetLastError(last_error);
 		  return FALSE;
 		}
 
@@ -1501,6 +1524,7 @@ ImDiskChangeFlags(HWND hWnd,
   if (!ImDiskCheckDriverVersion(device))
     if (GetLastError() != NO_ERROR)
       {
+	NtClose(device);
 	if (hWnd != NULL)
 	  MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
 		       L"Not an ImDisk Virtual Disk: '%1'", MountPoint);
@@ -1525,7 +1549,10 @@ ImDiskChangeFlags(HWND hWnd,
 		       &dw,
 		       NULL))
     if (hWnd == NULL)
-      return FALSE;
+      {
+	NtClose(device);
+	return FALSE;
+      }
     else
       {
 	NtClose(device);
@@ -1552,7 +1579,10 @@ ImDiskChangeFlags(HWND hWnd,
 		       &dw,
 		       NULL))
     if (hWnd == NULL)
-      return FALSE;
+      {
+	NtClose(device);
+	return FALSE;
+      }
     else
       {
 	NtClose(device);
@@ -1715,7 +1745,6 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
   LONGLONG saved_size = 0;
   DWORD dwReadSize;
   DWORD dwWriteSize;
-  ULARGE_INTEGER image_size = { 0 };
 
   if (!ImDiskGetVolumeSize(DeviceHandle, &disk_size.QuadPart))
     return FALSE;
@@ -1803,25 +1832,40 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		  &dwReadSize,
 		  NULL);
 
+  return TRUE;
+}
+
+BOOL
+WINAPI
+ImDiskAdjustImageFileSize(IN HANDLE FileHandle,
+			  IN PLARGE_INTEGER FileSize)
+{
+  ULARGE_INTEGER existing_size = { 0 };
+  DWORD ptr;
+
   // This piece of code compares size of created image file with that of the
   // original disk volume and possibly adjusts image file size if it does not
   // exactly match the size of the original disk/partition.
-  image_size.LowPart = GetFileSize(FileHandle, &image_size.HighPart);
-  if (image_size.QuadPart != 0)
-    {
-      DWORD ptr = SetFilePointer(FileHandle,
-				 disk_size.LowPart,
-				 (LPLONG) &disk_size.HighPart,
-				 FILE_BEGIN);
-      if (ptr == INVALID_SET_FILE_POINTER)
-	if (GetLastError() == NO_ERROR)
-	  ptr = 0;
+  existing_size.LowPart = GetFileSize(FileHandle, &existing_size.HighPart);
+  if (existing_size.LowPart == INVALID_FILE_SIZE)
+    if (GetLastError() != NO_ERROR)
+      return FALSE;
 
-      if (ptr != INVALID_SET_FILE_POINTER)
-	SetEndOfFile(FileHandle);
+  if (existing_size.QuadPart < (ULONGLONG)FileSize->QuadPart)
+    {
+      SetLastError(ERROR_DISK_OPERATION_FAILED);
+      return FALSE;
     }
 
-  return TRUE;
+  ptr = SetFilePointer(FileHandle,
+		       FileSize->LowPart,
+		       (LPLONG) &FileSize->HighPart,
+		       FILE_BEGIN);
+  if (ptr == INVALID_SET_FILE_POINTER)
+    if (GetLastError() != NO_ERROR)
+      return FALSE;
+
+  return SetEndOfFile(FileHandle);
 }
 
 BOOL
@@ -1874,3 +1918,158 @@ ImDiskGetVolumeSize(IN HANDLE Handle,
 
   return FALSE;
 }
+
+BOOL
+WINAPI
+ImDiskBuildMBR(IN PDISK_GEOMETRY DiskGeometry OPTIONAL,
+	       IN PPARTITION_INFORMATION PartitionInformation OPTIONAL,
+	       IN BYTE NumberOfPartitions OPTIONAL,
+	       IN OUT LPBYTE MBR,
+	       IN DWORD_PTR MBRSize)
+{
+  BYTE i;
+
+  if (MBRSize < default_mbr_size)
+    {
+      SetLastError(ERROR_INSUFFICIENT_BUFFER);
+      return FALSE;
+    }
+
+  if (NumberOfPartitions > 4)
+    {
+      SetLastError(ERROR_INVALID_PARAMETER);
+      return FALSE;
+    }
+
+  memcpy(MBR, default_mbr, default_mbr_size);
+
+  for (i = 0; i < NumberOfPartitions; i++)
+    {
+      LPBYTE partition_entry = MBR + 512 - 66 + (i << 4);
+
+      ULONGLONG start_sector =
+ 	PartitionInformation[i].StartingOffset.QuadPart /
+	DiskGeometry->BytesPerSector;
+
+      ULONGLONG number_of_sectors =
+ 	PartitionInformation[i].PartitionLength.QuadPart /
+	DiskGeometry->BytesPerSector;
+
+      ULONGLONG end_sector = start_sector + number_of_sectors - 1;
+
+      if ((start_sector & 0xFFFFFFFF00000000) |
+	  (number_of_sectors & 0xFFFFFFFF00000000) |
+	  (end_sector & 0xFFFFFFFF00000000))
+	{
+	  SetLastError(ERROR_INVALID_PARAMETER);
+	  return FALSE;
+	}
+
+      // 0x00 Boot indicator
+      if (PartitionInformation[i].BootIndicator)
+	*partition_entry = 0x80;
+
+      // 0x01-0x03 CHS start sector
+      *(LPDWORD)(partition_entry + 1) =
+	ImDiskConvertLBAToCHS(DiskGeometry, (DWORD) start_sector);
+
+      // 0x04 partition type
+      *(partition_entry + 4) = PartitionInformation[i].PartitionType;
+
+      // 0x05-0x07 CHS end sector
+      *(LPDWORD)(partition_entry + 5) =
+	ImDiskConvertLBAToCHS(DiskGeometry, (DWORD) end_sector);
+
+      // 0x08-0x0B LBA start sector
+      *(LPDWORD)(partition_entry + 8) = (DWORD) start_sector;
+
+      // 0x0C-0x0F LBA size (sectors)
+      *(LPDWORD)(partition_entry + 12) = (DWORD) number_of_sectors;
+    }
+
+  return TRUE;
+}
+
+DWORD
+WINAPI
+ImDiskConvertCHSToLBA(IN PDISK_GEOMETRY DiskGeometry,
+		      IN LPBYTE CHS)
+{
+  DWORD cylinder = (((DWORD) CHS[1] & 0xC0) << 2) | CHS[2];
+  DWORD heads = CHS[0];
+  DWORD sector = CHS[1] & 0x3F;
+
+  return
+    ((cylinder * DiskGeometry->TracksPerCylinder + heads) *
+     DiskGeometry->SectorsPerTrack) + sector - 1;
+}
+
+DWORD
+WINAPI
+ImDiskConvertLBAToCHS(IN PDISK_GEOMETRY DiskGeometry,
+		      IN DWORD LBA)
+{
+  /*
+    cylinder = LBA / (heads_per_cylinder * sectors_per_track)
+    temp = LBA % (heads_per_cylinder * sectors_per_track)
+    head = temp / sectors_per_track
+    sector = temp % sectors_per_track + 1
+  */
+
+  DWORD cylinder =
+    LBA /
+    DiskGeometry->TracksPerCylinder / DiskGeometry->SectorsPerTrack;
+
+  DWORD temp =
+    LBA %
+    DiskGeometry->TracksPerCylinder / DiskGeometry->SectorsPerTrack;
+
+  DWORD head =
+    temp /
+    DiskGeometry->SectorsPerTrack;
+
+  DWORD sector =
+    temp %
+    DiskGeometry->SectorsPerTrack + 1;
+
+  if ((cylinder >= 1024) |
+      (head >= 256) |
+      (sector >= 64))
+    {
+      cylinder = 1023;
+      head = 254;
+      sector = 63;
+    }
+
+  return
+    head |
+    (sector << 8) |
+    ((cylinder & 0x0FF) << 16) |
+    ((cylinder & 0x300) << 14);
+}
+
+VOID
+WINAPI
+ImDiskNativePathToWin32(IN OUT LPWSTR *Path)
+{
+  if (wcsncmp(*Path, L"\\??\\", 4) == 0)
+    (*Path)[1] = L'\\';
+  else if (wcsncmp(*Path, L"\\DosDevices\\", 12) == 0)
+    {
+      (*Path) += 8;
+      (*Path)[0] = L'\\';
+      (*Path)[1] = L'\\';
+      (*Path)[3] = L'?';
+    }
+  else
+    return;
+
+  if ((*Path)[4] != 0 ? (*Path)[5] == L':' : FALSE)
+    (*Path) += 4;
+  else if (wcsncmp(*Path, L"\\\\?\\UNC\\", 8) == 0)
+    {
+      (*Path) += 6;
+      (*Path)[0] = L'\\';
+    }
+}
+

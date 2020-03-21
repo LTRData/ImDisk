@@ -32,6 +32,13 @@ EXPORTS
 	_ImDiskChangeFlags@20
 	_ImDiskExtendDevice@12
 	_ImDiskSaveImageFile@16
+	_ImDiskGetVolumeSize@8
+	_ImDiskBuildMBR@20
+	_ImDiskConvertCHSToLBA@8
+	_ImDiskConvertLBAToCHS@8
+	_ImDiskAdjustImageFileSize@8
+	_ImDiskNativePathToWin32@4
+	_ImDiskSaveImageFileInteractive@16
 
 #else
 
@@ -63,5 +70,12 @@ EXPORTS
 	ImDiskChangeFlags
 	ImDiskExtendDevice
 	ImDiskSaveImageFile
+	ImDiskGetVolumeSize
+	ImDiskBuildMBR
+	ImDiskConvertCHSToLBA
+	ImDiskConvertLBAToCHS
+	ImDiskAdjustImageFileSize
+	ImDiskNativePathToWin32
+	ImDiskSaveImageFileInteractive
 
 #endif

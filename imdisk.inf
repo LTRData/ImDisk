@@ -1,7 +1,7 @@
 [Version]
 signature = "$Windows NT$"
 Provider = "LTR Data"
-DriverVer = 07/19/2010,1,03,01,0010
+DriverVer = 12/02/2010,1,03,02,0011
 
 
 [SourceDisksNames]
@@ -37,28 +37,73 @@ imdisk.inf = 1
 
 [DestinationDirs]
 ImDiskExeFiles = 11
+ImDiskExe32Files = 16425
 ImDiskSysFiles = 12
 ImDiskInfFiles = 17
  
 
-[DefaultInstall.NT]
+[DefaultInstall.ntx86]
 CopyFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles
 AddReg = ImDiskAddReg
 DelReg = ImDiskDelOldReg
 
 
-[DefaultUninstall.NT]
+[DefaultUninstall.ntx86]
 DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles
 DelReg = ImDiskDelReg
 
 
-[DefaultInstall.NT.Services]
+[DefaultInstall.ntamd64]
+CopyFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles
+AddReg = ImDiskAddReg
+DelReg = ImDiskDelOldReg
+
+
+[DefaultUninstall.ntamd64]
+DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles
+DelReg = ImDiskDelReg
+
+
+[DefaultInstall.ntia64]
+CopyFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles
+AddReg = ImDiskAddReg
+DelReg = ImDiskDelOldReg
+
+
+[DefaultUninstall.ntia64]
+DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles
+DelReg = ImDiskDelReg
+
+
+[DefaultInstall.ntx86.Services]
 AddService = AWEAlloc, , AWEAllocDrv
 AddService = ImDisk, , ImDskDrv
 AddService = ImDskSvc, , ImDskSvc
 
 
-[DefaultUninstall.NT.Services]
+[DefaultUninstall.ntx86.Services]
+DelService = ImDisk
+DelService = ImDskSvc
+
+
+[DefaultInstall.ntamd64.Services]
+AddService = AWEAlloc, , AWEAllocDrv
+AddService = ImDisk, , ImDskDrv
+AddService = ImDskSvc, , ImDskSvc
+
+
+[DefaultUninstall.ntamd64.Services]
+DelService = ImDisk
+DelService = ImDskSvc
+
+
+[DefaultInstall.ntia64.Services]
+AddService = AWEAlloc, , AWEAllocDrv
+AddService = ImDisk, , ImDskDrv
+AddService = ImDskSvc, , ImDskSvc
+
+
+[DefaultUninstall.ntia64.Services]
 DelService = ImDisk
 DelService = ImDskSvc
 
@@ -67,6 +112,11 @@ DelService = ImDskSvc
 imdisk.exe
 imdisk.cpl
 imdsksvc.exe
+
+
+[ImDiskExe32Files]
+imdisk.exe,cli\i386\imdisk.exe
+imdisk.cpl,cpl\i386\imdisk.cpl
 
 
 [ImDiskSysFiles]
