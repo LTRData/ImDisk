@@ -13,8 +13,11 @@
   You can get syntax help to the command line tool by typing just imdisk
   without parameters.
 
-  I have tested this product under Windows NT 3.51, NT 4.0, 2000, XP and
-  Server 2003. The install/uninstall routines do not work under NT 3.51. If
+  I have tested this product under 32 bit versions of Windows NT 3.51, NT 4.0,
+  2000, XP, Server 2003, Vista and 7. There have also been a few tests under 64
+  bit versions of Windows XP, Server 2003, Vista and 7.
+
+  The install/uninstall routines do not work under NT 3.51. If
   you want to use this product under NT 3.51 you have to manually add the
   registry entries for the driver and the service.
 

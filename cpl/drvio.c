@@ -673,7 +673,7 @@ ImDiskFindFreeDriveLetter()
   return 0;
 }
 
-ULONG
+ULONGLONG
 WINAPI
 ImDiskGetDeviceList()
 {

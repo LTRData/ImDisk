@@ -289,12 +289,12 @@ PDEVICE_OBJECT ImDiskCtlDevice;
 //
 // Allocation bitmap with currently cnfigured device numbers.
 //
-volatile ULONG DeviceList = 0;
+volatile ULONGLONG DeviceList = 0;
 
 //
 // Max number of devices that can be dynamically created by IOCTL calls
 // to the control device. Note that because the device number allocation is
-// stored in a 32-bit bitfield, this number can be max 32.
+// stored in a 64-bit bitfield, this number can be max 64.
 //
 ULONG MaxDevices;
 
@@ -315,6 +315,8 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
   NTSTATUS status;
   OBJECT_ATTRIBUTES object_attributes;
   ULONG n;
+
+  MmPageEntireDriver((PVOID)(ULONG_PTR) DriverEntry);
 
   // First open and read registry settings to find out if we should load and
   // mount anything automatically.
@@ -927,18 +929,15 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 #endif
 
   // Auto-find first free device number
-  if ((CreateData->DeviceNumber == IMDISK_AUTO_DEVICE_NUMBER) |
-      (CreateData->DeviceNumber & 0xFFFFFFE0))
-    {
-      for (CreateData->DeviceNumber = 0;
-	   CreateData->DeviceNumber < MaxDevices;
-	   CreateData->DeviceNumber++)
-	if ((~DeviceList) & (1 << CreateData->DeviceNumber))
-	  break;
+  if (CreateData->DeviceNumber == IMDISK_AUTO_DEVICE_NUMBER)
+    for (CreateData->DeviceNumber = 0;
+	 CreateData->DeviceNumber < MaxDevices;
+	 CreateData->DeviceNumber++)
+      if ((~DeviceList) & (1ULL << CreateData->DeviceNumber))
+	break;
 
-      if (CreateData->DeviceNumber >= MaxDevices)
-	return STATUS_INVALID_PARAMETER;
-    }
+  if (CreateData->DeviceNumber >= MaxDevices)
+    return STATUS_INVALID_PARAMETER;
 
   file_name.Length = CreateData->FileNameLength;
   file_name.MaximumLength = CreateData->FileNameLength;
@@ -1057,6 +1056,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		     FILE_SYNCHRONOUS_IO_NONALERT,
 		     NULL,
 		     0);
+      // For 32 bit driver running on Windows 2000 and earlier, the above
+      // call will fail because OBJ_FORCE_ACCESS_CHECK is not supported. If so,
+      // STATUS_INVALID_PARAMETER is returned and we go on without any access
+      // checks in that case.
+#ifndef _WIN64
       if (status == STATUS_INVALID_PARAMETER)
 	{
 	  InitializeObjectAttributes(&object_attributes,
@@ -1096,6 +1100,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			 NULL,
 			 0);
 	}
+#endif
 
       // If not found we will create the file if a new non-zero size is
       // specified, read-only virtual disk is not specified and we are
@@ -1732,6 +1737,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   RtlInitUnicodeString(&device_name, device_name_buffer);
 
+  // Driver can no longer be completely paged.
+  KdPrint(("ImDisk: Resetting driver paging.\n"));
+
+  MmResetDriverPaging((PVOID)(ULONG_PTR) DriverEntry);
+
   KdPrint
     (("ImDisk: Creating device '%ws'. Device type %#x, characteristics %#x.\n",
       device_name_buffer, device_type, device_characteristics));
@@ -1789,7 +1799,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   device_extension->terminate_thread = FALSE;
   device_extension->device_number = CreateData->DeviceNumber;
 
-  DeviceList |= 1 << CreateData->DeviceNumber;
+  DeviceList |= 1ULL << CreateData->DeviceNumber;
 
   device_extension->file_name = file_name;
 
@@ -2506,14 +2516,20 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	KdPrint(("ImDisk: IOCTL_IMDISK_QUERY_DRIVER for device %i.\n",
 		 device_extension->device_number));
 
-	if (io_stack->Parameters.DeviceIoControl.OutputBufferLength <
-	    sizeof(ULONG))
-	  Irp->IoStatus.Information = 0;
-	else
+	if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+	    sizeof(ULONGLONG))
 	  {
-	    *(PULONG) Irp->AssociatedIrp.SystemBuffer = DeviceList;
+	    *(PULONGLONG) Irp->AssociatedIrp.SystemBuffer = DeviceList;
+	    Irp->IoStatus.Information = sizeof(ULONGLONG);
+	  }
+	else if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+	    sizeof(ULONG))
+	  {
+	    *(PULONG) Irp->AssociatedIrp.SystemBuffer = (ULONG) DeviceList;
 	    Irp->IoStatus.Information = sizeof(ULONG);
 	  }
+	else
+	  Irp->IoStatus.Information = 0;
 
 	status = STATUS_SUCCESS;
 	break;
@@ -3349,6 +3365,9 @@ ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
 	  if (device_extension->read_only)
 	    status = STATUS_MEDIA_WRITE_PROTECTED;
 	  else
+	    if (io_stack->Parameters.UsageNotification.InPath == TRUE)
+	      MmLockPagableCodeSection((PVOID)(ULONG_PTR) ImDiskDeviceThread);
+
 	    IoAdjustPagingPathCount
 	      (&device_extension->special_file_count,
 	       io_stack->Parameters.UsageNotification.InPath);
@@ -3565,7 +3584,7 @@ ImDiskDeviceThread(IN PVOID Context)
 	  KdPrint(("ImDisk: Deleting device object %i.\n",
 		   device_extension->device_number));
 
-	  DeviceList &= ~(1 << device_extension->device_number);
+	  DeviceList &= ~(1ULL << device_extension->device_number);
 
 	  IoDeleteDevice(device_object);
 

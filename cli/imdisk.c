@@ -964,7 +964,7 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 int
 ImDiskCliQueryStatusDriver(BOOL NumericPrint)
 {
-  DWORD device_list = ImDiskGetDeviceList();
+  DWORDLONG device_list = ImDiskGetDeviceList();
   DWORD counter;
 
   if (device_list == 0)

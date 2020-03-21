@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0120
+#define IMDISK_VERSION                 0x0121
 #define IMDISK_DRIVER_VERSION          0x0103
 
 ///
@@ -438,7 +438,7 @@ ImDiskFindFreeDriveLetter();
    bit 1 represents device 1 and so on. A bit is 1 if the device exists or 0 if
    the device number is free.
 */
-ULONG
+ULONGLONG
 WINAPI
 ImDiskGetDeviceList();
 

@@ -280,7 +280,7 @@ RefreshList(HWND hWnd)
 {
   ListView_DeleteAllItems(hWnd);
 
-  DWORD device_list = ImDiskGetDeviceList();
+  DWORDLONG device_list = ImDiskGetDeviceList();
 
   if (device_list == 0)
     switch (GetLastError())
