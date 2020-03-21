@@ -2,12 +2,12 @@ TARGETNAME=imdisk
 TARGETEXT=cpl
 TARGETPATH=.
 TARGETTYPE=DYNLINK
-SOURCES=imdisk.cpp imdisk.rc drvio.c rundll.c
 C_DEFINES = $(C_DEFINES) /DUNICODE /D_UNICODE
 UMTYPE=windows
 USE_MSVCRT=1
-DLLDEF=$O\imdisk.def
 MSC_WARNING_LEVEL=/W4 /WX /wd4201
+SOURCES=imdisk.cpp imdisk.rc drvio.c rundll.c
+DLLDEF=$O\imdisk.def
 
 !IF "$(_BUILDARCH)" == "x86"
 

@@ -9,6 +9,7 @@ DriverVer = 05/30/2007,1,00,03,0009
 
 
 [SourceDisksFiles.x86]
+awealloc.sys = 1,awealloc\i386
 imdisk.sys = 1,sys\i386
 imdsksvc.exe = 1,svc\i386
 imdisk.cpl = 1,cpl\i386
@@ -17,6 +18,7 @@ imdisk.inf = 1
 
 
 [SourceDisksFiles.ia64]
+awealloc.sys = 1,awealloc\ia64
 imdisk.sys = 1,sys\ia64
 imdsksvc.exe = 1,svc\ia64
 imdisk.cpl = 1,cpl\ia64
@@ -25,6 +27,7 @@ imdisk.inf = 1
 
 
 [SourceDisksFiles.amd64]
+awealloc.sys = 1,awealloc\amd64
 imdisk.sys = 1,sys\amd64
 imdsksvc.exe = 1,svc\amd64
 imdisk.cpl = 1,cpl\amd64
@@ -50,6 +53,7 @@ DelReg = ImDiskDelReg
 
 
 [DefaultInstall.NT.Services]
+AddService = AWEAlloc, , AWEAllocDrv
 AddService = ImDisk, , ImDskDrv
 AddService = ImDskSvc, , ImDskSvc
 
@@ -66,6 +70,7 @@ imdsksvc.exe
 
 
 [ImDiskSysFiles]
+awealloc.sys
 imdisk.sys
 
 
@@ -113,6 +118,15 @@ ServiceType = 1
 StartType = 3
 ErrorControl = 0
 ServiceBinary = %12%\imdisk.sys
+
+
+[AWEAllocDrv]
+DisplayName = "AWE Memory Allocation Driver"
+Description = "Driver for physical memory allocation through AWE"
+ServiceType = 1
+StartType = 3
+ErrorControl = 0
+ServiceBinary = %12%\awealloc.sys
 
 
 [ImDskSvc]

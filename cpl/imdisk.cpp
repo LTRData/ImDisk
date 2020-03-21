@@ -777,6 +777,9 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		CreateDialog(hInstance, MAKEINTRESOURCE(IDD_DLG_STATUS), hWnd,
 			     StatusDlgProc);
 
+	      SetDlgItemText(hWndStatus, IDC_STATUS_MSG,
+			     L"Creating virtual disk...");
+
 	      DISK_GEOMETRY disk_geometry = { 0 };
 	      disk_geometry.Cylinders.QuadPart =
 		GetDlgItemInt(hWnd, IDC_EDT_SIZE, NULL, FALSE);
@@ -826,11 +829,30 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 					 sizeof(file_name)/sizeof(*file_name));
 	      file_name[uLen] = 0;
 
-	      WCHAR drive_letter[3] = L"";
+	      WCHAR drive_letter[3];
 	      GetDlgItemText(hWnd, IDC_EDT_DRIVE, drive_letter, 3);
 
 	      drive_letter[0] = towupper(drive_letter[0]);
 	      drive_letter[1] = L':';
+	      drive_letter[2] = 0;
+
+	      WCHAR buffer[MAX_PATH];
+	      if (QueryDosDevice(drive_letter, buffer, sizeof buffer))
+		if (MessageBox(hWnd, L"Specified drive letter is already in "
+			       L"use on this system. Are you sure you want "
+			       L"to use it for the virtual disk drive you are "
+			       L"about to create anyway?\r\n"
+			       L"\r\n"
+			       L"Existing drive will not be accessible until "
+			       L"it has been assigned a new drive letter.",
+			       L"ImDisk Virtual Disk Driver",
+			       MB_ICONEXCLAMATION | MB_YESNO |
+			       MB_DEFBUTTON2) == IDNO)
+		  {
+		    EnableWindow(hWnd, TRUE);
+		    DestroyWindow(hWndStatus);
+		    return TRUE;
+		  }
 
 	      BOOL status =
 		ImDiskCreateDevice(GetDlgItem(hWndStatus, IDC_STATUS_MSG),

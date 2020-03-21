@@ -545,6 +545,8 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 
   CloseHandle(driver);
 
+  *DeviceNumber = create_data->DeviceNumber;
+
   if (MountPoint != NULL)
     {
       WCHAR device_path[MAX_PATH];
@@ -598,11 +600,38 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 	    }
 	}
       else
-	if (!DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
+	if (DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
+	  // Notify processes that new device has arrived.
+	  {
+	    DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	      sizeof(DEV_BROADCAST_VOLUME),
+	      DBT_DEVTYP_VOLUME
+	    };
+	    DWORD_PTR dwp;
+
+	    dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+
+	    SendMessageTimeout(HWND_BROADCAST,
+			       WM_DEVICECHANGE,
+			       DBT_DEVICEARRIVAL,
+			       (LPARAM)&dev_broadcast_volume,
+			       SMTO_BLOCK,
+			       2000,
+			       &dwp);
+
+	    dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
+
+	    SendMessageTimeout(HWND_BROADCAST,
+			       WM_DEVICECHANGE,
+			       DBT_DEVICEARRIVAL,
+			       (LPARAM)&dev_broadcast_volume,
+			       SMTO_BLOCK,
+			       2000,
+			       &dwp);
+	  }
+	else
 	  PrintLastError(L"Error creating mount point:");
     }
-
-  *DeviceNumber = create_data->DeviceNumber;
 
   return 0;
 }
@@ -648,7 +677,6 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
   WCHAR drive_letter_mount_point[] = L" :";
   HANDLE device;
   DWORD dw;
-  DWORD_PTR dwp;
 
   if (MountPoint == NULL)
     {
@@ -662,20 +690,21 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
 	   FALSE)
     {
-      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
-	sizeof(DEV_BROADCAST_VOLUME),
-	DBT_DEVTYP_VOLUME
-      };
       WCHAR drive_letter_path[] = L"\\\\.\\ :";
       drive_letter_path[4] = MountPoint[0];
 
       // Notify processes that this device is about to be removed.
       if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
 	{
+	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	    sizeof(DEV_BROADCAST_VOLUME),
+	    DBT_DEVTYP_VOLUME
+	  };
+	  DWORD_PTR dwp;
+
 	  puts("Sending device removal notifications...");
 
-	  dev_broadcast_volume.dbcv_unitmask =
-	    1 << (MountPoint[0] - L'A') >> 1;
+	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
 
 	  DbgOemPrintF((stdout, "Sending DBT_DEVICEQUERYREMOVE...\n"));
 
@@ -889,10 +918,19 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	  FALSE)
 	{
 	  WCHAR drive_mount_point[3] = L" :";
+	  WCHAR reg_key[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints\\ ";
+	  WCHAR reg_key2[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\ ";
+
 	  drive_mount_point[0] = MountPoint[0];
 
 	  if (!DefineDosDevice(DDD_REMOVE_DEFINITION, drive_mount_point, NULL))
 	    PrintLastError(MountPoint);
+
+	  reg_key[63] = MountPoint[0];
+	  reg_key2[64] = MountPoint[0];
+
+	  RegDeleteKey(HKEY_CURRENT_USER, reg_key);
+	  RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
 	}
       else
 	{

@@ -25,7 +25,7 @@
     OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#define DEBUG
+//#define DEBUG
 
 #define WIN32_LEAN_AND_MEAN
 
@@ -103,6 +103,7 @@ typedef size_t ssize_t;
 typedef __int64 off_t_64;
 
 #define ULL_FMT   "%I64u"
+#define SLL_FMT   "%I64i"
 
 #else  // Unix
 
@@ -121,6 +122,7 @@ typedef __int64 off_t_64;
 #define O_BINARY       0
 #endif
 #define ULL_FMT   "%llu"
+#define SLL_FMT   "%lli"
 
 typedef off_t off_t_64;
 
@@ -240,7 +242,7 @@ vhd_read(void *buf, size_t size, off_t_64 offset)
   size_t second_size = 0;
   ssize_t readdone;
 
-  dbglog((LOG_ERR, "vhd_read: Request " ULL_FMT " bytes at " ULL_FMT ".\n",
+  dbglog((LOG_ERR, "vhd_read: Request " SLL_FMT " bytes at " SLL_FMT ".\n",
 	  (off_t_64)size, (off_t_64)offset));
 
   if (offset + size > current_size)
@@ -311,7 +313,7 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
   off_t_64 bitmap_offset;
   size_t first_size_nqwords;
 
-  dbglog((LOG_ERR, "vhd_write: Request " ULL_FMT " bytes at " ULL_FMT ".\n",
+  dbglog((LOG_ERR, "vhd_write: Request " SLL_FMT " bytes at " SLL_FMT ".\n",
 	  (off_t_64)size, (off_t_64)offset));
 
   if (offset + size > current_size)
@@ -352,7 +354,7 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
       if (buf_ptr >= (long long*)buf + first_size_nqwords)
 	{
 	  dbglog((LOG_ERR, "vhd_write: New empty block not added to vhd file "
-		  "backing " ULL_FMT " bytes at " ULL_FMT ".\n",
+		  "backing " SLL_FMT " bytes at " SLL_FMT ".\n",
 		  (off_t_64)first_size, (off_t_64)offset));
 
 	  writedone = first_size;
@@ -373,7 +375,7 @@ vhd_write(void *buf, size_t size, off_t_64 offset)
 	}
 
       dbglog((LOG_ERR, "vhd_write: Adding new block to vhd file backing "
-	      ULL_FMT " bytes at " ULL_FMT ".\n",
+	      SLL_FMT " bytes at " SLL_FMT ".\n",
 	      (off_t_64)first_size, (off_t_64)offset));
 
       new_block_buf = (char *)
@@ -708,7 +710,7 @@ main(int argc, char **argv)
   if (argc > 3)
     {
       char suf = 0;
-      if (sscanf(argv[3], ULL_FMT "%c", &devio_info.file_size, &suf) == 2)
+      if (sscanf(argv[3], SLL_FMT "%c", &devio_info.file_size, &suf) == 2)
 	switch (suf)
 	  {
 	  case 'T':
@@ -881,7 +883,7 @@ main(int argc, char **argv)
     if (argc > 4)
       {
 	char suf = 0;
-	if (sscanf(argv[4], ULL_FMT "%c", &offset, &suf) == 2)
+	if (sscanf(argv[4], SLL_FMT "%c", &offset, &suf) == 2)
 	  switch (suf)
 	    {
 	    case 'T':
@@ -922,8 +924,8 @@ main(int argc, char **argv)
   if (argc > 5)
     sscanf(argv[5], "%lu", &buffer_size);
 
-  printf("Total size: " ULL_FMT " bytes. Using " ULL_FMT " bytes from offset "
-	 ULL_FMT ".\n",
+  printf("Total size: " SLL_FMT " bytes. Using " ULL_FMT " bytes from offset "
+	 SLL_FMT ".\n",
 	 current_size, devio_info.file_size, offset);
 
   buf = malloc(buffer_size);

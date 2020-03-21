@@ -301,7 +301,7 @@ ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 
   for (i = 0; i < 4; i++)
     {
-      LPBYTE partition_entry = buffer + SectorSize - 66 + (i << 4);
+      LPBYTE partition_entry = buffer + 512 - 66 + (i << 4);
 
       PartitionInformation[i].StartingOffset.QuadPart =
 	(LONGLONG)SectorSize * *(LPDWORD)(partition_entry + 8);
@@ -898,29 +898,28 @@ ImDiskCreateDevice(HWND hWnd,
 
   if (FileName == NULL)
     RtlInitUnicodeString(&file_name, NULL);
+  else if (NativePath)
+    {
+      if (!RtlCreateUnicodeString(&file_name, FileName))
+	{
+	  NtClose(driver);
+	  if (hWnd != NULL)
+	    MessageBox(hWnd, L"Memory allocation error.",
+		       L"ImDisk Virtual Disk Driver", MB_ICONSTOP);
+	  return FALSE;
+	}
+    }
   else
-    if (NativePath)
-      {
-	if (!RtlCreateUnicodeString(&file_name, FileName))
-	  {
-	    NtClose(driver);
-	    if (hWnd != NULL)
-	      MessageBox(hWnd, L"Memory allocation error.",
-			 L"ImDisk Virtual Disk Driver", MB_ICONSTOP);
-	    return FALSE;
-	  }
-      }
-    else
-      {
-	if (!RtlDosPathNameToNtPathName_U(FileName, &file_name, NULL, NULL))
-	  {
-	    NtClose(driver);
-	    if (hWnd != NULL)
-	      MessageBox(hWnd, L"Memory allocation error.",
-			 L"ImDisk Virtual Disk Driver", MB_ICONSTOP);
-	    return FALSE;
-	  }
-      }
+    {
+      if (!RtlDosPathNameToNtPathName_U(FileName, &file_name, NULL, NULL))
+	{
+	  NtClose(driver);
+	  if (hWnd != NULL)
+	    MessageBox(hWnd, L"Memory allocation error.",
+		       L"ImDisk Virtual Disk Driver", MB_ICONSTOP);
+	  return FALSE;
+	}
+    }
 
   if (hWnd != NULL)
     SetWindowText(hWnd, L"Creating virtual disk...");
@@ -993,6 +992,41 @@ ImDiskCreateDevice(HWND hWnd,
 	  MsgBoxLastError(hWnd, L"Error creating mount point:");
     }
 
+  // Notify processes that new device has arrived.
+  if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
+    {
+      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	sizeof(DEV_BROADCAST_VOLUME),
+	DBT_DEVTYP_VOLUME
+      };
+      DWORD_PTR dwp;
+
+      if (hWnd != NULL)
+	SetWindowText
+	  (hWnd,
+	   L"Notifying applications that device has been created...");
+
+      dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+
+      SendMessageTimeout(HWND_BROADCAST,
+			 WM_DEVICECHANGE,
+			 DBT_DEVICEARRIVAL,
+			 (LPARAM)&dev_broadcast_volume,
+			 SMTO_BLOCK,
+			 2000,
+			 &dwp);
+
+      dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
+
+      SendMessageTimeout(HWND_BROADCAST,
+			 WM_DEVICECHANGE,
+			 DBT_DEVICEARRIVAL,
+			 (LPARAM)&dev_broadcast_volume,
+			 SMTO_BLOCK,
+			 2000,
+			 &dwp);
+    }
+
   return TRUE;
 }
 
@@ -1004,7 +1038,6 @@ ImDiskRemoveDevice(HWND hWnd,
 {
   HANDLE device;
   DWORD dw;
-  DWORD_PTR dwp;
 
   if (MountPoint == NULL)
     {
@@ -1021,23 +1054,24 @@ ImDiskRemoveDevice(HWND hWnd,
 	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
 	   FALSE)
     {
-      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
-	sizeof(DEV_BROADCAST_VOLUME),
-	DBT_DEVTYP_VOLUME
-      };
       WCHAR drive_letter_path[] = L"\\\\.\\ :";
       drive_letter_path[4] = MountPoint[0];
 
       // Notify processes that this device is about to be removed.
       if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
 	{
+	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	    sizeof(DEV_BROADCAST_VOLUME),
+	    DBT_DEVTYP_VOLUME
+	  };
+	  DWORD_PTR dwp;
+
 	  if (hWnd != NULL)
 	    SetWindowText
 	      (hWnd,
 	       L"Notifying applications that device is being removed...");
 
-	  dev_broadcast_volume.dbcv_unitmask =
-	    1 << (MountPoint[0] - L'A') >> 1;
+	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
 
 	  SendMessageTimeout(HWND_BROADCAST,
 			     WM_DEVICECHANGE,
@@ -1300,12 +1334,21 @@ ImDiskRemoveDevice(HWND hWnd,
 
   if (MountPoint != NULL)
     {
+      WCHAR reg_key[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints\\ ";
+      WCHAR reg_key2[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\ ";
+
       if (hWnd != NULL)
 	SetWindowText(hWnd, L"Removing drive letter...");
 
       if (!DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL))
 	if (hWnd != NULL)
 	  MsgBoxLastError(hWnd, L"Error removing drive letter:");
+
+      reg_key[63] = MountPoint[0];
+      reg_key2[64] = MountPoint[0];
+
+      RegDeleteKey(HKEY_CURRENT_USER, reg_key);
+      RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
     }
 
   if (hWnd != NULL)

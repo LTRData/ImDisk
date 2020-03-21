@@ -8,7 +8,7 @@ ARCHDIR=ia64
 
 BUILD_DEFAULT=-cegiw -nmake -i
 
-all: cli\$(ARCHDIR)\imdisk.exe svc\$(ARCHDIR)\imdsksvc.exe cpl\$(ARCHDIR)\imdisk.cpl sys\$(ARCHDIR)\imdisk.sys deviotst\$(ARCHDIR)\deviotst.exe
+all: cli\$(ARCHDIR)\imdisk.exe svc\$(ARCHDIR)\imdsksvc.exe cpl\$(ARCHDIR)\imdisk.cpl sys\$(ARCHDIR)\imdisk.sys awealloc\$(ARCHDIR)\awealloc.sys deviotst\$(ARCHDIR)\deviotst.exe
 
 clean:
 	del /s *~ *.obj *.res *.log *.wrn *.err *.mac *.o
@@ -26,16 +26,16 @@ p:\utils\imdisk_source.7z: p:\utils\imdisk.7z *.txt devio\*.c devio\*.cpp devio\
 	7z a -r p:\utils\imdisk_source.7z -x!*~ -m0=PPMd *.txt *.def *.src *.ico *.c *.h *.cpp *.hpp *.rc *.lib Sources dirs imdisk.inf uninstall.cmd Makefile*
 	xcopy p:\utils\imdisk_source.7z z:\ltr-website\files\ /d/y
 
-p:\utils\imdisk.7z: readme.txt gpl.txt imdisk.inf run64.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys
+p:\utils\imdisk.7z: readme.txt gpl.txt imdisk.inf run64.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
 	del p:\utils\imdisk.7z
-	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt imdisk.inf run64.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys
+	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt imdisk.inf run64.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
 
 cli\$(ARCHDIR)\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\$(ARCHDIR)\imdisk.lib
 	cd cli
 	build
 	cd $(MAKEDIR)
 
-cpl\$(ARCHDIR)\imdisk.cpl cpl\$(ARCHDIR)\imdisk.lib: cpl\sources cpl\*.c cpl\*.cpp cpl\*.rc cpl\*.def cpl\*.ico cpl\*.h inc\*.h
+cpl\$(ARCHDIR)\imdisk.cpl cpl\$(ARCHDIR)\imdisk.lib: cpl\sources cpl\*.c cpl\*.cpp cpl\*.rc cpl\*.src cpl\*.ico cpl\*.h inc\*.h
 	cd cpl
 	build
 	cd $(MAKEDIR)
@@ -51,6 +51,14 @@ sys\$(ARCHDIR)\imdisk.sys: sys\sources sys\*.c sys\*.rc inc\*.h
 	cd $(MAKEDIR)
 !IF "$(_BUILDARCH)" != "x86"
 	signtool sign /v /s PrivateCertStore /n ltr-data.se(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll sys\$(ARCHDIR)\imdisk.sys
+!ENDIF
+
+awealloc\$(ARCHDIR)\awealloc.sys: awealloc\sources awealloc\*.c awealloc\*.rc
+	cd awealloc
+	build
+	cd $(MAKEDIR)
+!IF "$(_BUILDARCH)" != "x86"
+	signtool sign /v /s PrivateCertStore /n ltr-data.se(Test) /t http://timestamp.verisign.com/scripts/timestamp.dll awealloc\$(ARCHDIR)\awealloc.sys
 !ENDIF
 
 deviotst\$(ARCHDIR)\deviotst.exe: deviotst\sources deviotst\deviotst.cpp inc\*.h inc\*.hpp

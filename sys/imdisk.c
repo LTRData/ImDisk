@@ -781,6 +781,62 @@ ImDiskAddVirtualDisk(IN PDRIVER_OBJECT DriverObject,
       return device_thread_data.status;
     }
 
+  if (CreateData->DriveLetter != 0)
+    if (KeGetCurrentIrql() <= PASSIVE_LEVEL)
+      {
+	WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
+	WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
+	UNICODE_STRING sym_link;
+	PWCHAR device_name_buffer;
+	UNICODE_STRING device_name;
+
+	// Buffer for device name
+	device_name_buffer = ExAllocatePool(PagedPool,
+					    MAXIMUM_FILENAME_LENGTH *
+					    sizeof(*device_name_buffer));
+
+	if (device_name_buffer == NULL)
+	  KdPrint(("ImDisk: Insufficient pool memory.\n"));
+	else
+	  {
+	    _snwprintf(device_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
+		       IMDISK_DEVICE_BASE_NAME L"%u",
+		       CreateData->DeviceNumber);
+	    device_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
+	    RtlInitUnicodeString(&device_name, device_name_buffer);
+
+	    sym_link_wchar[12] = CreateData->DriveLetter;
+
+	    KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",
+		     sym_link_wchar, device_name_buffer));
+
+	    RtlInitUnicodeString(&sym_link, sym_link_wchar);
+	    status = IoCreateUnprotectedSymbolicLink(&sym_link, &device_name);
+
+	    if (!NT_SUCCESS(status))
+	      {
+		KdPrint(("ImDisk: Cannot symlink '%ws' to '%ws'. (%#x)\n",
+			 sym_link_global_wchar, device_name_buffer, status));
+	      }
+
+	    sym_link_global_wchar[19] = CreateData->DriveLetter;
+
+	    KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",
+		     sym_link_global_wchar, device_name_buffer));
+
+	    RtlInitUnicodeString(&sym_link, sym_link_global_wchar);
+	    status = IoCreateUnprotectedSymbolicLink(&sym_link, &device_name);
+
+	    if (!NT_SUCCESS(status))
+	      {
+		KdPrint(("ImDisk: Cannot symlink '%ws' to '%ws'. (%#x)\n",
+			 sym_link_global_wchar, device_name_buffer, status));
+	      }
+
+	    ExFreePool(device_name_buffer);
+	  }
+      }
+
   return STATUS_SUCCESS;
 }
 
@@ -1626,11 +1682,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	     IMDISK_DEVICE_BASE_NAME L"%u", CreateData->DeviceNumber);
   device_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
 
+  RtlInitUnicodeString(&device_name, device_name_buffer);
+
   KdPrint
     (("ImDisk: Creating device '%ws'. Device type %#x, characteristics %#x.\n",
       device_name_buffer, device_type, device_characteristics));
-
-  RtlInitUnicodeString(&device_name, device_name_buffer);
 
   status = IoCreateDevice(DriverObject,
 			  sizeof(DEVICE_EXTENSION),
@@ -1662,7 +1718,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
     }
 
   KdPrint
-    (("ImDisk: Setting the AlignmentRequirement field to %#x.",
+    (("ImDisk: Setting the AlignmentRequirement field to %#x.\n",
       alignment_requirement));
 
   (*DeviceObject)->Flags |= DO_DIRECT_IO;
@@ -1724,27 +1780,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   device_extension->media_change_count++;
 
-  if (CreateData->DriveLetter != 0)
-    {
-      WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
-      UNICODE_STRING sym_link;
-
-      sym_link_global_wchar[19] = CreateData->DriveLetter;
-
-      KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",
-	       sym_link_global_wchar, device_name_buffer));
-
-      RtlInitUnicodeString(&sym_link, sym_link_global_wchar);
-      status = IoCreateUnprotectedSymbolicLink(&sym_link, &device_name);
-
-      if (!NT_SUCCESS(status))
-	{
-	  KdPrint(("ImDisk: Cannot symlink '%ws' to '%ws'. (%#x)\n",
-		   sym_link_global_wchar, device_name_buffer, status));
-	}
-
-      device_extension->drive_letter = CreateData->DriveLetter;
-    }
+  device_extension->drive_letter = CreateData->DriveLetter;
 
   device_extension->device_thread = KeGetCurrentThread();
 
@@ -1860,6 +1896,45 @@ ImDiskRemoveVirtualDisk(IN PDEVICE_OBJECT DeviceObject)
 
   KdPrint(("ImDisk: Request to shutdown device %i.\n",
 	   device_extension->device_number));
+
+  if (device_extension->drive_letter != 0)
+    if (KeGetCurrentIrql() <= PASSIVE_LEVEL)
+      {
+	NTSTATUS status;
+	WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
+	WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
+	UNICODE_STRING sym_link;
+
+	sym_link_global_wchar[19] = device_extension->drive_letter;
+
+	KdPrint(("ImDisk: Removing symlink '%ws'.\n", sym_link_global_wchar));
+
+	RtlInitUnicodeString(&sym_link, sym_link_global_wchar);
+	status = IoDeleteSymbolicLink(&sym_link);
+
+	if (!NT_SUCCESS(status))
+	  {
+	    KdPrint
+	      (("ImDisk: Cannot remove symlink '%ws'. (%#x)\n",
+		sym_link_global_wchar, status));
+	  }
+
+	sym_link_wchar[12] = device_extension->drive_letter;
+
+	KdPrint(("ImDisk: Removing symlink '%ws'.\n", sym_link_wchar));
+
+	RtlInitUnicodeString(&sym_link, sym_link_wchar);
+	status = IoDeleteSymbolicLink(&sym_link);
+
+	if (!NT_SUCCESS(status))
+	  {
+	    KdPrint
+	      (("ImDisk: Cannot remove symlink '%ws'. (%#x)\n",
+		sym_link_wchar, status));
+	  }
+
+	device_extension->drive_letter = 0;
+      }
 
   device_extension->terminate_thread = TRUE;
 
@@ -3231,46 +3306,6 @@ ImDiskDeviceThread(IN PVOID Context)
 	      continue;
 	    }
 
-	  if (device_extension->drive_letter != 0)
-	    {
-	      NTSTATUS status;
-	      WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
-	      WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
-	      UNICODE_STRING sym_link;
-
-	      sym_link_global_wchar[19] = device_extension->drive_letter;
-
-	      KdPrint(("ImDisk: Removing symlink '%ws'.\n",
-		       sym_link_global_wchar));
-
-	      RtlInitUnicodeString(&sym_link, sym_link_global_wchar);
-	      status = IoDeleteSymbolicLink(&sym_link);
-
-	      if (!NT_SUCCESS(status))
-		{
-		  KdPrint
-		    (("ImDisk: Cannot remove symlink '%ws'. (%#x)\n",
-		      sym_link_global_wchar, status));
-		}
-
-	      sym_link_wchar[12] = device_extension->drive_letter;
-
-	      KdPrint(("ImDisk: Removing symlink '%ws'.\n",
-		       sym_link_wchar));
-
-	      RtlInitUnicodeString(&sym_link, sym_link_wchar);
-	      status = IoDeleteSymbolicLink(&sym_link);
-
-	      if (!NT_SUCCESS(status))
-		{
-		  KdPrint
-		    (("ImDisk: Cannot remove symlink '%ws'. (%#x)\n",
-		      sym_link_wchar, status));
-		}
-
-	      device_extension->drive_letter = 0;
-	    }
-
 	  KdPrint(("ImDisk: Freeing resources for device %i.\n",
 		   device_extension->device_number));
 
@@ -3624,6 +3659,7 @@ ImDiskDeviceThread(IN PVOID Context)
 
 		    if (!NT_SUCCESS(status))
 		      {
+			status = STATUS_NO_MEMORY;
 			irp->IoStatus.Status = status;
 			irp->IoStatus.Information = 0;
 			break;
