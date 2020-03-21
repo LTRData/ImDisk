@@ -679,7 +679,7 @@ ImDiskGetDeviceList()
 {
   UNICODE_STRING file_name;
   HANDLE driver;
-  ULONG device_list;
+  ULONGLONG device_list;
   DWORD dw;
 
   RtlInitUnicodeString(&file_name, IMDISK_CTL_DEVICE_NAME);

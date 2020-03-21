@@ -73,7 +73,7 @@
 #include "..\inc\imdproxy.h"
 
 #define IMDISK_DEFAULT_LOAD_DEVICES      0
-#define IMDISK_DEFAULT_MAX_DEVICES       16
+#define IMDISK_DEFAULT_MAX_DEVICES       64
 
 ///
 /// Constants for synthetical geometry of the virtual disks
@@ -398,7 +398,11 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	  MaxDevices = IMDISK_DEFAULT_MAX_DEVICES;
 	}
       else if (value_info->Type == REG_DWORD)
-	MaxDevices = *(PULONG) value_info->Data;
+	{
+	  MaxDevices = *(PULONG) value_info->Data;
+	  if (MaxDevices > IMDISK_DEFAULT_MAX_DEVICES)
+	    MaxDevices = IMDISK_DEFAULT_MAX_DEVICES;
+	}
       else
 	{
 	  ExFreePool(value_info);
@@ -2523,7 +2527,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    Irp->IoStatus.Information = sizeof(ULONGLONG);
 	  }
 	else if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
-	    sizeof(ULONG))
+		 sizeof(ULONG))
 	  {
 	    *(PULONG) Irp->AssociatedIrp.SystemBuffer = (ULONG) DeviceList;
 	    Irp->IoStatus.Information = sizeof(ULONG);
