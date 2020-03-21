@@ -103,13 +103,15 @@ syslog(FILE *Stream, LPCSTR Message, ...)
   return;
 }
 
-#define LOG_ERR   stderr
+#define LOG_ERR       stderr
+
+#define OBJNAME_SIZE  260
 
 typedef size_t ssize_t;
 typedef __int64 off_t_64;
 
-#define ULL_FMT   "%I64u"
-#define SLL_FMT   "%I64i"
+#define ULL_FMT       "%I64u"
+#define SLL_FMT       "%I64i"
 
 HANDLE shm_server_mutex = NULL;
 HANDLE shm_request_event = NULL;
@@ -977,7 +979,7 @@ main(int argc, char **argv)
   if ((argc < 3) | (argc > 7))
     {
       fprintf(stderr,
-	      "devio - Device I/O Service ver 3.00\n"
+	      "devio - Device I/O Service ver 3.01\n"
 	      "With support for Microsoft VHD format, custom DLL files and shared memory proxy\n"
 	      "operation.\n"
 	      "Copyright (C) 2005-2011 Olof Lagerkvist.\n"
@@ -1327,8 +1329,29 @@ do_comm_shm(char *comm_device)
   MEMORY_BASIC_INFORMATION memory_info = { 0 };
   DWORD_PTR detected_buffer_size = 0;
   ULARGE_INTEGER map_size = { 0 };
+  char *objname = (char*)malloc(OBJNAME_SIZE);
+  char *namespace_prefix;
+  HANDLE h = CreateFile("\\\\?\\Global", 0, FILE_SHARE_READ, NULL,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if ((h == INVALID_HANDLE_VALUE) & (GetLastError() == ERROR_FILE_NOT_FOUND))
+    namespace_prefix = "";
+  else
+    namespace_prefix = "Global\\";
+
+  if (h != INVALID_HANDLE_VALUE)
+    CloseHandle(h);
+
+  if (objname == NULL)
+    {
+      syslog(LOG_ERR, "Memory allocation failed: %m\n");
+      return -1;
+    }
 
   puts("Shared memory operation.");
+
+  _snprintf(objname, OBJNAME_SIZE,
+	    "%s%s", namespace_prefix, comm_device);
+  objname[OBJNAME_SIZE-1] = 0;
 
   map_size.QuadPart = buffer_size + IMDPROXY_HEADER_SIZE;
 
@@ -1337,11 +1360,17 @@ do_comm_shm(char *comm_device)
 			       PAGE_READWRITE | SEC_COMMIT,
 			       map_size.HighPart,
 			       map_size.LowPart,
-			       comm_device);
-			       
+			       objname);
+
   if (hFileMap == NULL)
     {
-      syslog(LOG_ERR, "OpenFileMapping() failed: %m\n");
+      syslog(LOG_ERR, "CreateFileMapping() failed: %m\n");
+      return 2;
+    }
+
+  if (GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+      syslog(LOG_ERR, "A service with this name is already running.\n");
       return 2;
     }
 
@@ -1378,9 +1407,10 @@ do_comm_shm(char *comm_device)
 	}
     }
 
-  _snprintf(buf, buffer_size, "%s_Server", comm_device);
-  buf[buffer_size-1] = 0;
-  shm_server_mutex = CreateMutex(NULL, FALSE, buf);
+  _snprintf(objname, OBJNAME_SIZE,
+	    "%s%s_Server", namespace_prefix, comm_device);
+  objname[OBJNAME_SIZE-1] = 0;
+  shm_server_mutex = CreateMutex(NULL, FALSE, objname);
 
   if (shm_server_mutex == NULL)
     {
@@ -1394,9 +1424,10 @@ do_comm_shm(char *comm_device)
       return 2;
     }
 
-  _snprintf(buf, buffer_size, "%s_Request", comm_device);
-  buf[buffer_size-1] = 0;
-  shm_request_event = CreateEvent(NULL, FALSE, FALSE, buf);
+  _snprintf(objname, OBJNAME_SIZE,
+	    "%s%s_Request", namespace_prefix, comm_device);
+  objname[OBJNAME_SIZE-1] = 0;
+  shm_request_event = CreateEvent(NULL, FALSE, FALSE, objname);
 
   if (shm_request_event == NULL)
     {
@@ -1404,15 +1435,19 @@ do_comm_shm(char *comm_device)
       return 2;
     }
 
-  _snprintf(buf, buffer_size, "%s_Response", comm_device);
-  buf[buffer_size-1] = 0;
-  shm_response_event = CreateEvent(NULL, FALSE, FALSE, buf);
+  _snprintf(objname, OBJNAME_SIZE,
+	    "%s%s_Response", namespace_prefix, comm_device);
+  objname[OBJNAME_SIZE-1] = 0;
+  shm_response_event = CreateEvent(NULL, FALSE, FALSE, objname);
 
   if (shm_response_event == NULL)
     {
       syslog(LOG_ERR, "CreateEvent() failed: %m\n");
       return 2;
     }
+
+  free(objname);
+  objname = NULL;
 
   shm_mode = 1;
 

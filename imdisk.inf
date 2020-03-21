@@ -1,7 +1,7 @@
 [Version]
 signature = "$Windows NT$"
 Provider = "LTR Data"
-DriverVer = 12/02/2010,1,03,02,0011
+DriverVer = 10/14/2011,1,05,01,0037
 
 
 [SourceDisksNames]
@@ -82,6 +82,7 @@ AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntx86.Services]
+DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
 
@@ -93,6 +94,7 @@ AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntamd64.Services]
+DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
 
@@ -104,6 +106,7 @@ AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntia64.Services]
+DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
 
@@ -165,7 +168,7 @@ HKCR, "Drive\shell\ImDiskSaveImage"
 DisplayName = "ImDisk Virtual Disk Driver"
 Description = "Disk emulation driver"
 ServiceType = 1
-StartType = 3
+StartType = 2
 ErrorControl = 0
 ServiceBinary = %12%\imdisk.sys
 
@@ -183,7 +186,7 @@ ServiceBinary = %12%\awealloc.sys
 DisplayName = "ImDisk Virtual Disk Driver Helper"
 Description = "Helper service for ImDisk Virtual Disk Driver."
 ServiceType = 16
-StartType = 3
+StartType = 2
 ErrorControl = 0
 ServiceBinary = %11%\imdsksvc.exe
 

@@ -4526,8 +4526,8 @@ ImDiskDeviceThread(IN PVOID Context)
 
 		    // If indicating that proxy connection died we can do
 		    // nothing else but remove this device.
-		    if (irp->IoStatus.Status == STATUS_CONNECTION_RESET)
-		      ImDiskRemoveVirtualDisk(device_object);
+		    // if (irp->IoStatus.Status == STATUS_CONNECTION_RESET)
+		    ImDiskRemoveVirtualDisk(device_object);
 
 		    irp->IoStatus.Status = STATUS_NO_MEDIA_IN_DEVICE;
 		    irp->IoStatus.Information = 0;

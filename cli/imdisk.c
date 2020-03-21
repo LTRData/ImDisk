@@ -86,6 +86,7 @@ ImDiskSyntaxHelp()
      "       [-s size] [-b offset] [-v partition] [-S sectorsize] [-u unit]\r\n"
      "       [-x sectors/track] [-y tracks/cylinder] [-p \"format-parameters\"]\r\n"
      "imdisk -d|-D [-u unit | -m mountpoint]\r\n"
+     "imdisk -R -u unit\r\n"
      "imdisk -l [-u unit | -m mountpoint]\r\n"
      "imdisk -e [-s size] [-o opt1[,opt2 ...]] [-u unit | -m mountpoint]\r\n"
      "\n"
@@ -94,6 +95,14 @@ ImDiskSyntaxHelp()
      "\n"
      "-d      Detach a virtual disk from the system and release all resources.\r\n"
      "        Use -D to force removal even if the device is in use.\r\n"
+     "\n"
+     "-R      Emergency removal of hung virtual disks. Should only be used as a last\r\n"
+     "        resort when a virtual disk has some kind of problem that makes it\r\n"
+     "        impossible to detach it in a safe way. This could happen for example\r\n"
+     "        for proxy-type virtual disks sometimes when proxy communication fails.\r\n"
+     "        Note that this does not attempt to dismount filesystem or lock the\r\n"
+     "        volume in any way so there is a potential risk of data loss. Use with\r\n"
+     "        caution!\r\n"
      "\n"
      "-e      Edit an existing virtual disk.\r\n"
      "\n"
@@ -494,9 +503,21 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
   else if ((IMDISK_TYPE(Flags) == IMDISK_TYPE_PROXY) &
 	   (IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_SHM))
     {
-      WCHAR prefix[] = L"\\BaseNamedObjects\\";
-      LPWSTR prefixed_name = (LPWSTR)
-	_alloca((wcslen(FileName) << 1) + sizeof(prefix));
+      LPWSTR namespace_prefix;
+      LPWSTR prefixed_name;
+      HANDLE h = CreateFile(L"\\\\?\\Global", 0, FILE_SHARE_READ, NULL,
+			    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+      if ((h == INVALID_HANDLE_VALUE) &
+	  (GetLastError() == ERROR_FILE_NOT_FOUND))
+	namespace_prefix = L"\\BaseNamedObjects\\";
+      else
+	namespace_prefix = L"\\BaseNamedObjects\\Global\\";
+
+      if (h != INVALID_HANDLE_VALUE)
+	CloseHandle(h);
+
+      prefixed_name = (LPWSTR)
+	_alloca(((wcslen(namespace_prefix) + wcslen(FileName)) << 1) + 1);
 
       if (prefixed_name == NULL)
 	{
@@ -505,7 +526,7 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 	  return IMDISK_CLI_ERROR_FATAL;
 	}
 
-      wcscpy(prefixed_name, prefix);
+      wcscpy(prefixed_name, namespace_prefix);
       wcscat(prefixed_name, FileName);
 
       if (!RtlCreateUnicodeString(&file_name, prefixed_name))
@@ -673,261 +694,279 @@ ImDiskCliFormatDisk(LPWSTR MountPoint, LPWSTR FormatOptions)
 int
 ImDiskCliRemoveDevice(DWORD DeviceNumber,
 		      LPCWSTR MountPoint,
-		      BOOL ForceDismount)
+		      BOOL ForceDismount,
+		      BOOL EmergencyRemove)
 {
-  PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
-    _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
   WCHAR drive_letter_mount_point[] = L" :";
-  HANDLE device;
   DWORD dw;
 
-  if (MountPoint == NULL)
+  if (EmergencyRemove)
     {
-      device = ImDiskOpenDeviceByNumber(DeviceNumber,
-					GENERIC_READ | GENERIC_WRITE);
+      puts("Emergency removal...");
 
-      if (device == INVALID_HANDLE_VALUE)
-	device = ImDiskOpenDeviceByNumber(DeviceNumber,
-					  GENERIC_READ);
-
-      if (device == INVALID_HANDLE_VALUE)
-	device = ImDiskOpenDeviceByNumber(DeviceNumber,
-					  FILE_READ_ATTRIBUTES);
-    }
-  else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
-	   (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
-	   FALSE)
-    {
-      WCHAR drive_letter_path[] = L"\\\\.\\ :";
-      drive_letter_path[4] = MountPoint[0];
-
-      // Notify processes that this device is about to be removed.
-      if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
+      if (!ImDiskForceRemoveDevice(NULL, DeviceNumber))
 	{
-	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
-	    sizeof(DEV_BROADCAST_VOLUME),
-	    DBT_DEVTYP_VOLUME
-	  };
-	  DWORD_PTR dwp;
-
-	  puts("Notifying applications...");
-
-	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
-
-	  DbgOemPrintF((stdout, "Sending DBT_DEVICEQUERYREMOVE...\n"));
-
-	  SendMessageTimeout(HWND_BROADCAST,
-			     WM_DEVICECHANGE,
-			     DBT_DEVICEQUERYREMOVE,
-			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK,
-			     4000,
-			     &dwp);
-
-	  DbgOemPrintF((stdout, "Sending DBT_DEVICEREMOVEPENDING...\n"));
-
-	  SendMessageTimeout(HWND_BROADCAST,
-			     WM_DEVICECHANGE,
-			     DBT_DEVICEREMOVEPENDING,
-			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK,
-			     4000,
-			     &dwp);
+	  PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	  return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
 	}
-
-      DbgOemPrintF((stdout, "Opening %1!ws!...\n", MountPoint));
-
-      device = CreateFile(drive_letter_path,
-			  GENERIC_READ | GENERIC_WRITE,
-			  FILE_SHARE_READ | FILE_SHARE_WRITE,
-			  NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
-
-      if (device == INVALID_HANDLE_VALUE)
-	device = CreateFile(drive_letter_path,
-			    GENERIC_READ,
-			    FILE_SHARE_READ | FILE_SHARE_WRITE,
-			    NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
-
-      if (device == INVALID_HANDLE_VALUE)
-	device = CreateFile(drive_letter_path,
-			    FILE_READ_ATTRIBUTES,
-			    FILE_SHARE_READ | FILE_SHARE_WRITE,
-			    NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
     }
   else
     {
-      device = ImDiskOpenDeviceByMountPoint(MountPoint,
+      PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
+	_alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
+      HANDLE device;
+
+      if (MountPoint == NULL)
+	{
+	  device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					    GENERIC_READ | GENERIC_WRITE);
 
-      if (device == INVALID_HANDLE_VALUE)
-	device = ImDiskOpenDeviceByMountPoint(MountPoint,
+	  if (device == INVALID_HANDLE_VALUE)
+	    device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					      GENERIC_READ);
 
-      if (device == INVALID_HANDLE_VALUE)
-	device = ImDiskOpenDeviceByMountPoint(MountPoint,
+	  if (device == INVALID_HANDLE_VALUE)
+	    device = ImDiskOpenDeviceByNumber(DeviceNumber,
 					      FILE_READ_ATTRIBUTES);
+	}
+      else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
+	       (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0
+	       : FALSE)
+	{
+	  WCHAR drive_letter_path[] = L"\\\\.\\ :";
+	  drive_letter_path[4] = MountPoint[0];
+
+	  // Notify processes that this device is about to be removed.
+	  if ((MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
+	    {
+	      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+		sizeof(DEV_BROADCAST_VOLUME),
+		DBT_DEVTYP_VOLUME
+	      };
+	      DWORD_PTR dwp;
+
+	      puts("Notifying applications...");
+
+	      dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+
+	      DbgOemPrintF((stdout, "Sending DBT_DEVICEQUERYREMOVE...\n"));
+
+	      SendMessageTimeout(HWND_BROADCAST,
+				 WM_DEVICECHANGE,
+				 DBT_DEVICEQUERYREMOVE,
+				 (LPARAM)&dev_broadcast_volume,
+				 SMTO_BLOCK,
+				 4000,
+				 &dwp);
+
+	      DbgOemPrintF((stdout, "Sending DBT_DEVICEREMOVEPENDING...\n"));
+
+	      SendMessageTimeout(HWND_BROADCAST,
+				 WM_DEVICECHANGE,
+				 DBT_DEVICEREMOVEPENDING,
+				 (LPARAM)&dev_broadcast_volume,
+				 SMTO_BLOCK,
+				 4000,
+				 &dwp);
+	    }
+
+	  DbgOemPrintF((stdout, "Opening %1!ws!...\n", MountPoint));
+
+	  device = CreateFile(drive_letter_path,
+			      GENERIC_READ | GENERIC_WRITE,
+			      FILE_SHARE_READ | FILE_SHARE_WRITE,
+			      NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING,
+			      NULL);
+
+	  if (device == INVALID_HANDLE_VALUE)
+	    device = CreateFile(drive_letter_path,
+				GENERIC_READ,
+				FILE_SHARE_READ | FILE_SHARE_WRITE,
+				NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING,
+				NULL);
+
+	  if (device == INVALID_HANDLE_VALUE)
+	    device = CreateFile(drive_letter_path,
+				FILE_READ_ATTRIBUTES,
+				FILE_SHARE_READ | FILE_SHARE_WRITE,
+				NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING,
+				NULL);
+	}
+      else
+	{
+	  device = ImDiskOpenDeviceByMountPoint(MountPoint,
+						GENERIC_READ | GENERIC_WRITE);
+
+	  if (device == INVALID_HANDLE_VALUE)
+	    device = ImDiskOpenDeviceByMountPoint(MountPoint,
+						  GENERIC_READ);
+
+	  if (device == INVALID_HANDLE_VALUE)
+	    device = ImDiskOpenDeviceByMountPoint(MountPoint,
+						  FILE_READ_ATTRIBUTES);
+
+	  if (device == INVALID_HANDLE_VALUE)
+	    switch (GetLastError())
+	      {
+	      case ERROR_INVALID_PARAMETER:
+		fputs("This version of Windows only supports drive letters as "
+		      "mount points.\r\n"
+		      "Windows 2000 or higher is required to support "
+		      "subdirectory mount points.\r\n",
+		      stderr);
+		return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
+
+	      case ERROR_INVALID_FUNCTION:
+		fputs("Mount points are only supported on NTFS volumes.\r\n",
+		      stderr);
+		return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
+
+	      case ERROR_NOT_A_REPARSE_POINT:
+	      case ERROR_DIRECTORY:
+	      case ERROR_DIR_NOT_EMPTY:
+		ImDiskOemPrintF(stderr, "Not a mount point: '%1!ws!'\n",
+				MountPoint);
+		return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
+
+	      default:
+		PrintLastError(MountPoint);
+		return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
+	      }
+	}
 
       if (device == INVALID_HANDLE_VALUE)
-	switch (GetLastError())
+	if (GetLastError() == ERROR_FILE_NOT_FOUND)
 	  {
-	  case ERROR_INVALID_PARAMETER:
-	    fputs("This version of Windows only supports drive letters as "
-		  "mount points.\r\n"
-		  "Windows 2000 or higher is required to support "
-		  "subdirectory mount points.\r\n",
-		  stderr);
-	    return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
+	    fputs("No such device.\r\n", stderr);
+	    return IMDISK_CLI_ERROR_DEVICE_NOT_FOUND;
+	  }
+	else
+	  {
+	    PrintLastError(L"Error opening device:");
+	    return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	  }
 
-	  case ERROR_INVALID_FUNCTION:
-	    fputs("Mount points are only supported on NTFS volumes.\r\n",
-		  stderr);
-	    return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
-
-	  case ERROR_NOT_A_REPARSE_POINT:
-	  case ERROR_DIRECTORY:
-	  case ERROR_DIR_NOT_EMPTY:
-	    ImDiskOemPrintF(stderr, "Not a mount point: '%1!ws!'\n",
-			    MountPoint);
-	    return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
-
-	  default:
-	    PrintLastError(MountPoint);
-	    return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
+      if (!ImDiskCliCheckDriverVersion(device))
+	{
+	  CloseHandle(device);
+	  return IMDISK_CLI_ERROR_DRIVER_WRONG_VERSION;
 	}
-    }
-
-  if (device == INVALID_HANDLE_VALUE)
-    if (GetLastError() == ERROR_FILE_NOT_FOUND)
-      {
-	fputs("No such device.\r\n", stderr);
-	return IMDISK_CLI_ERROR_DEVICE_NOT_FOUND;
-      }
-    else
-      {
-	PrintLastError(L"Error opening device:");
-	return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-      }
-
-  if (!ImDiskCliCheckDriverVersion(device))
-    {
-      CloseHandle(device);
-      return IMDISK_CLI_ERROR_DRIVER_WRONG_VERSION;
-    }
-
-  if (!DeviceIoControl(device,
-                       IOCTL_IMDISK_QUERY_DEVICE,
-                       NULL,
-                       0,
-                       create_data,
-                       sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2),
-                       &dw, NULL))
-    {
-      PrintLastError(MountPoint);
-      ImDiskOemPrintF(stderr,
-		      "%1!ws!: Is that drive really an ImDisk drive?",
-		      MountPoint);
-      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-    }
-
-  if (dw < sizeof(IMDISK_CREATE_DATA) - sizeof(*create_data->FileName))
-    {
-      ImDiskOemPrintF(stderr,
-		      "%1!ws!: Is that drive really an ImDisk drive?",
-		      MountPoint);
-      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-    }
-
-  if ((MountPoint == NULL) & (create_data->DriveLetter != 0))
-    {
-      drive_letter_mount_point[0] = create_data->DriveLetter;
-      MountPoint = drive_letter_mount_point;
-    }
-
-  puts("Flushing file buffers...");
-
-  FlushFileBuffers(device);
-
-  puts("Locking volume...");
-
-  if (!DeviceIoControl(device,
-                       FSCTL_LOCK_VOLUME,
-                       NULL,
-		       0,
-		       NULL,
-		       0,
-		       &dw,
-		       NULL))
-    if (ForceDismount)
-      {
-	puts("Failed, forcing dismount...");
-	
-	DeviceIoControl(device,
-			FSCTL_DISMOUNT_VOLUME,
-			NULL,
-			0,
-			NULL,
-			0,
-			&dw,
-			NULL);
-	
-	DeviceIoControl(device,
-			FSCTL_LOCK_VOLUME,
-			NULL,
-			0,
-			NULL,
-			0,
-			&dw,
-			NULL);
-      }
-    else
-      {
-	PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-	return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-      }
-  else
-    {
-      puts("Dismounting filesystem...");
 
       if (!DeviceIoControl(device,
-			   FSCTL_DISMOUNT_VOLUME,
+			   IOCTL_IMDISK_QUERY_DEVICE,
+			   NULL,
+			   0,
+			   create_data,
+			   sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2),
+			   &dw, NULL))
+	{
+	  PrintLastError(MountPoint);
+	  ImDiskOemPrintF(stderr,
+			  "%1!ws!: Is that drive really an ImDisk drive?",
+			  MountPoint);
+	  return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	}
+
+      if (dw < sizeof(IMDISK_CREATE_DATA) - sizeof(*create_data->FileName))
+	{
+	  ImDiskOemPrintF(stderr,
+			  "%1!ws!: Is that drive really an ImDisk drive?",
+			  MountPoint);
+	  return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	}
+
+      if ((MountPoint == NULL) & (create_data->DriveLetter != 0))
+	{
+	  drive_letter_mount_point[0] = create_data->DriveLetter;
+	  MountPoint = drive_letter_mount_point;
+	}
+
+      puts("Flushing file buffers...");
+
+      FlushFileBuffers(device);
+
+      puts("Locking volume...");
+
+      if (!DeviceIoControl(device,
+			   FSCTL_LOCK_VOLUME,
 			   NULL,
 			   0,
 			   NULL,
 			   0,
 			   &dw,
 			   NULL))
+	if (ForceDismount)
+	  {
+	    puts("Failed, forcing dismount...");
+	
+	    DeviceIoControl(device,
+			    FSCTL_DISMOUNT_VOLUME,
+			    NULL,
+			    0,
+			    NULL,
+			    0,
+			    &dw,
+			    NULL);
+	
+	    DeviceIoControl(device,
+			    FSCTL_LOCK_VOLUME,
+			    NULL,
+			    0,
+			    NULL,
+			    0,
+			    &dw,
+			    NULL);
+	  }
+	else
+	  {
+	    PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	    return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	  }
+      else
 	{
-	  PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-	  return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	  puts("Dismounting filesystem...");
+
+	  if (!DeviceIoControl(device,
+			       FSCTL_DISMOUNT_VOLUME,
+			       NULL,
+			       0,
+			       NULL,
+			       0,
+			       &dw,
+			       NULL))
+	    {
+	      PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	      return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	    }
 	}
+
+      puts("Removing device...");
+
+      if (!DeviceIoControl(device,
+			   IOCTL_STORAGE_EJECT_MEDIA,
+			   NULL,
+			   0,
+			   NULL,
+			   0,
+			   &dw,
+			   NULL))
+	if (ForceDismount ? !ImDiskForceRemoveDevice(device, 0) : FALSE)
+	  {
+	    PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
+	    return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
+	  }
+
+      DeviceIoControl(device,
+		      FSCTL_UNLOCK_VOLUME,
+		      NULL,
+		      0,
+		      NULL,
+		      0,
+		      &dw,
+		      NULL);
+
+      CloseHandle(device);
     }
-
-  puts("Removing device...");
-
-  if (!DeviceIoControl(device,
-                       IOCTL_STORAGE_EJECT_MEDIA,
-                       NULL,
-		       0,
-		       NULL,
-		       0,
-		       &dw,
-		       NULL))
-    if (ForceDismount ? !ImDiskForceRemoveDevice(device, 0) : FALSE)
-      {
-	PrintLastError(MountPoint == NULL ? L"Error" : MountPoint);
-	return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
-      }
-
-  DeviceIoControl(device,
-		  FSCTL_UNLOCK_VOLUME,
-		  NULL,
-		  0,
-		  NULL,
-		  0,
-		  &dw,
-		  NULL);
-
-  CloseHandle(device);
 
   if (MountPoint != NULL)
     {
@@ -1526,6 +1565,7 @@ wmain(int argc, LPWSTR argv[])
   BOOL native_path = FALSE;
   BOOL numeric_print = FALSE;
   BOOL force_dismount = FALSE;
+  BOOL emergency_remove = FALSE;
   LPWSTR file_name = NULL;
   LPWSTR mount_point = NULL;
   LPWSTR format_options = NULL;
@@ -1603,6 +1643,7 @@ wmain(int argc, LPWSTR argv[])
 
 	  case L'd':
 	  case L'D':
+	  case L'R':
 	    if (op_mode != OP_MODE_NONE)
 	      ImDiskSyntaxHelp();
 
@@ -1610,6 +1651,12 @@ wmain(int argc, LPWSTR argv[])
 
 	    if (argv[0][1] == L'D')
 	      force_dismount = TRUE;
+
+	    if (argv[0][1] == L'R')
+	      {
+		force_dismount = TRUE;
+		emergency_remove = TRUE;
+	      }
 
 	    break;
 
@@ -2159,10 +2206,12 @@ wmain(int argc, LPWSTR argv[])
 
     case OP_MODE_REMOVE:
       if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &
-	  (mount_point == NULL))
+	  ((mount_point == NULL) |
+	   emergency_remove))
 	ImDiskSyntaxHelp();
-
-      return ImDiskCliRemoveDevice(device_number, mount_point, force_dismount);
+      
+      return ImDiskCliRemoveDevice(device_number, mount_point, force_dismount,
+				   emergency_remove);
 
     case OP_MODE_QUERY:
       if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &

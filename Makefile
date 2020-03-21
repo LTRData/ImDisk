@@ -26,9 +26,9 @@ p:\utils\imdisk_source.7z: p:\utils\imdisk.7z 7zSDcfg.txt gpl.txt readme.txt dev
 	7z a -r p:\utils\imdisk_source.7z -x!*~ -m0=PPMd 7zSDcfg.txt gpl.txt readme.txt *.def *.src *.ico *.c *.h *.cpp *.hpp *.rc *.lib *.sln *.vb *.vbproj *.resx *.myapp *.settings Sources dirs imdisk.inf uninstall.cmd Makefile*
 	xcopy p:\utils\imdisk_source.7z z:\ltr-website\files\ /d/y
 
-p:\utils\imdisk.7z: readme.txt gpl.txt imdisk.inf run64.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
+p:\utils\imdisk.7z: readme.txt gpl.txt imdisk.inf runwait.exe install.cmd msgbox.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
 	del p:\utils\imdisk.7z
-	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt imdisk.inf run64.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
+	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt imdisk.inf runwait.exe install.cmd msgbox.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
 
 cli\$(ARCHDIR)\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\$(ARCHDIR)\imdisk.lib
 	cd cli
