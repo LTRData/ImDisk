@@ -1353,9 +1353,7 @@ ImDiskCreateDeviceEx(HWND hWnd,
 	      (hWnd,
 	       L"Notifying applications that device has been created...");
 
-#ifdef _WIN64
 	  SHChangeNotify(SHCNE_DRIVEADD, SHCNF_PATH, MountPoint, NULL);
-#endif
 
 	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
 
@@ -1628,10 +1626,9 @@ ImDiskRemoveDevice(HWND hWnd,
       if (hWnd != NULL)
 	SetWindowText(hWnd, L"Removing drive letter...");
 
-#ifdef _WIN64
       if ((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0)
 	SHChangeNotify(SHCNE_DRIVEREMOVED, SHCNF_PATH, MountPoint, NULL);
-#endif
+
       if (!DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL))
 	if (hWnd != NULL)
 	  MsgBoxLastError(hWnd, L"Error removing drive letter:");

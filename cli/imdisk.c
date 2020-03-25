@@ -1084,9 +1084,8 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 
 	  drive_mount_point[0] = MountPoint[0];
 
-#ifdef _WIN64
 	  SHChangeNotify(SHCNE_DRIVEREMOVED, SHCNF_PATH, MountPoint, NULL);
-#endif
+
 	  if (!DefineDosDevice(DDD_REMOVE_DEFINITION, drive_mount_point, NULL))
 	    PrintLastError(MountPoint);
 
@@ -2362,9 +2361,7 @@ wmain(int argc, LPWSTR argv[])
 
 	      puts("Notifying applications...");
 
-#ifdef _WIN64
 	      SHChangeNotify(SHCNE_DRIVEADD, SHCNF_PATH, mount_point, NULL);
-#endif
 
 	      dev_broadcast_volume.dbcv_unitmask =
 		1 << (mount_point[0] - L'A');
