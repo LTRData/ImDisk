@@ -35,11 +35,13 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include <winsock.h>
 
 #include <stdlib.h>
+#include <malloc.h>
 #include <process.h>
 
 #include "..\inc\imdisk.h"
 #include "..\inc\imdproxy.h"
 #include "..\inc\wio.hpp"
+#include "..\inc\wmem.hpp"
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -148,8 +150,8 @@ class ImDiskSvcServerSession
             return 0;
         }
 
-        LPWSTR ConnectionString = (LPWSTR)malloc((size_t)ConnectReq.length + 2);
-        if (ConnectionString == NULL)
+        WCRTMem<WCHAR> ConnectionString((size_t)ConnectReq.length + 2);
+        if (!ConnectionString)
         {
             KdPrintLastError(("malloc() failed"));
 
@@ -163,7 +165,7 @@ class ImDiskSvcServerSession
         {
             KdPrintLastError(("Overlapped.BufRecv() failed"));
 
-            free(ConnectionString);
+            
             delete this;
             return 0;
         }
@@ -171,6 +173,17 @@ class ImDiskSvcServerSession
         IMDPROXY_CONNECT_RESP connect_resp = { 0 };
 
         ConnectionString[ConnectReq.length / sizeof *ConnectionString] = 0;
+
+        // Split server connection string and string that should be sent to server
+        // for server side connection to specific image file.
+
+        LPWSTR path_part = wcsstr(ConnectionString, L"://");
+
+        if (path_part != NULL)
+        {
+            path_part[0] = 0;
+            path_part++;
+        }
 
         HANDLE hTarget;
         switch (IMDISK_PROXY_TYPE(ConnectReq.flags))
@@ -194,7 +207,6 @@ class ImDiskSvcServerSession
                 connect_resp.error_code = GetLastError();
 
                 KdPrintLastError(("CreateFile() failed"));
-                free(ConnectionString);
 
                 Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
 
@@ -243,7 +255,7 @@ class ImDiskSvcServerSession
                 connect_resp.error_code = GetLastError();
 
                 KdPrintLastError(("ConnectTCP() failed"));
-                free(ConnectionString);
+                
 
                 Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
 
@@ -268,12 +280,70 @@ class ImDiskSvcServerSession
             connect_resp.error_code = (ULONGLONG)-1;
             Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
 
-            free(ConnectionString);
+            
             delete this;
             return 0;
         }
 
-        free(ConnectionString);
+        // Connect to requested server side image path
+
+        if (path_part != NULL)
+        {
+            size_t path_size = wcslen(path_part) << 1;
+
+            size_t req_size = sizeof(IMDPROXY_CONNECT_REQ) +
+                path_size;
+
+            WCRTMem<IMDPROXY_CONNECT_REQ> open_request(req_size);
+
+            if (!open_request)
+            {
+                KdPrintLastError(("malloc() failed"));
+
+                connect_resp.error_code = (ULONGLONG)-1;
+                Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
+
+                delete this;
+                return 0;
+            }
+
+            ZeroMemory(open_request, req_size);
+
+            open_request->request_code = IMDPROXY_REQ_CONNECT;
+            open_request->length = path_size;
+
+            memcpy(open_request + 1, path_part, path_size);
+
+            if (!Overlapped.BufSend(hTarget, open_request, (DWORD)req_size))
+            {
+                KdPrintLastError(("Failed to send connect request to server"));
+
+                connect_resp.error_code = (ULONGLONG)-1;
+                Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
+
+                delete this;
+                return 0;
+            }
+
+            open_request.Free();
+
+            if (Overlapped.BufRecv(hTarget, &connect_resp, sizeof connect_resp) !=
+                sizeof connect_resp)
+            {
+                connect_resp.object_ptr = NULL;
+                if (connect_resp.error_code == 0)
+                {
+                    connect_resp.error_code = (ULONGLONG)-1;
+                }
+
+                Overlapped.BufSend(hPipe, &connect_resp, sizeof connect_resp);
+                
+                delete this;
+                return 0;
+            }
+        }
+        
+        ConnectionString.Free();
 
         HANDLE hDriver = CreateFile(IMDISK_CTL_DOSDEV_NAME,
             GENERIC_READ | GENERIC_WRITE,

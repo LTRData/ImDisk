@@ -41,6 +41,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 #include "..\inc\ntumapi.h"
 #include "..\inc\imdisk.h"
+#include "..\inc\wmem.hpp"
 
 #include "drvio.h"
 #include "mbr.h"
@@ -74,114 +75,6 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define PROP_NAME_HANDLE_EXIT_EVENT L"HANDLE_ExitEvent"
 
 #pragma warning(disable: 28719)
-
-template<typename T> class WHeapMem
-{
-protected:
-    T *ptr;
-
-public:
-    operator bool()
-    {
-        return ptr != NULL;
-    }
-
-    bool operator!()
-    {
-        return ptr == NULL;
-    }
-
-    operator T*()
-    {
-        return ptr;
-    }
-
-    T* operator ->()
-    {
-        return ptr;
-    }
-
-    T* operator+(int i)
-    {
-        return ptr + i;
-    }
-
-    T* operator-(int i)
-    {
-        return ptr - i;
-    }
-
-    T* operator =(T *pBlk)
-    {
-        Free();
-        return ptr = pBlk;
-    }
-
-    DWORD_PTR Count() const
-    {
-        return GetSize() / sizeof(T);
-    }
-
-    DWORD_PTR GetSize() const
-    {
-        if (ptr == NULL)
-            return 0;
-        else
-            return hsize(ptr);
-    }
-
-    /* WHeapMem::ReAlloc()
-    *
-    * This function uses HeapReAlloc() which makes it preserve the data if the
-    * block must be moved to increase.
-    */
-    T* ReAlloc(SIZE_T dwAllocSize, DWORD Flags)
-    {
-        if (ptr != NULL)
-        {
-            T *newblock = (T*)HeapReAlloc(GetProcessHeap(), Flags,
-                ptr, dwAllocSize);
-            if (newblock != NULL)
-                return ptr = newblock;
-            else
-                return NULL;
-        }
-        else
-        {
-            ptr = (T*)HeapAlloc(GetProcessHeap(), Flags, dwAllocSize);
-            return ptr;
-        }
-    }
-
-    T *Free()
-    {
-        if (ptr == NULL)
-            return NULL;
-        else if (HeapFree(GetProcessHeap(), 0, ptr))
-            return ptr = NULL;
-        else
-            return ptr;
-    }
-
-    void Abandon()
-    {
-        ptr = NULL;
-    }
-
-    WHeapMem()
-        : ptr(NULL) { }
-
-    explicit WHeapMem(DWORD dwAllocSize, DWORD Flags)
-        : ptr((T*)HeapAlloc(GetProcessHeap(), Flags, dwAllocSize)) { }
-
-    explicit WHeapMem(T *pBlk)
-        : ptr(pBlk) { }
-
-    ~WHeapMem()
-    {
-        Free();
-    }
-};
 
 extern "C" HINSTANCE hInstance = NULL;
 
@@ -332,6 +225,7 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
     case IMDISK_TYPE_FILE:
     case IMDISK_TYPE_VM:
         if (create_data->FileNameLength == 0)
+        {
             if ((IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_FILE) &
                 (IMDISK_FILE_TYPE(create_data->Flags) ==
                 IMDISK_FILE_TYPE_AWEALLOC))
@@ -344,15 +238,16 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
                 lvi.pszText = L"Virtual memory";
                 break;
             }
+        }
 
         mem.ReAlloc(create_data->FileNameLength +
             sizeof(*create_data->FileName), HEAP_GENERATE_EXCEPTIONS);
         
-        lvi.pszText = mem;
-
-        wcsncpy(lvi.pszText, create_data->FileName,
+        wcsncpy(mem, create_data->FileName,
             create_data->FileNameLength >> 1);
-        lvi.pszText[create_data->FileNameLength >> 1] = 0;
+        mem[create_data->FileNameLength >> 1] = 0;
+
+        lvi.pszText = mem;
 
         ImDiskNativePathToWin32(&lvi.pszText);
 
@@ -361,20 +256,27 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
             LPCWSTR prefix;
             if (IMDISK_FILE_TYPE(create_data->Flags) ==
                 IMDISK_FILE_TYPE_AWEALLOC)
+            {
                 prefix = L"Physical memory, from ";
+            }
             else
+            {
                 prefix = L"Virtual memory, from ";
+            }
 
             LPWSTR filename = lvi.pszText;
 
-            mem.ReAlloc((wcslen(prefix) + wcslen(filename)
+            WHeapMem<WCHAR> newstring((wcslen(prefix) + wcslen(filename)
                 + 1) << 1, HEAP_GENERATE_EXCEPTIONS);
 
-            lvi.pszText = mem;
+            wcscpy(newstring, prefix);
+            wcscat(newstring, filename);
 
-            wcscpy(lvi.pszText, prefix);
-            wcscat(lvi.pszText, filename);
+            mem = newstring;
+
+            lvi.pszText = mem;
         }
+
         break;
 
     case IMDISK_TYPE_PROXY:
@@ -2180,7 +2082,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
                 L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
                 L"\r\n"
-                L"Copyright (C) 2004-2014 Olof Lagerkvist.\r\n"
+                L"Copyright (C) 2004-2015 Olof Lagerkvist.\r\n"
                 L"http://www.ltr-data.se     olof@ltr-data.se\r\n"
                 L"\r\n"
                 L"Permission is hereby granted, free of charge, to any person\r\n"

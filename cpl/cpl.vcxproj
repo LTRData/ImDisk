@@ -182,6 +182,7 @@
     <ClInclude Include="..\inc\imdiskver.h" />
     <ClInclude Include="..\inc\imdproxy.h" />
     <ClInclude Include="..\inc\ntumapi.h" />
+    <ClInclude Include="..\inc\wmem.hpp" />
   </ItemGroup>
   <!-- /Necessary to pick up propper files from local directory when in the IDE-->
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

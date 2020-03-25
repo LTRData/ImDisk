@@ -1,7 +1,7 @@
 /*
 AWE Allocation Driver for Windows 2000/XP and later.
 
-Copyright (C) 2005-2014 Olof Lagerkvist.
+Copyright (C) 2005-2015 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation

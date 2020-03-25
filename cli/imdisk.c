@@ -466,8 +466,8 @@ LPCWSTR ValidTargetPath)
             return TRUE;
         }
 
-        fprintf(stderr,
-            "Temporary drive letter %ws points to '%ws' instead of expected '%ws'.\n",
+        ImDiskOemPrintF(stderr,
+            "Temporary drive letter %1!ws! points to '%2!ws!' instead of expected '%3!ws!'.",
             DriveLetter, target, ValidTargetPath);
     }
     else
