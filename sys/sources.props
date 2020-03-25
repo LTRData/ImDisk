@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <TARGETNAME Condition="'$(OVERRIDE_TARGETNAME)'!='true'">imdisk</TARGETNAME>
+    <TARGETPATH Condition="'$(OVERRIDE_TARGETPATH)'!='true'">.</TARGETPATH>
+    <TARGETTYPE Condition="'$(OVERRIDE_TARGETTYPE)'!='true'">DRIVER</TARGETTYPE>
+    <SOURCES Condition="'$(OVERRIDE_SOURCES)'!='true'">imdisk.c imdisk.rc</SOURCES>
+    <MSC_WARNING_LEVEL Condition="'$(OVERRIDE_MSC_WARNING_LEVEL)'!='true'">/W4 /WX /wd4201 /wd4204 /wd4221</MSC_WARNING_LEVEL>
+    <MSC_OPTIMIZATION Condition="'$(OVERRIDE_MSC_OPTIMIZATION)'!='true'">/Ox /GF</MSC_OPTIMIZATION>
+    <C_DEFINES Condition="'$(OVERRIDE_C_DEFINES)'!='true'">$(C_DEFINES) /DINCLUDE_VFD_ORIGIN</C_DEFINES>
+  </PropertyGroup>
+  <Choose>
+    <When Condition="'$(_BUILDARCH)'=='x86'">
+      <PropertyGroup>
+        <LINKER_FLAGS Condition="'$(OVERRIDE_LINKER_FLAGS)'!='true'">llmath.lib</LINKER_FLAGS>
+        <BUFFER_OVERFLOW_CHECKS Condition="'$(OVERRIDE_BUFFER_OVERFLOW_CHECKS)'!='true'">0</BUFFER_OVERFLOW_CHECKS>
+      </PropertyGroup>
+    </When>
+  </Choose>
+</Project>

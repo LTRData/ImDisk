@@ -1,7 +1,7 @@
 /*
 AWE Allocation Driver for Windows 2000/XP and later.
 
-Copyright (C) 2005-2014 Olof Lagerkvist.
+Copyright (C) 2005-2015 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -49,6 +49,14 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define KdPrint(x)  DbgPrint x
 #endif
 
+/* d099e6fd-9287-4c62-a728-dfa1d7ab15b1 */
+const GUID AWEAllocFsCtlGuid = \
+{ 0xd099e6fd, 0x9287, 0x4c62, { 0xa7, 0x28, 0xdf, 0xa1, 0xd7, 0xab, 0x15, 0xb1 } };
+
+#define FILE_DEVICE_IMDISK       0x8372
+
+#define FSCTL_AWEALLOC_QUERY_CONTEXT       CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 2393, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
 #define POOL_TAG                'AEWA'
 
 #define AWEALLOC_DEVICE_NAME    L"\\Device\\AWEAlloc"
@@ -90,6 +98,10 @@ typedef struct _OBJECT_CONTEXT
 
     LONG ActiveWriters;
 
+    LONGLONG ReadRequestLockConflicts;
+
+    LONGLONG WriteRequestLockConflicts;
+
 } OBJECT_CONTEXT, *POBJECT_CONTEXT;
 
 //
@@ -127,6 +139,10 @@ IN PIRP Irp);
 
 NTSTATUS
 AWEAllocClose(IN PDEVICE_OBJECT DeviceObject,
+IN PIRP Irp);
+
+NTSTATUS
+AWEAllocControl(IN PDEVICE_OBJECT DeviceObject,
 IN PIRP Irp);
 
 NTSTATUS
@@ -222,6 +238,7 @@ IN PUNICODE_STRING RegistryPath)
     DriverObject->MajorFunction[IRP_MJ_READ] = AWEAllocReadWrite;
     DriverObject->MajorFunction[IRP_MJ_WRITE] = AWEAllocReadWrite;
     DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS] = AWEAllocFlushBuffers;
+    DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL] = AWEAllocControl;
     DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION] =
         AWEAllocQueryInformation;
     DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION] = AWEAllocSetInformation;
@@ -237,7 +254,8 @@ IN PUNICODE_STRING RegistryPath)
 
 NTSTATUS
 AWEAllocTryAcquireProtection(IN POBJECT_CONTEXT Context,
-IN BOOLEAN ForWriteOperation)
+IN BOOLEAN ForWriteOperation,
+IN BOOLEAN OwnsReadLock OPTIONAL)
 {
     NTSTATUS status;
     KIRQL irql;
@@ -245,8 +263,11 @@ IN BOOLEAN ForWriteOperation)
     KeAcquireSpinLock(&Context->IOLock, &irql);
     if (ForWriteOperation)
     {
-        if ((Context->ActiveWriters >= 1) | (Context->ActiveReaders >= 1))
+        if ((Context->ActiveWriters >= 1) |
+            (Context->ActiveReaders >= (OwnsReadLock ? 2 : 1)))
         {
+            Context->WriteRequestLockConflicts++;
+            KdPrint(("AWEAlloc: I/O write protection busy while requesting lock for writing.\n"));
             status = STATUS_DEVICE_BUSY;
         }
         else
@@ -256,14 +277,20 @@ IN BOOLEAN ForWriteOperation)
             {
                 DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
                 DbgBreakPoint();
+                status = STATUS_DRIVER_INTERNAL_ERROR;
             }
-            status = STATUS_SUCCESS;
+            else
+            {
+                status = STATUS_SUCCESS;
+            }
         }
     }
     else
     {
         if ((Context->ActiveWriters >= 1) | (Context->ActiveReaders >= LONG_MAX))
         {
+            Context->ReadRequestLockConflicts++;
+            KdPrint(("AWEAlloc: I/O write protection busy while requesting lock for reading.\n"));
             status = STATUS_DEVICE_BUSY;
         }
         else
@@ -273,8 +300,12 @@ IN BOOLEAN ForWriteOperation)
             {
                 DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
                 DbgBreakPoint();
+                status = STATUS_DRIVER_INTERNAL_ERROR;
             }
-            status = STATUS_SUCCESS;
+            else
+            {
+                status = STATUS_SUCCESS;
+            }
         }
     }
     KeReleaseSpinLock(&Context->IOLock, irql);
@@ -310,7 +341,8 @@ IN BOOLEAN ForWriteOperation)
 
 NTSTATUS
 AWEAllocMapPage(IN POBJECT_CONTEXT Context,
-IN LONGLONG Offset)
+IN LONGLONG Offset,
+IN BOOLEAN OwnsReadLock)
 {
     LONGLONG page_base = AWEAllocGetPageBaseFromAbsOffset(Offset);
     LONGLONG page_base_within_block;
@@ -351,7 +383,7 @@ IN LONGLONG Offset)
         block->Offset,
         page_base_within_block));
 
-    status = AWEAllocTryAcquireProtection(Context, TRUE);
+    status = AWEAllocTryAcquireProtection(Context, TRUE, OwnsReadLock);
     if (!NT_SUCCESS(status))
     {
         DbgPrint("AWEAlloc: Block table busy.\n");
@@ -460,6 +492,96 @@ IN LONGLONG Offset)
 }
 
 NTSTATUS
+AWEAllocControl(IN PDEVICE_OBJECT DeviceObject,
+IN PIRP Irp)
+{
+    PIO_STACK_LOCATION io_stack = IoGetCurrentIrpStackLocation(Irp);
+    POBJECT_CONTEXT context = io_stack->FileObject->FsContext2;
+    NTSTATUS status;
+
+    KdPrint2(("AWEAlloc: FileSystemControl request %#x.\n",
+        io_stack->Parameters.FileSystemControl.FsControlCode));
+
+    if (context == NULL)
+    {
+        KdPrint2(("VhdAccess: FileSystemControl request on not initialized device.\n"));
+
+        status = STATUS_SUCCESS;
+
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+        return status;
+    }
+
+    status = STATUS_SUCCESS;
+
+    if ((io_stack->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL) &
+        (io_stack->MinorFunction != IRP_MN_USER_FS_REQUEST))
+    {
+        status = STATUS_INVALID_DEVICE_REQUEST;
+    }
+    else if (METHOD_FROM_CTL_CODE(io_stack->Parameters.FileSystemControl.FsControlCode) !=
+        METHOD_BUFFERED)
+    {
+        status = STATUS_INVALID_DEVICE_REQUEST;
+    }
+    else if (io_stack->Parameters.FileSystemControl.InputBufferLength <	sizeof(GUID))
+    {
+        status = STATUS_INVALID_PARAMETER;
+    }
+    else if (RtlCompareMemory(
+        (PGUID)Irp->AssociatedIrp.SystemBuffer,
+        &AWEAllocFsCtlGuid, sizeof(GUID)) < sizeof(GUID))
+    {
+        status = STATUS_INVALID_PARAMETER;
+    }
+
+    if (!NT_SUCCESS(status))
+    {
+        Irp->IoStatus.Status = status;
+        Irp->IoStatus.Information = 0;
+
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+        return status;
+    }
+
+    switch (io_stack->Parameters.FileSystemControl.FsControlCode)
+    {
+    case FSCTL_AWEALLOC_QUERY_CONTEXT:
+        if (io_stack->Parameters.FileSystemControl.InputBufferLength <
+            sizeof(OBJECT_CONTEXT))
+        {
+            status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer,
+            context, sizeof(OBJECT_CONTEXT));
+
+        status = STATUS_SUCCESS;
+        Irp->IoStatus.Information = sizeof(OBJECT_CONTEXT);
+
+    default:
+        status = STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    Irp->IoStatus.Status = status;
+
+    if (!NT_SUCCESS(status))
+    {
+        Irp->IoStatus.Information = 0;
+    }
+
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+    return status;
+}
+
+NTSTATUS
 AWEAllocFlushBuffers(IN PDEVICE_OBJECT DeviceObject,
 IN PIRP Irp)
 {
@@ -529,7 +651,7 @@ IN PIRP Irp)
             IO_STATUS_BLOCK io_status;
             LARGE_INTEGER new_size;
 
-            status = AWEAllocTryAcquireProtection(context, TRUE);
+            status = AWEAllocTryAcquireProtection(context, TRUE, FALSE);
             if (!NT_SUCCESS(status))
             {
                 DbgPrint("AWEAlloc: Page table busy.\n");
@@ -597,7 +719,7 @@ IN PIRP Irp)
 
     KdPrint2(("AWEAlloc: System buffer: %p\n", system_buffer));
 
-    status = AWEAllocTryAcquireProtection(context, FALSE);
+    status = AWEAllocTryAcquireProtection(context, FALSE, FALSE);
     if (!NT_SUCCESS(status))
     {
         DbgPrint("AWEAlloc: Page table is busy.\n");
@@ -633,7 +755,7 @@ IN PIRP Irp)
         if ((page_offset_this_iter + bytes_this_iter) > ALLOC_PAGE_SIZE)
             bytes_this_iter = ALLOC_PAGE_SIZE - page_offset_this_iter;
 
-        status = AWEAllocMapPage(context, abs_offset_this_iter);
+        status = AWEAllocMapPage(context, abs_offset_this_iter, TRUE);
 
         if (!NT_SUCCESS(status))
         {
@@ -767,7 +889,8 @@ IN PWCHAR Message)
 NTSTATUS
 AWEAllocLoadImageFile(IN POBJECT_CONTEXT Context,
 IN OUT PIO_STATUS_BLOCK IoStatus,
-IN PUNICODE_STRING FileName)
+IN PUNICODE_STRING FileName,
+IN BOOLEAN OwnsReadLock)
 {
     OBJECT_ATTRIBUTES object_attributes;
     NTSTATUS status;
@@ -828,7 +951,7 @@ IN PUNICODE_STRING FileName)
         offset.QuadPart < file_standard.EndOfFile.QuadPart;
         offset.QuadPart += ALLOC_PAGE_SIZE)
     {
-        status = AWEAllocMapPage(Context, offset.QuadPart);
+        status = AWEAllocMapPage(Context, offset.QuadPart, OwnsReadLock);
 
         if (!NT_SUCCESS(status))
         {
@@ -920,7 +1043,8 @@ IN PIRP Irp)
             AWEAllocLoadImageFile((POBJECT_CONTEXT)
             io_stack->FileObject->FsContext2,
             &Irp->IoStatus,
-            &io_stack->FileObject->FileName);
+            &io_stack->FileObject->FileName,
+            FALSE);
 
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
@@ -1376,7 +1500,7 @@ IN PIRP Irp)
             return STATUS_BUFFER_TOO_SMALL;
         }
 
-        status = AWEAllocTryAcquireProtection(context, TRUE);
+        status = AWEAllocTryAcquireProtection(context, TRUE, FALSE);
         if (!NT_SUCCESS(status))
         {
             DbgPrint("AWEAlloc: Page table busy.\n");

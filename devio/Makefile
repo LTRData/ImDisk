@@ -7,10 +7,10 @@ publish: /usr/utils/devio.bz2 /usr/utils/devio.lzma
 
 install: /usr/local/bin/devio
 
-devio.$(UNAME): devio.c ../inc/*.h safeio.c safeio.h Makefile
+devio.$(UNAME): devio.c ../inc/*.h safeio.c safeio.h devio_types.h Makefile
 	gcc -Wall -Werror -Os -o devio.$(UNAME) devio.c safeio.c
 
-devio.static.$(UNAME): devio.c ../inc/*.h safeio.c safeio.h Makefile
+devio.static.$(UNAME): devio.c ../inc/*.h safeio.c safeio.h devio_types.h Makefile
 	gcc -Wall -Werror -static -Os -o devio.static.$(UNAME) devio.c safeio.c
 
 /usr/utils/devio.bz2: devio.static.$(UNAME)

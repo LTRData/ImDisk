@@ -2071,7 +2071,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
                 L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
                 L"\r\n"
-                L"Copyright (C) 2004-2014 Olof Lagerkvist.\r\n"
+                L"Copyright (C) 2004-2015 Olof Lagerkvist.\r\n"
                 L"http://www.ltr-data.se     olof@ltr-data.se\r\n"
                 L"\r\n"
                 L"Permission is hereby granted, free of charge, to any person\r\n"

@@ -10,8 +10,8 @@
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION IMDISK_RC_VERSION_FLD,11
-PRODUCTVERSION IMDISK_RC_VERSION_FLD,11
+FILEVERSION IMDISK_RC_VERSION_FLD,12
+PRODUCTVERSION IMDISK_RC_VERSION_FLD,12
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -28,12 +28,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "AWE Allocation Driver\0"
-            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".11\0"
+            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".12\0"
             VALUE "InternalName", "awealloc\0"
             VALUE "LegalCopyright", "Copyright © 2009-2015 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "awealloc.sys\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".11\0"
+            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".12\0"
         END
     END
     BLOCK "VarFileInfo"
