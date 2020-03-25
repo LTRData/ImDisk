@@ -1,4 +1,6 @@
 DIRS=sys \
      cpl \
+     cplcore \
      cli \
-     svc
+     svc \
+     awealloc

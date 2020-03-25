@@ -44,6 +44,9 @@ EXPORTS
 	_ImDiskAdjustImageFileSize@8
 	_ImDiskNativePathToWin32@4
 	_ImDiskOpenRefreshEvent@4
+	_ImDiskSaveRegistrySettings@4
+	_ImDiskRemoveRegistrySettings@4
+	_ImDiskGetRegistryAutoLoadDevices@4
 
 	MsgBoxLastError=_MsgBoxLastError@8
 	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
@@ -83,6 +86,9 @@ EXPORTS
 	ImDiskAdjustImageFileSize=_ImDiskAdjustImageFileSize@8
 	ImDiskNativePathToWin32=_ImDiskNativePathToWin32@4
 	ImDiskOpenRefreshEvent=_ImDiskOpenRefreshEvent@4
+	ImDiskSaveRegistrySettings=_ImDiskSaveRegistrySettings@4
+	ImDiskRemoveRegistrySettings=_ImDiskRemoveRegistrySettings@4
+	ImDiskGetRegistryAutoLoadDevices=_ImDiskGetRegistryAutoLoadDevices@4
 
 #else
 
@@ -126,5 +132,8 @@ EXPORTS
 	ImDiskAdjustImageFileSize
 	ImDiskNativePathToWin32
 	ImDiskOpenRefreshEvent
+	ImDiskSaveRegistrySettings
+	ImDiskRemoveRegistrySettings
+	ImDiskGetRegistryAutoLoadDevices
 
 #endif

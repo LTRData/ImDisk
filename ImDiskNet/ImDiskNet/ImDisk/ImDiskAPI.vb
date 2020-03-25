@@ -1134,6 +1134,41 @@ Namespace ImDisk
 
         End Function
 
+        ''' <summary>
+        ''' Adds registry settings for creating a virtual disk at system startup (or
+        ''' when driver is loaded).</summary>
+        ''' <param name="CreateData">ImDiskCreateData that contains device creation
+        ''' settings to save. This structure is for example returned by QueryDevice.</param>
+        Public Shared Sub SaveRegistrySettings(CreateData As DLL.ImDiskCreateData)
+
+            NativeFileIO.Win32Try(DLL.ImDiskSaveRegistrySettings(CreateData))
+
+        End Sub
+
+        ''' <summary>
+        '''   Remove registry settings for creating a virtual disk at system startup (or
+        '''   when driver is loaded).
+        '''</summary>
+        ''' <param name="DeviceNumber">Device number specified in registry settings.</param>
+        Public Shared Sub RemoveRegistrySettings(DeviceNumber As UInt32)
+
+            NativeFileIO.Win32Try(DLL.ImDiskRemoveRegistrySettings(DeviceNumber))
+
+        End Sub
+
+        ''' <summary>
+        '''   Retrieves number of auto-loading devices at system startup, or when driver
+        '''   is loaded. This is the value of the LoadDevices registry value for
+        '''   imdisk.sys driver.
+        ''' </summary>
+        Public Shared Function GetRegistryAutoLoadDevices() As UInt32
+
+            Dim LoadDevicesValue As UInt32
+            NativeFileIO.Win32Try(DLL.ImDiskGetRegistryAutoLoadDevices(LoadDevicesValue))
+            Return LoadDevicesValue
+
+        End Function
+
     End Class
 
 End Namespace

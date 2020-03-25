@@ -368,6 +368,21 @@
             <MarshalAs(UnmanagedType.Bool)> InheritHandle As Boolean
           ) As SafeWaitHandle
 
+        Public Declare Unicode Function ImDiskSaveRegistrySettings _
+            Lib "imdisk.cpl" _
+            (<[In]> ByRef CreateData As ImDiskCreateData
+             ) As Boolean
+
+        Public Declare Unicode Function ImDiskRemoveRegistrySettings _
+            Lib "imdisk.cpl" _
+            (DeviceNumber As UInt32
+             ) As Boolean
+
+        Public Declare Unicode Function ImDiskGetRegistryAutoLoadDevices _
+            Lib "imdisk.cpl" _
+            (<Out> ByRef LoadDevicesValue As UInt32
+             ) As Boolean
+
     End Class
 
 End Namespace

@@ -1,7 +1,7 @@
 /*
     API library for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2007-2010 Olof Lagerkvist.
+    Copyright (C) 2007-2014 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -55,6 +55,7 @@ KNOWN_FORMAT KnownFormats[] = {
 };
 
 void
+WINAPI
 DoEvents(HWND hWnd)
 {
   MSG msg;
@@ -244,7 +245,8 @@ ImDiskGetPartitionTypeName(IN BYTE PartitionType,
 
 	default:
 	  {
-	    swprintf(other_type, L"Type %.2Xh", PartitionType);
+	    _snwprintf(other_type, sizeof(other_type)/sizeof(*other_type),
+		       L"Type %.2Xh", PartitionType);
 	    name = other_type;
 	    break;
 	  }
@@ -2842,6 +2844,45 @@ ImDiskRemoveRegistrySettings(DWORD DeviceNumber)
   LocalFree(value_name);
 
   RegCloseKey(hkey);
+
+  return TRUE;
+}
+
+BOOL
+WINAPI
+ImDiskGetRegistryAutoLoadDevices(LPDWORD LoadDevicesValue)
+{
+  LONG err_code;
+  HKEY hkey;
+  DWORD value_size;
+
+  err_code = RegOpenKey(HKEY_LOCAL_MACHINE,
+			L"SYSTEM\\CurrentControlSet\\Services\\ImDisk"
+			IMDISK_CFG_PARAMETER_KEY,
+			&hkey);
+
+  if (err_code != ERROR_SUCCESS)
+    {
+      SetLastError(err_code);
+      return FALSE;
+    }
+
+  *LoadDevicesValue = 0;
+  value_size = sizeof(*LoadDevicesValue);
+  err_code = RegQueryValueEx(hkey,
+			     IMDISK_CFG_LOAD_DEVICES_VALUE,
+			     NULL,
+			     NULL,
+			     (LPBYTE) LoadDevicesValue,
+			     &value_size);
+
+  RegCloseKey(hkey);
+
+  if (err_code != ERROR_SUCCESS)
+    {
+      SetLastError(err_code);
+      return FALSE;
+    }
 
   return TRUE;
 }

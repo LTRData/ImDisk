@@ -179,7 +179,7 @@ ImDiskSyntaxHelp()
      "        partition in an image file that contains an image of a complete hard\r\n"
      "        disk, not just one partition. This parameter has no effect when\r\n"
      "        creating a blank vm type virtual disk. When creating a vm type virtual\r\n"
-     "        disk with a pre-load image file specified with -f or -F paramters, the\r\n"
+     "        disk with a pre-load image file specified with -f or -F parameters, the\r\n"
      "        -b parameter specifies an offset in the image file where the image to\r\n"
      "        be loaded into the vm type virtual disk begins.\r\n"
      "\n"

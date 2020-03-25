@@ -54,6 +54,7 @@ EXPORTS
 	_ImDiskOpenRefreshEvent@4
 	_ImDiskSaveRegistrySettings@4
 	_ImDiskRemoveRegistrySettings@4
+	_ImDiskGetRegistryAutoLoadDevices@4
 
 	MsgBoxLastError=_MsgBoxLastError@8
 	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
@@ -96,6 +97,7 @@ EXPORTS
 	ImDiskOpenRefreshEvent=_ImDiskOpenRefreshEvent@4
 	ImDiskSaveRegistrySettings=_ImDiskSaveRegistrySettings@4
 	ImDiskRemoveRegistrySettings=_ImDiskRemoveRegistrySettings@4
+	ImDiskGetRegistryAutoLoadDevices=_ImDiskGetRegistryAutoLoadDevices@4
 
 #else
 
@@ -149,5 +151,6 @@ EXPORTS
 	ImDiskOpenRefreshEvent
 	ImDiskSaveRegistrySettings
 	ImDiskRemoveRegistrySettings
+	ImDiskGetRegistryAutoLoadDevices
 
 #endif

@@ -51,8 +51,6 @@
 
 #define POOL_TAG                'AEWA'
 
-#define FILE_DEVICE_IMDISK      0x8372
-
 #define AWEALLOC_DEVICE_NAME    L"\\Device\\AWEAlloc"
 #define AWEALLOC_SYMLINK_NAME   L"\\DosDevices\\AWEAlloc"
 
@@ -136,6 +134,10 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 		       IN PIRP Irp);
 
 NTSTATUS
+AWEAllocFlushBuffers(IN PDEVICE_OBJECT DeviceObject,
+		     IN PIRP Irp);
+
+NTSTATUS
 AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 		  IN PIRP Irp);
 
@@ -193,7 +195,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
   status = IoCreateDevice(DriverObject,
 			  0,
 			  &ctl_device_name,
-			  FILE_DEVICE_IMDISK,
+			  FILE_DEVICE_NULL,
 			  0,
 			  FALSE,
 			  &device_object);
@@ -215,6 +217,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
   DriverObject->MajorFunction[IRP_MJ_CLOSE] = AWEAllocClose;
   DriverObject->MajorFunction[IRP_MJ_READ] = AWEAllocReadWrite;
   DriverObject->MajorFunction[IRP_MJ_WRITE] = AWEAllocReadWrite;
+  DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS] = AWEAllocFlushBuffers;
   DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION] =
     AWEAllocQueryInformation;
   DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION] = AWEAllocSetInformation;
@@ -332,7 +335,9 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
 
   if (block == NULL)
     {
-      KdPrint2(("AWEAlloc: MapPage: Cannot find block for page.\n"));
+      DbgPrint("AWEAlloc: MapPage: Cannot find blk for BaseAddress=%#I64x.\n",
+	       page_base);
+
       return STATUS_DRIVER_INTERNAL_ERROR;
     }
 
@@ -345,7 +350,7 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
   status = AWEAllocTryAcquireProtection(Context, TRUE);
   if (!NT_SUCCESS(status))
     {
-      KdPrint(("AWEAlloc: Block table busy.\n"));
+      DbgPrint("AWEAlloc: Block table busy.\n");
       return status;
     }
 
@@ -370,7 +375,7 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
 
 	  if (Context->CurrentMdl == NULL)
 	    {
-	      KdPrint(("AWEAlloc: IoAllocateMdl() FAILED.\n"));
+	      DbgPrint("AWEAlloc: IoAllocateMdl() FAILED.\n");
 	      return STATUS_INSUFFICIENT_RESOURCES;
 	    }
 
@@ -394,7 +399,7 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
 
 	  if (Context->CurrentPtr == NULL)
 	    {
-	      KdPrint(("AWEAlloc: MmGetSystemAddressForMdlSafe() FAILED.\n"));
+	      DbgPrint("AWEAlloc: MmGetSystemAddressForMdlSafe() FAILED.\n");
 	      
 	      AWEAllocLogError(AWEAllocDriverObject,
 			       0,
@@ -430,6 +435,8 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
     }
   except (EXCEPTION_EXECUTE_HANDLER)
     {
+      DbgPrint("AWEAlloc: Exception occured during page mapping.\n");
+
       AWEAllocLogError(AWEAllocDriverObject,
 		       0,
 		       0,
@@ -444,8 +451,20 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
 		       NULL,
 		       L"Exception occured during page mapping.");
 
-      return STATUS_DEVICE_BUSY;
+      return STATUS_INSUFFICIENT_RESOURCES;
     }
+}
+
+NTSTATUS
+AWEAllocFlushBuffers(IN PDEVICE_OBJECT DeviceObject,
+		     IN PIRP Irp)
+{
+  Irp->IoStatus.Information = 0;
+  Irp->IoStatus.Status = STATUS_SUCCESS;
+
+  IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+  return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -453,14 +472,13 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 		  IN PIRP Irp)
 {
   PIO_STACK_LOCATION io_stack = IoGetCurrentIrpStackLocation(Irp);
-  POBJECT_CONTEXT context = io_stack->FileObject->FsContext;
+  POBJECT_CONTEXT context = io_stack->FileObject->FsContext2;
   ULONG length_done = 0;
   NTSTATUS status;
   PUCHAR system_buffer;
 
   KdPrint2(("AWEAlloc: Read/write request Offset=%#I64x Len=%#x.\n",
-	    io_stack->Parameters.Read.ByteOffset.HighPart,
-	    io_stack->Parameters.Read.ByteOffset.LowPart,
+	    io_stack->Parameters.Read.ByteOffset,
 	    io_stack->Parameters.Read.Length));
 
   if (context == NULL)
@@ -502,11 +520,50 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
   if ((io_stack->Parameters.Read.ByteOffset.QuadPart +
        io_stack->Parameters.Read.Length) > context->VirtualSize)
     {
-      io_stack->Parameters.Read.Length = (ULONG)
-	(context->VirtualSize - io_stack->Parameters.Read.ByteOffset.QuadPart);
+      if (io_stack->MajorFunction == IRP_MJ_WRITE)
+	{
+	  IO_STATUS_BLOCK io_status;
+	  LARGE_INTEGER new_size;
 
-      KdPrint2(("AWEAlloc: Read/write request towards EOF. Len=%x\n",
-		io_stack->Parameters.Read.Length));
+	  status = AWEAllocTryAcquireProtection(context, TRUE);
+	  if (!NT_SUCCESS(status))
+	    {
+	      DbgPrint("AWEAlloc: Page table busy.\n");
+	      Irp->IoStatus.Status = status;
+	      Irp->IoStatus.Information = 0;
+	      IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	      return status;
+	    }
+
+	  new_size.QuadPart =
+	    io_stack->Parameters.Read.ByteOffset.QuadPart +
+	    io_stack->Parameters.Read.Length;
+
+	  new_size.QuadPart = max(new_size.QuadPart, context->VirtualSize);
+
+	  status = AWEAllocSetSize(context,
+				   &io_status,
+				   &new_size);
+	  if (!NT_SUCCESS(status))
+	    {
+	      DbgPrint("AWEAlloc: Error growing in-memory file.\n");
+	      Irp->IoStatus.Status = status;
+	      Irp->IoStatus.Information = 0;
+	      IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	      return status;
+	    }
+
+	  AWEAllocReleaseProtection(context, TRUE);
+	}
+      else
+	{
+	  io_stack->Parameters.Read.Length = (ULONG)
+	    (context->VirtualSize -
+	     io_stack->Parameters.Read.ByteOffset.QuadPart);
+
+	  KdPrint2(("AWEAlloc: Read request towards EOF. Len set to %x\n",
+		    io_stack->Parameters.Read.Length));
+	}
     }
 
   if (io_stack->Parameters.Read.Length == 0)
@@ -526,7 +583,7 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
   if (system_buffer == NULL)
     {
-      KdPrint(("AWEAlloc: Failed mapping system buffer.\n"));
+      DbgPrint("AWEAlloc: Failed mapping system buffer.\n");
 
       Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
       Irp->IoStatus.Information = 0;
@@ -539,7 +596,7 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
   status = AWEAllocTryAcquireProtection(context, FALSE);
   if (!NT_SUCCESS(status))
     {
-      KdPrint(("AWEAlloc: Page table is busy.\n"));
+      DbgPrint("AWEAlloc: Page table is busy.\n");
 
       Irp->IoStatus.Status = status;
       Irp->IoStatus.Information = 0;
@@ -576,7 +633,7 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
       if (!NT_SUCCESS(status))
 	{
-	  KdPrint(("AWEAlloc: Failed mapping current image page.\n"));
+	  DbgPrint("AWEAlloc: Failed mapping current image page.\n");
 
 	  AWEAllocReleaseProtection(context, FALSE);
 
@@ -653,8 +710,7 @@ AWEAllocLoadImageFile(IN POBJECT_CONTEXT Context,
 		      &object_attributes,
 		      IoStatus,
 		      FILE_SHARE_READ |
-		      FILE_SHARE_DELETE |
-		      FILE_SHARE_WRITE,
+		      FILE_SHARE_DELETE,
 		      FILE_NON_DIRECTORY_FILE |
 		      FILE_SEQUENTIAL_ONLY |
 		      FILE_NO_INTERMEDIATE_BUFFERING |
@@ -742,10 +798,10 @@ AWEAllocCreate(IN PDEVICE_OBJECT DeviceObject,
 
   PAGED_CODE();
 
-  io_stack->FileObject->FsContext =
+  io_stack->FileObject->FsContext2 =
     ExAllocatePoolWithTag(NonPagedPool, sizeof(OBJECT_CONTEXT), POOL_TAG);
 
-  if (io_stack->FileObject->FsContext == NULL)
+  if (io_stack->FileObject->FsContext2 == NULL)
     {
       KdPrint(("AWEAlloc: Pool allocation failed.\n"));
 
@@ -755,10 +811,19 @@ AWEAllocCreate(IN PDEVICE_OBJECT DeviceObject,
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-  RtlZeroMemory(io_stack->FileObject->FsContext, sizeof(OBJECT_CONTEXT));
+  RtlZeroMemory(io_stack->FileObject->FsContext2, sizeof(OBJECT_CONTEXT));
+
+  io_stack->FileObject->Flags |= FO_DELETE_ON_CLOSE | FO_TEMPORARY_FILE;
+
+  io_stack->FileObject->ReadAccess = TRUE;
+  io_stack->FileObject->WriteAccess = TRUE;
+  io_stack->FileObject->DeleteAccess = TRUE;
+  io_stack->FileObject->SharedRead = TRUE;
+  io_stack->FileObject->SharedWrite = FALSE;
+  io_stack->FileObject->SharedDelete = FALSE;
 
   KeInitializeSpinLock
-    (&((POBJECT_CONTEXT)io_stack->FileObject->FsContext)->IOLock);
+    (&((POBJECT_CONTEXT)io_stack->FileObject->FsContext2)->IOLock);
 
   MmResetDriverPaging((PVOID)(ULONG_PTR)DriverEntry);
 
@@ -773,7 +838,7 @@ AWEAllocCreate(IN PDEVICE_OBJECT DeviceObject,
 
       status =
 	AWEAllocLoadImageFile((POBJECT_CONTEXT)
-			      io_stack->FileObject->FsContext,
+			      io_stack->FileObject->FsContext2,
 			      &Irp->IoStatus,
 			      &io_stack->FileObject->FileName);
 
@@ -811,7 +876,7 @@ AWEAllocClose(IN PDEVICE_OBJECT DeviceObject,
 	      IN PIRP Irp)
 {
   PIO_STACK_LOCATION io_stack = IoGetCurrentIrpStackLocation(Irp);
-  POBJECT_CONTEXT context = io_stack->FileObject->FsContext;
+  POBJECT_CONTEXT context = io_stack->FileObject->FsContext2;
 
   KdPrint(("AWEAlloc: Close.\n"));
 
@@ -856,7 +921,7 @@ AWEAllocQueryInformation(IN PDEVICE_OBJECT DeviceObject,
 			 IN PIRP Irp)
 {
   PIO_STACK_LOCATION io_stack = IoGetCurrentIrpStackLocation(Irp);
-  POBJECT_CONTEXT context = io_stack->FileObject->FsContext;
+  POBJECT_CONTEXT context = io_stack->FileObject->FsContext2;
 
   PAGED_CODE();
 
@@ -1194,7 +1259,7 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 		       IN PIRP Irp)
 {
   PIO_STACK_LOCATION io_stack = IoGetCurrentIrpStackLocation(Irp);
-  POBJECT_CONTEXT context = io_stack->FileObject->FsContext;
+  POBJECT_CONTEXT context = io_stack->FileObject->FsContext2;
 
   PAGED_CODE();
 
@@ -1222,7 +1287,7 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 	status = AWEAllocTryAcquireProtection(context, TRUE);
 	if (!NT_SUCCESS(status))
 	  {
-	    KdPrint(("AWEAlloc: Page table busy.\n"));
+	    DbgPrint("AWEAlloc: Page table busy.\n");
 	    Irp->IoStatus.Status = status;
 	    Irp->IoStatus.Information = 0;
 	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1332,7 +1397,7 @@ AWEAllocLogError(IN PVOID Object,
 
   if (packet_size > ERROR_LOG_MAXIMUM_SIZE)
     {
-      KdPrint(("ImDisk: Warning: Too large error log packet.\n"));
+      DbgPrint("AWEAlloc: Warning: Too large error log packet.\n");
       return;
     }
 
@@ -1342,7 +1407,9 @@ AWEAllocLogError(IN PVOID Object,
 
   if (error_log_packet == NULL)
     {
-      KdPrint(("ImDisk: Warning: IoAllocateErrorLogEntry() returned NULL.\n"));
+      DbgPrint
+	("AWEAlloc: Warning: IoAllocateErrorLogEntry() returned NULL.\n");
+
       return;
     }
 
