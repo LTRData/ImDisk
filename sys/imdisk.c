@@ -6596,94 +6596,139 @@ OUT PVOID Buffer,
 IN SIZE_T Length,
 IN PLARGE_INTEGER Offset)
 {
-    NTSTATUS status;
-    SIZE_T LengthDone = 0;
+    NTSTATUS status = STATUS_SUCCESS;
+    SIZE_T length_done = 0;
+    PUCHAR intermediate_buffer = NULL;
+    ULONG request_length;
 
     ASSERT(FileHandle != NULL);
     ASSERT(IoStatusBlock != NULL);
     ASSERT(Buffer != NULL);
 
-    while (LengthDone < Length)
+    if (Length > (8UL << 20))
     {
-	SIZE_T LongRequestLength = Length - LengthDone;
-	ULONG RequestLength;
-	if (LongRequestLength > 0x0000000080000000)
-	    RequestLength = 0x80000000;
-	else
-	    RequestLength = (ULONG)LongRequestLength;
+	request_length = (8UL << 20);
+    }
+    else
+    {
+	request_length = (ULONG)Length;
+    }
+
+    while (length_done < Length)
+    {
+	SIZE_T LongRequestLength = Length - length_done;
+	if (LongRequestLength < request_length)
+	{
+	    request_length = (ULONG)LongRequestLength;
+	}
 
 	for (;;)
 	{
-	    LARGE_INTEGER RequestOffset;
-	    PUCHAR InterBuffer = ExAllocatePoolWithTag(PagedPool,
-		RequestLength,
-		POOL_TAG);
+	    LARGE_INTEGER current_file_offset;
 
-	    if (InterBuffer == NULL)
+	    current_file_offset.QuadPart = Offset->QuadPart + length_done;
+
+	    if (intermediate_buffer == NULL)
 	    {
-		KdPrint(("ImDisk: Insufficient paged pool to allocate "
-		    "intermediate buffer for ImDiskSafeReadFile() "
-		    "(%u bytes).\n", RequestLength));
+		intermediate_buffer = ExAllocatePoolWithTag(NonPagedPool,
+		    request_length,
+		    POOL_TAG);
 
-		RequestLength >>= 2;
-		continue;
+		if (intermediate_buffer == NULL)
+		{
+		    DbgPrint("ImDisk: ImDiskSafeReadFile: Insufficient paged pool to allocate "
+			"intermediate buffer (%u bytes).\n", request_length);
+
+		    IoStatusBlock->Status = STATUS_INSUFFICIENT_RESOURCES;
+		    IoStatusBlock->Information = 0;
+		    return IoStatusBlock->Status;
+		}
 	    }
-
-	    RequestOffset.QuadPart = Offset->QuadPart + LengthDone;
 
 	    status = ZwReadFile(FileHandle,
 		NULL,
 		NULL,
 		NULL,
 		IoStatusBlock,
-		InterBuffer,
-		RequestLength,
-		&RequestOffset,
+		intermediate_buffer,
+		request_length,
+		&current_file_offset,
 		NULL);
 
-	    if ((status == STATUS_INSUFFICIENT_RESOURCES) |
+	    if (((status == STATUS_INSUFFICIENT_RESOURCES) |
 		(status == STATUS_INVALID_BUFFER_SIZE) |
-		(status == STATUS_INVALID_PARAMETER))
+		(status == STATUS_INVALID_PARAMETER)) &
+		(request_length >= 2048))
 	    {
-		ExFreePoolWithTag(InterBuffer, POOL_TAG);
+		ExFreePoolWithTag(intermediate_buffer, POOL_TAG);
+		intermediate_buffer = NULL;
 
-		RequestLength >>= 2;
+		DbgPrint("ImDisk: ImDiskSafeReadFile: ZwReadFile error reading "
+		    "%u bytes. Retrying with smaller read size. (Status 0x%X)\n",
+		    request_length,
+		    status);
+
+		request_length >>= 2;
+
 		continue;
 	    }
 
 	    if (!NT_SUCCESS(status))
 	    {
-		ExFreePoolWithTag(InterBuffer, POOL_TAG);
+		DbgPrint("ImDisk: ImDiskSafeReadFile: ZwReadFile error reading "
+		    "%u bytes. (Status 0x%X)\n",
+		    request_length,
+		    status);
+
 		break;
 	    }
 
-	    RtlCopyMemory((PUCHAR)Buffer + LengthDone, InterBuffer,
+	    RtlCopyMemory((PUCHAR)Buffer + length_done, intermediate_buffer,
 		IoStatusBlock->Information);
 
-	    ExFreePoolWithTag(InterBuffer, POOL_TAG);
 	    break;
 	}
 
 	if (!NT_SUCCESS(status))
 	{
-	    IoStatusBlock->Status = status;
-	    IoStatusBlock->Information = LengthDone;
-	    return IoStatusBlock->Status;
+	    IoStatusBlock->Information = length_done;
+	    break;
 	}
 
 	if (IoStatusBlock->Information == 0)
 	{
-	    IoStatusBlock->Status = STATUS_CONNECTION_RESET;
-	    IoStatusBlock->Information = LengthDone;
-	    return IoStatusBlock->Status;
+	    DbgPrint("ImDisk: ImDiskSafeReadFile: IoStatusBlock->Information == 0, "
+		"returning STATUS_CONNECTION_RESET.\n", status);
+
+	    status = STATUS_CONNECTION_RESET;
+	    break;
 	}
 
-	LengthDone += IoStatusBlock->Information;
+	KdPrint(("ImDisk: ImDiskSafeReadFile: Done %u bytes.\n",
+	    (ULONG)IoStatusBlock->Information));
+
+	length_done += IoStatusBlock->Information;
     }
 
-    IoStatusBlock->Status = STATUS_SUCCESS;
-    IoStatusBlock->Information = LengthDone;
-    return IoStatusBlock->Status;
+    if (intermediate_buffer != NULL)
+    {
+	ExFreePoolWithTag(intermediate_buffer, POOL_TAG);
+	intermediate_buffer = NULL;
+    }
+
+    if (!NT_SUCCESS(status))
+    {
+	DbgPrint("ImDisk: ImDiskSafeReadFile: Error return "
+	    "(Status 0x%X)\n", status);
+    }
+    else
+    {
+	KdPrint(("ImDisk: ImDiskSafeReadFile: Successful.\n"));
+    }
+
+    IoStatusBlock->Status = status;
+    IoStatusBlock->Information = length_done;
+    return status;
 }
 
 NTSTATUS

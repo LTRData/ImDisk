@@ -2,7 +2,7 @@
 #define _UNICODE
 #include <windows.h>
 
-#include <imdiskver.h>
+#include "..\inc\imdiskver.h"
 
 /////////////////////////////////////////////////////////////////////////////
 //

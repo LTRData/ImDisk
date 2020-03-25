@@ -15,7 +15,7 @@ STRINGTABLE
  IDS_CPLAPPLET_DESCRIPTION, "ImDisk Virtual Disk Driver"
 }
 
-#include <imdiskver.h>
+#include "..\inc\imdiskver.h"
 
 /////////////////////////////////////////////////////////////////////////////
 //

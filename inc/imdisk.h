@@ -94,11 +94,27 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define KEY_NAME_HKEY_MOUNTPOINTS2  \
   _T("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2")
 
+#define IMDISK_WINVER_MAJOR() (GetVersion() & 0xFF)
+#define IMDISK_WINVER_MINOR() ((GetVersion() & 0xFF00) >> 8)
+
+#define IMDISK_WINVER() ((IMDISK_WINVER_MAJOR() << 8) | \
+    IMDISK_WINVER_MINOR())
+
 #if defined(NT4_COMPATIBLE) && !defined(_WIN64)
-#define IMDISK_GTE_WIN2K() ((GetVersion() & 0xFF) >= 0x05)
+#define IMDISK_GTE_WIN2K() (IMDISK_WINVER_MAJOR() >= 0x05)
 #else
 #define IMDISK_GTE_WIN2K() TRUE
 #endif
+
+#ifdef _WIN64
+#define IMDISK_GTE_WINXP() TRUE
+#else
+#define IMDISK_GTE_WINXP() (IMDISK_WINVER() >= 0x0501)
+#endif
+
+#define IMDISK_GTE_SRV2003() (IMDISK_WINVER() >= 0x0502)
+
+#define IMDISK_GTE_VISTA() (IMDISK_WINVER_MAJOR() >= 0x06)
 
 #ifndef IMDISK_API
 #define IMDISK_API

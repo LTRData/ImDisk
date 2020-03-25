@@ -886,10 +886,11 @@ BOOL SaveSettings)
 	    }
 	}
 #ifndef _WIN64
-	else
+	else if (!IMDISK_GTE_WINXP())
 	    if (!DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
 		PrintLastError(L"Error creating mount point:");
 #endif
+
     }
 
     if (NumericPrint)

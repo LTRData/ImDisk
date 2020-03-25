@@ -601,8 +601,18 @@ ImDiskCreateMountPoint(LPCWSTR MountPoint, LPCWSTR Target)
 
 #else
 
-	DefineDosDevice(ddd_flags, GlobalMountPoint, Target);
-	return DefineDosDevice(ddd_flags, MountPoint, Target);
+	if (IMDISK_GTE_WINXP())
+	{
+	    if (DefineDosDevice(ddd_flags, GlobalMountPoint, Target))
+		return TRUE;
+	    else
+		return DefineDosDevice(ddd_flags, MountPoint, Target);
+	}
+	else
+	{
+	    DefineDosDevice(ddd_flags, GlobalMountPoint, Target);
+	    return DefineDosDevice(ddd_flags, MountPoint, Target);
+	}
 
 #endif
 
@@ -1453,17 +1463,20 @@ LPWSTR MountPoint)
 	    (MountPoint[1] == L':'))
 	{
 #ifndef _WIN64
-	    DWORD ddd_flags = DDD_RAW_TARGET_PATH;
-
-	    if (IMDISK_GTE_WIN2K() &
-		((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) != 0))
+	    if (!IMDISK_GTE_WINXP())
 	    {
-		ddd_flags |= DDD_NO_BROADCAST_SYSTEM;
-	    }
+		DWORD ddd_flags = DDD_RAW_TARGET_PATH;
 
-	    if (!DefineDosDevice(ddd_flags, MountPoint, device_path))
-		if (hWnd != NULL)
-		    MsgBoxLastError(hWnd, L"Error creating mount point:");
+		if (IMDISK_GTE_WIN2K() &
+		    ((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) != 0))
+		{
+		    ddd_flags |= DDD_NO_BROADCAST_SYSTEM;
+		}
+
+		if (!DefineDosDevice(ddd_flags, MountPoint, device_path))
+		    if (hWnd != NULL)
+			MsgBoxLastError(hWnd, L"Error creating mount point:");
+	    }
 #endif
 
 	    if (hWnd != NULL)
