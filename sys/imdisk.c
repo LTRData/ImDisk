@@ -3714,6 +3714,7 @@ IN PIRP Irp)
 		KeAcquireSpinLock(&device_extension->last_io_lock, &old_irql);
 
 		if (device_extension->last_io_data != NULL)
+		{
 			if ((io_stack->Parameters.Read.ByteOffset.QuadPart >=
 				device_extension->last_io_offset) &
 				((io_stack->Parameters.Read.ByteOffset.QuadPart +
@@ -3721,40 +3722,41 @@ IN PIRP Irp)
 				(device_extension->last_io_offset +
 				device_extension->last_io_length)))
 			{
-			PUCHAR system_buffer =
-				(PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress,
-				NormalPagePriority);
-			if (system_buffer == NULL)
-			{
-				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-				Irp->IoStatus.Information = 0;
-				status = STATUS_INSUFFICIENT_RESOURCES;
+				PUCHAR system_buffer =
+					(PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress,
+					NormalPagePriority);
+				if (system_buffer == NULL)
+				{
+					Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+					Irp->IoStatus.Information = 0;
+					status = STATUS_INSUFFICIENT_RESOURCES;
+				}
+				else
+				{
+					KdPrint(("ImDisk: Device %i read Offset=0x%.8x%.8x Len=%#x, "
+						"intermediate cache hit.\n",
+						device_extension->device_number,
+						io_stack->Parameters.Read.ByteOffset.HighPart,
+						io_stack->Parameters.Read.ByteOffset.LowPart,
+						io_stack->Parameters.Read.Length));
+
+					Irp->IoStatus.Status = STATUS_SUCCESS;
+					Irp->IoStatus.Information = io_stack->Parameters.Read.Length;
+
+					RtlCopyMemory(system_buffer,
+						device_extension->last_io_data +
+						io_stack->Parameters.Read.ByteOffset.QuadPart -
+						device_extension->last_io_offset,
+						Irp->IoStatus.Information);
+
+					if (device_extension->byte_swap)
+						ImDiskByteSwapBuffer(system_buffer,
+						Irp->IoStatus.Information);
+
+					status = STATUS_SUCCESS;
+				}
 			}
-			else
-			{
-				KdPrint(("ImDisk: Device %i read Offset=0x%.8x%.8x Len=%#x, "
-					"intermediate cache hit.\n",
-					device_extension->device_number,
-					io_stack->Parameters.Read.ByteOffset.HighPart,
-					io_stack->Parameters.Read.ByteOffset.LowPart,
-					io_stack->Parameters.Read.Length));
-
-				Irp->IoStatus.Status = STATUS_SUCCESS;
-				Irp->IoStatus.Information = io_stack->Parameters.Read.Length;
-
-				RtlCopyMemory(system_buffer,
-					device_extension->last_io_data +
-					io_stack->Parameters.Read.ByteOffset.QuadPart -
-					device_extension->last_io_offset,
-					Irp->IoStatus.Information);
-
-				if (device_extension->byte_swap)
-					ImDiskByteSwapBuffer(system_buffer,
-					Irp->IoStatus.Information);
-
-				status = STATUS_SUCCESS;
-			}
-			}
+		}
 
 		KeReleaseSpinLock(&device_extension->last_io_lock, old_irql);
 	}
@@ -5758,7 +5760,7 @@ ImDiskDeviceThread(IN PVOID Context)
 			}
 			else
 				irp->IoStatus.Status =
-				ZwReadFile(device_extension->file_handle,
+				NtReadFile(device_extension->file_handle,
 				NULL,
 				NULL,
 				NULL,
@@ -5768,19 +5770,20 @@ ImDiskDeviceThread(IN PVOID Context)
 				&offset,
 				NULL);
 
-			RtlCopyMemory(system_buffer, device_extension->last_io_data,
-				irp->IoStatus.Information);
-
-			if (device_extension->byte_swap)
-				ImDiskByteSwapBuffer(system_buffer,
-				irp->IoStatus.Information);
-
 			if (NT_SUCCESS(irp->IoStatus.Status))
 			{
+				RtlCopyMemory(system_buffer, device_extension->last_io_data,
+					irp->IoStatus.Information);
+
+				if (device_extension->byte_swap)
+					ImDiskByteSwapBuffer(system_buffer,
+					irp->IoStatus.Information);
+
 				device_extension->last_io_offset =
 					io_stack->Parameters.Read.ByteOffset.QuadPart;
+
 				device_extension->last_io_length =
-					io_stack->Parameters.Read.Length;
+					(ULONG)irp->IoStatus.Information;
 			}
 			else
 			{
@@ -5926,7 +5929,7 @@ ImDiskDeviceThread(IN PVOID Context)
 						io_stack->Parameters.Write.Length;
 
 					irp->IoStatus.Status =
-						ZwFsControlFile(device_extension->file_handle,
+						NtFsControlFile(device_extension->file_handle,
 						NULL,
 						NULL,
 						NULL,
@@ -5957,7 +5960,7 @@ ImDiskDeviceThread(IN PVOID Context)
 
 				if (!set_zero_data)
 					irp->IoStatus.Status =
-					ZwWriteFile(device_extension->file_handle,
+					NtWriteFile(device_extension->file_handle,
 					NULL,
 					NULL,
 					NULL,
@@ -6014,7 +6017,7 @@ ImDiskDeviceThread(IN PVOID Context)
 					&device_extension->image_offset);
 				else
 					irp->IoStatus.Status =
-					ZwReadFile(device_extension->file_handle,
+					NtReadFile(device_extension->file_handle,
 					NULL,
 					NULL,
 					NULL,
@@ -7379,7 +7382,7 @@ IN PIRP Irp)
 			track_length,
 			&start_offset);
 		else
-			status = ZwWriteFile(Extension->file_handle,
+			status = NtWriteFile(Extension->file_handle,
 			NULL,
 			NULL,
 			NULL,

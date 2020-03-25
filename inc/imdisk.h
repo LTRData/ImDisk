@@ -40,7 +40,8 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0184
+#include "imdiskver.h"
+#define IMDISK_VERSION                 ((IMDISK_MAJOR_VERSION << 8) | (IMDISK_MINOR_VERSION << 4) | (IMDISK_MINOR_LOW_VERSION))
 #define IMDISK_DRIVER_VERSION          0x0103
 
 #ifndef ZERO_STRUCT
@@ -92,6 +93,16 @@ OTHER DEALINGS IN THE SOFTWARE.
   _T("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints")
 #define KEY_NAME_HKEY_MOUNTPOINTS2  \
   _T("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2")
+
+#if defined(NT4_COMPATIBLE) && !defined(_WIN64)
+#define IMDISK_GTE_WIN2K() ((GetVersion() & 0xFF) >= 0x05)
+#else
+#define IMDISK_GTE_WIN2K() TRUE
+#endif
+
+#ifndef IMDISK_API
+#define IMDISK_API
+#endif
 
 ///
 /// Base value for the IOCTL's.
@@ -275,7 +286,7 @@ extern "C" {
 	/**
 	Get behaviour flags for API.
 	*/
-	ULONGLONG
+	IMDISK_API ULONGLONG
 		WINAPI
 		ImDiskGetAPIFlags();
 
@@ -284,7 +295,7 @@ extern "C" {
 
 	Flags        New flags value to set.
 	*/
-	ULONGLONG
+	IMDISK_API ULONGLONG
 		WINAPI
 		ImDiskSetAPIFlags(ULONGLONG Flags);
 
@@ -302,7 +313,7 @@ extern "C" {
 
 	nCmdShow     Ignored.
 	*/
-	void
+	IMDISK_API void
 		WINAPI
 		RunDLL_MountFile(HWND hWnd,
 		HINSTANCE hInst,
@@ -325,7 +336,7 @@ extern "C" {
 
 	nCmdShow     Ignored.
 	*/
-	void
+	IMDISK_API void
 		WINAPI
 		RunDLL_RemoveDevice(HWND hWnd,
 		HINSTANCE hInst,
@@ -348,7 +359,7 @@ extern "C" {
 
 	nCmdShow     Ignored.
 	*/
-	void
+	IMDISK_API void
 		WINAPI
 		RunDLL_SaveImageFile(HWND hWnd,
 		HINSTANCE hInst,
@@ -368,7 +379,7 @@ extern "C" {
 	lpMessage    Format string to be used in call to FormatMessage followed
 	by field parameters.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		CDECL
 		MsgBoxPrintF(IN HWND hWndParent OPTIONAL,
 		IN UINT uStyle,
@@ -383,7 +394,7 @@ extern "C" {
 
 	Prefix       Text to print before the error message string.
 	*/
-	VOID
+	IMDISK_API VOID
 		WINAPI
 		MsgBoxLastError(IN HWND hWndParent OPTIONAL,
 		IN LPCWSTR Prefix);
@@ -398,7 +409,7 @@ extern "C" {
 
 	NameSize       Size of memory area pointed to by the Name parameter.
 	*/
-	VOID
+	IMDISK_API VOID
 		WINAPI
 		ImDiskGetPartitionTypeName(IN BYTE PartitionType,
 		IN OUT LPWSTR Name,
@@ -416,7 +427,7 @@ extern "C" {
 
 	Offset       Returned offset in bytes if function returns TRUE.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetOffsetByFileExt(IN LPCWSTR ImageFile,
 		IN OUT PLARGE_INTEGER Offset);
@@ -442,7 +453,7 @@ extern "C" {
 	which will receive information from four recognized primary
 	partition entries followed by four recognized extended entries.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 		IN DWORD SectorSize OPTIONAL,
@@ -494,7 +505,7 @@ extern "C" {
 	bytes actually read into Buffer. This value can be equal to or
 	less than NumberOfBytesToRead parameter.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskReadFileHandle(IN HANDLE Handle,
 		IN OUT LPVOID Buffer,
@@ -528,7 +539,7 @@ extern "C" {
 	which will receive information from four recognized primary
 	partition entries followed by four recognized extended entries.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetPartitionInfoIndirect(IN HANDLE Handle,
 		IN ImDiskReadFileProc ReadFileProc,
@@ -545,7 +556,7 @@ extern "C" {
 	with "non-raw" image files with headers before the actual disk
 	image data.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskImageContainsISOFS(IN LPCWSTR ImageFile,
 		IN PLARGE_INTEGER Offset OPTIONAL);
@@ -563,7 +574,7 @@ extern "C" {
 	with "non-raw" image files with headers before the actual disk
 	image data.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskImageContainsISOFSIndirect(IN HANDLE Handle,
 		IN ImDiskReadFileProc ReadFileProc,
@@ -574,7 +585,7 @@ extern "C" {
 
 	ServiceName  Key name of the service or driver.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskStartService(IN LPWSTR ServiceName);
 
@@ -590,7 +601,7 @@ extern "C" {
 	Target       Target device path on kernel object namespace form, e.g.
 	\Device\ImDisk2 or similar.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskCreateMountPoint(IN LPCWSTR MountPoint,
 		IN LPCWSTR Target);
@@ -602,7 +613,7 @@ extern "C" {
 	MountPoint   Path to a reparse point on an NTFS volume, or a drive letter
 	followed by a colon to remove a drive letter mount point.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskRemoveMountPoint(IN LPCWSTR MountPoint);
 
@@ -614,7 +625,7 @@ extern "C" {
 
 	AccessMode   Access mode to request.
 	*/
-	HANDLE
+	IMDISK_API HANDLE
 		WINAPI
 		ImDiskOpenDeviceByName(IN PUNICODE_STRING FileName,
 		IN DWORD AccessMode);
@@ -626,7 +637,7 @@ extern "C" {
 
 	AccessMode   Access mode to request.
 	*/
-	HANDLE
+	IMDISK_API HANDLE
 		WINAPI
 		ImDiskOpenDeviceByNumber(IN DWORD DeviceNumber,
 		IN DWORD AccessMode);
@@ -638,7 +649,7 @@ extern "C" {
 
 	AccessMode   Access mode to request to the target device.
 	*/
-	HANDLE
+	IMDISK_API HANDLE
 		WINAPI
 		ImDiskOpenDeviceByMountPoint(IN LPCWSTR MountPoint,
 		IN DWORD AccessMode);
@@ -649,7 +660,7 @@ extern "C" {
 
 	DeviceHandle Handle to an open ImDisk virtual disk or control device.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskCheckDriverVersion(IN HANDLE DeviceHandle);
 
@@ -657,7 +668,7 @@ extern "C" {
 	Retrieves the version numbers of the user-mode API library and the kernel-
 	mode driver.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetVersion(IN OUT PULONG LibraryVersion OPTIONAL,
 		IN OUT PULONG DriverVersion OPTIONAL);
@@ -665,7 +676,7 @@ extern "C" {
 	/**
 	Returns the first free drive letter in the range D-Z.
 	*/
-	WCHAR
+	IMDISK_API WCHAR
 		WINAPI
 		ImDiskFindFreeDriveLetter();
 
@@ -683,7 +694,7 @@ extern "C" {
 
 	Use ImDiskGetDeviceListEx function with newer versions of ImDisk.
 	*/
-	ULONGLONG
+	IMDISK_API ULONGLONG
 		WINAPI
 		ImDiskGetDeviceList();
 
@@ -717,7 +728,7 @@ extern "C" {
 	parameter. That value, plus one for the first length element, indicates how
 	large the buffer needs to be to successfully store all items.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetDeviceListEx(IN ULONG ListLength,
 		IN OUT PULONG DeviceList);
@@ -738,7 +749,7 @@ extern "C" {
 	large enough to hold the entire IMDISK_CREATE_DATA
 	structure.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskQueryDevice(IN DWORD DeviceNumber,
 		IN OUT PIMDISK_CREATE_DATA CreateData,
@@ -786,7 +797,7 @@ extern "C" {
 	MountPoint      Drive letter to assign to the new virtual device. It can be
 	specified on the form F: or F:\.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskCreateDevice(IN HWND hWndStatusText OPTIONAL,
 		IN OUT PDISK_GEOMETRY DiskGeometry OPTIONAL,
@@ -846,7 +857,7 @@ extern "C" {
 	MountPoint      Drive letter to assign to the new virtual device. It can be
 	specified on the form F: or F:\.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskCreateDeviceEx(IN HWND hWndStatusText OPTIONAL,
 		IN OUT LPDWORD DeviceNumber OPTIONAL,
@@ -871,7 +882,7 @@ extern "C" {
 	MountPoint      Drive letter of the device to remove. It can be specified
 	on the form F: or F:\.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskRemoveDevice(IN HWND hWndStatusText OPTIONAL,
 		IN DWORD DeviceNumber OPTIONAL,
@@ -889,7 +900,7 @@ extern "C" {
 	DeviceNumber    Number of the ImDisk device to remove. This parameter is
 	only used if Device parameter is NULL.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskForceRemoveDevice(IN HANDLE Device OPTIONAL,
 		IN DWORD DeviceNumber OPTIONAL);
@@ -918,7 +929,7 @@ extern "C" {
 	Flags           New values for the flags specified by the FlagsToChange
 	parameter.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskChangeFlags(HWND hWndStatusText OPTIONAL,
 		DWORD DeviceNumber OPTIONAL,
@@ -939,7 +950,7 @@ extern "C" {
 	ExtendSize      A pointer to a LARGE_INTEGER structure that specifies the
 	number of bytes to extend the device.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskExtendDevice(IN HWND hWndStatusText OPTIONAL,
 		IN DWORD DeviceNumber,
@@ -974,7 +985,7 @@ extern "C" {
 	will also dispatch window messages for the current thread
 	between each I/O operation.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 		IN HANDLE FileHandle,
@@ -989,7 +1000,7 @@ extern "C" {
 	Size            Pointer to a 64 bit variable that upon successful completion
 	receives disk volume size as a signed integer.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetVolumeSize(IN HANDLE Handle,
 		IN OUT PLONGLONG Size);
@@ -1014,7 +1025,7 @@ extern "C" {
 	about formatted geometry. This function zeroes the Cylinders
 	member.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetFormattedGeometry(IN LPCWSTR ImageFile,
 		IN PLARGE_INTEGER Offset OPTIONAL,
@@ -1042,7 +1053,7 @@ extern "C" {
 	about formatted geometry. This function zeroes the Cylinders
 	member.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetFormattedGeometryIndirect(IN HANDLE Handle,
 		IN ImDiskReadFileProc ReadFileProc,
@@ -1088,7 +1099,7 @@ extern "C" {
 	MBRSize         Size of buffer pointed to by MBR parameter. This parameter
 	must be at least 512.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskBuildMBR(IN PDISK_GEOMETRY DiskGeometry OPTIONAL,
 		IN PPARTITION_INFORMATION PartitionInfo OPTIONAL,
@@ -1107,7 +1118,7 @@ extern "C" {
 	CHS             Pointer to CHS disk address in three-byte partition table
 	style format.
 	*/
-	DWORD
+	IMDISK_API DWORD
 		WINAPI
 		ImDiskConvertCHSToLBA(IN PDISK_GEOMETRY DiskGeometry,
 		IN LPBYTE CHS);
@@ -1123,7 +1134,7 @@ extern "C" {
 
 	LBA             LBA disk address.
 	*/
-	DWORD
+	IMDISK_API DWORD
 		WINAPI
 		ImDiskConvertLBAToCHS(IN PDISK_GEOMETRY DiskGeometry,
 		IN DWORD LBA);
@@ -1138,7 +1149,7 @@ extern "C" {
 	FileSize        Size of original disk which image file should be adjusted
 	to.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskAdjustImageFileSize(IN HANDLE FileHandle,
 		IN PLARGE_INTEGER FileSize);
@@ -1155,7 +1166,7 @@ extern "C" {
 	address of the Win32 DOS-style path within the original
 	buffer.
 	*/
-	VOID
+	IMDISK_API VOID
 		WINAPI
 		ImDiskNativePathToWin32(IN OUT LPWSTR *Path);
 
@@ -1184,7 +1195,7 @@ extern "C" {
 	be automatically determined this function will ask user for
 	a .iso suffixed image file name.
 	*/
-	VOID
+	IMDISK_API VOID
 		WINAPI
 		ImDiskSaveImageFileInteractive(IN HANDLE DeviceHandle,
 		IN HWND WindowHandle OPTIONAL,
@@ -1210,7 +1221,7 @@ extern "C" {
 	inherited by child processes.
 
 	*/
-	HANDLE
+	IMDISK_API HANDLE
 		WINAPI
 		ImDiskOpenRefreshEvent(BOOL InheritHandle);
 
@@ -1225,7 +1236,7 @@ extern "C" {
 	device creation settings to save.
 
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData);
 
@@ -1238,7 +1249,7 @@ extern "C" {
 
 	DeviceNumber    Device number specified in registry settings.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskRemoveRegistrySettings(DWORD DeviceNumber);
 
@@ -1253,7 +1264,7 @@ extern "C" {
 	LoadDevicesValue
 	Pointer to variable that receives the value.
 	*/
-	BOOL
+	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetRegistryAutoLoadDevices(LPDWORD LoadDevicesValue);
 

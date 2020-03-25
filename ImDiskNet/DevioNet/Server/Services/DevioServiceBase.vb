@@ -399,19 +399,24 @@ Namespace Server.Services
         ' IDisposable
         Protected Overridable Sub Dispose(disposing As Boolean)
             If Not Me.disposedValue Then
+
                 If disposing Then
                     ' TODO: dispose managed state (managed objects).
 
-                    If _DevioProvider IsNot Nothing Then
-                        If OwnsProvider Then
-                            _DevioProvider.Dispose()
-                        End If
-                        _DevioProvider = Nothing
-                    End If
                 End If
 
                 ' TODO: free unmanaged resources (unmanaged objects) and override Finalize() below.
                 ' TODO: set large fields to null.
+
+                If _DevioProvider IsNot Nothing Then
+                    If OwnsProvider Then
+                        _DevioProvider.Dispose()
+                    End If
+                    _DevioProvider = Nothing
+                End If
+
+                OnStopServiceThread()
+
             End If
             Me.disposedValue = True
         End Sub
