@@ -164,15 +164,7 @@
         DeviceHandle As SafeFileHandle,
         FileHandle As SafeFileHandle,
         BufferSize As UInt32,
-        <MarshalAs(UnmanagedType.Bool)> ByRef CancelFlag As Boolean
-      ) As Boolean
-
-    Public Declare Unicode Function ImDiskSaveImageFile _
-      Lib "imdisk.cpl" (
-        DeviceHandle As SafeFileHandle,
-        FileHandle As SafeFileHandle,
-        BufferSize As UInt32,
-        CancelFlag As IntPtr
+        CancelFlagPtr As IntPtr
       ) As Boolean
 
     Public Declare Unicode Function ImDiskExtendDevice _
@@ -291,6 +283,27 @@
     Public Declare Unicode Function ImDiskGetDeviceList _
       Lib "imdisk.cpl" (
       ) As UInt64
+
+    Public Declare Unicode Function ImDiskBuildMBR _
+      Lib "imdisk.cpl" (
+        <[In]()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+        <MarshalAs(UnmanagedType.LPArray), [In]()> PartitionInfo As NativeFileIO.Win32API.PARTITION_INFORMATION(),
+        NumberOfParts As Byte,
+        <MarshalAs(UnmanagedType.LPArray)> MBR As Byte(),
+        MBRSize As IntPtr
+      ) As Boolean
+
+    Public Declare Unicode Function ImDiskConvertCHSToLBA _
+      Lib "imdisk.cpl" (
+        <[In]()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+        <MarshalAs(UnmanagedType.LPArray)> CHS As Byte()
+      ) As UInt32
+
+    Public Declare Unicode Function ImDiskConvertLBAToCHS _
+      Lib "imdisk.cpl" (
+        <[In]()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+        LBA As UInt32
+      ) As UInt32
 
     Public Declare Unicode Sub ImDiskSaveImageFileInteractive _
       Lib "imdisk.cpl" (

@@ -293,6 +293,7 @@ ImDiskSyntaxHelp()
     exit(IMDISK_CLI_ERROR_FATAL);
 }
 
+// Prints out a FormatMessage style parameterized message to specified stream.
 BOOL
 ImDiskOemPrintF(FILE *Stream, LPCSTR Message, ...)
 {
@@ -313,6 +314,8 @@ ImDiskOemPrintF(FILE *Stream, LPCSTR Message, ...)
   return TRUE;
 }
 
+// Writes out to console a message followed by system error message
+// corresponding to current "last error" code from Win32 API.
 void
 PrintLastError(LPCWSTR Prefix)
 {
@@ -331,6 +334,9 @@ PrintLastError(LPCWSTR Prefix)
     LocalFree(MsgBuf);
 }
 
+// Checks current driver version for compatibility with this library and
+// returns TRUE if found compatible, FALSE otherwise. Device parameter is
+// either handle to driver control device or an existing ImDisk device.
 BOOL
 ImDiskCliCheckDriverVersion(HANDLE Device)
 {
@@ -379,6 +385,7 @@ ImDiskCliCheckDriverVersion(HANDLE Device)
   return TRUE;
 }
 
+// Creates a new virtual disk device.
 int
 ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 		      PDISK_GEOMETRY DiskGeometry,
@@ -662,6 +669,10 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
   return 0;
 }
 
+// Formats a new virtual disk device by calling system supplied format.com
+// command line tool. MountPoint parameter should be a drive letter followed by
+// a colon, and FormatOptions parameter is passed to the format.com command
+// line.
 int
 ImDiskCliFormatDisk(LPWSTR MountPoint, LPWSTR FormatOptions)
 {
@@ -695,6 +706,13 @@ ImDiskCliFormatDisk(LPWSTR MountPoint, LPWSTR FormatOptions)
   return 0;
 }
 
+// Removes an existing virtual disk device. ForeDismount can be set to TRUE to
+// continue with dismount even if there are open handles to files or similar on
+// the virtual disk. EmergencyRemove can be set to TRUE to have the device
+// immediately removed, regardless of whether device handler loop in driver is
+// responsive or hung, or whether or not there are any handles open to the
+// device. Use this as a last restort to remove for example proxy backed
+// devices with hung proxy connections and similar.
 int
 ImDiskCliRemoveDevice(DWORD DeviceNumber,
 		      LPCWSTR MountPoint,
@@ -1044,6 +1062,9 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
   return 0;
 }
 
+// Prints a list of current virtual disk devices. If NumericPrint is TRUE a
+// simple number list is printed, otherwise each device object name with path
+// is printed.
 int
 ImDiskCliQueryStatusDriver(BOOL NumericPrint)
 {
@@ -1073,6 +1094,8 @@ ImDiskCliQueryStatusDriver(BOOL NumericPrint)
   return 0;
 }
 
+// Prints information about an existing virtual disk device, identified by
+// either a device number or mount point.
 int
 ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 {
@@ -1226,6 +1249,9 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
   return 0;
 }
 
+// Changes flags for an existing virtual disk, identified by either device
+// number or mount point. FlagsToChange specifies which flag bits to change,
+// (0=not touch, 1=set to corresponding bit value in Flags parameter).
 int
 ImDiskCliChangeFlags(DWORD DeviceNumber, LPCWSTR MountPoint,
 		     DWORD FlagsToChange, DWORD Flags)
@@ -1386,6 +1412,8 @@ ImDiskCliChangeFlags(DWORD DeviceNumber, LPCWSTR MountPoint,
     }
 }
 
+// Extends an existing virtual disk, identified by either device number or
+// mount point.
 int
 ImDiskCliExtendDevice(DWORD DeviceNumber, LPCWSTR MountPoint,
 		      LARGE_INTEGER ExtendSize)
@@ -1553,6 +1581,8 @@ ImDiskCliExtendDevice(DWORD DeviceNumber, LPCWSTR MountPoint,
   return 0;
 }
 
+// Entry function. Translates command line switches and parameters and calls
+// corresponding functions to carry out actual tasks.
 int
 __cdecl
 wmain(int argc, LPWSTR argv[])
@@ -1631,6 +1661,7 @@ wmain(int argc, LPWSTR argv[])
 	return 0;
       }
 
+  // Argument parse loop
   while (argc-- > 1)
     {
       argv++;
@@ -2059,6 +2090,7 @@ wmain(int argc, LPWSTR argv[])
 	ImDiskSyntaxHelp();
     }
 
+  // Switch block for operation switch found on command line.
   switch (op_mode)
     {
     case OP_MODE_CREATE:
@@ -2244,6 +2276,9 @@ wmain(int argc, LPWSTR argv[])
 }
 
 #ifndef _WIN64
+// In 32 bit version, we have our own EXE entry to be less dependant of
+// specific MSVCRT code that may not be available in older Windows versions.
+// It also saves some EXE file size.
 __declspec(noreturn)
 void
 __cdecl

@@ -65,6 +65,10 @@
 
 #define TXT_CURRENT_IMAGE_FILE_SIZE L"(current image file size)"
 
+#define PROP_NAME_HKEY_MOUNTPOINTS2 L"HKEY_MountPoints2"
+#define KEY_NAME_HKEY_MOUNTPOINTS2  \
+  L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2"
+
 extern "C" HINSTANCE hInstance = NULL;
 
 // Define DEBUG if you want debug output.
@@ -531,6 +535,7 @@ ImDiskSaveImageFileInteractive(IN HANDLE hDev,
   PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
     _alloca(create_data_size);
   PDISK_GEOMETRY disk_geometry = &create_data->DiskGeometry;
+  PLARGE_INTEGER disk_size = &create_data->DiskGeometry.Cylinders;
 
   if (create_data == NULL)
     {
@@ -545,15 +550,16 @@ ImDiskSaveImageFileInteractive(IN HANDLE hDev,
   if (!DeviceIoControl(hDev, IOCTL_IMDISK_QUERY_DEVICE, NULL, 0, create_data,
 		       create_data_size, &dwRet,
 		       NULL))
-    if (!DeviceIoControl(hDev, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0,
-			 disk_geometry,
-			 sizeof(DISK_GEOMETRY),
-			 &dwRet, NULL))
-      return;
+    {
+      if (!DeviceIoControl(hDev, IOCTL_DISK_GET_DRIVE_GEOMETRY, NULL, 0,
+			   disk_geometry,
+			   sizeof(DISK_GEOMETRY),
+			   &dwRet, NULL))
+	return;
 
-  LARGE_INTEGER disk_size;
-  if (!ImDiskGetVolumeSize(hDev, &disk_size.QuadPart))
-    return;
+      if (!ImDiskGetVolumeSize(hDev, &disk_size->QuadPart))
+	return;
+    }
 
   WCHAR file_name[MAX_PATH + 1] = L"";
 
@@ -660,7 +666,7 @@ ImDiskSaveImageFileInteractive(IN HANDLE hDev,
 	    (LONGLONG)
 	    disk_geometry->BytesPerSector *
 	    disk_geometry->SectorsPerTrack;
-	  partition_info.PartitionLength = disk_size;
+	  partition_info.PartitionLength = *disk_size;
 	  partition_info.BootIndicator = 0x80;
 	  partition_info.PartitionType = 0x06;
 
@@ -710,7 +716,7 @@ ImDiskSaveImageFileInteractive(IN HANDLE hDev,
 
       if (!use_original_file_name)
 	{
-	  save_offset.QuadPart += disk_size.QuadPart;
+	  save_offset.QuadPart += disk_size->QuadPart;
 
 	  if (!ImDiskAdjustImageFileSize(hImage, &save_offset))
 	    {
@@ -1103,8 +1109,8 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	      drive_letter[1] = L':';
 	      drive_letter[2] = 0;
 
-	      WCHAR buffer[MAX_PATH];
-	      if (QueryDosDevice(drive_letter, buffer, sizeof buffer))
+	      WCHAR buffer[MAX_PATH << 1];
+	      if (QueryDosDevice(drive_letter, buffer, sizeof(buffer) >> 1))
 		if (MessageBox(hWnd, L"Specified drive letter is already in "
 			       L"use on this system. Are you sure you want "
 			       L"to use it for the virtual disk drive you are "
@@ -1286,6 +1292,13 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	SetClassLongPtr(hWnd, GCLP_HICON,
 			(LONG_PTR) LoadIcon(hInstance,
 					    MAKEINTRESOURCE(IDI_APPICON)));
+
+	HKEY hKeyMountPoints2;
+	DWORD dwErrCode = RegOpenKey(HKEY_CURRENT_USER,
+				     KEY_NAME_HKEY_MOUNTPOINTS2,
+				     &hKeyMountPoints2);
+	if (dwErrCode == NO_ERROR)
+	  SetProp(hWnd, PROP_NAME_HKEY_MOUNTPOINTS2, hKeyMountPoints2);
 
 	HWND hWndListView = GetDlgItem(hWnd, IDC_LISTVIEW);
 
@@ -1472,6 +1485,53 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	    if (mount_point[0] == 0)
 	      return TRUE;
+
+	    HKEY hKeyMountPoints2 = (HKEY)
+	      GetProp(hWnd, PROP_NAME_HKEY_MOUNTPOINTS2);
+	    if (hKeyMountPoints2 != NULL)
+	      {
+		WCHAR mount_key_name[] = { mount_point[0], 0 };
+		HKEY hKeyMountPoint;
+		HWND hWndStatus = NULL;
+		bool bCancelFlag = false;
+		for (;;)
+		  {
+		    DWORD dwErrCode = RegOpenKey(hKeyMountPoints2,
+						 mount_key_name,
+						 &hKeyMountPoint);
+		    if (dwErrCode == NO_ERROR)
+		      {
+			RegCloseKey(hKeyMountPoint);
+			break;
+		      }
+
+		    if (bCancelFlag)
+		      break;
+
+		    if (hWndStatus == NULL)
+		      {
+			EnableWindow(hWnd, FALSE);
+			hWndStatus =
+			  CreateDialogParam(hInstance,
+					    MAKEINTRESOURCE(IDD_DLG_STATUS),
+					    hWnd,
+					    StatusDlgProc,
+					    (LPARAM) &bCancelFlag);
+			SetDlgItemText(hWndStatus,
+				       IDC_STATUS_MSG,
+				       L"Waiting for Windows Explorer...");
+		      }
+
+		    Sleep(100);
+		    DoEvents(NULL);
+		  }
+
+		if (hWndStatus != NULL)
+		  {
+		    DestroyWindow(hWndStatus);
+		    EnableWindow(hWnd, TRUE);
+		  }
+	      }
 
 	    if ((INT_PTR) ShellExecute(hWnd, L"open", mount_point, NULL,
 					  NULL, SW_SHOWNORMAL) <= 32)
@@ -1695,6 +1755,20 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 
       return TRUE;
+
+    case WM_NCDESTROY:
+      {
+	HKEY hKeyMountPoints2 = (HKEY)
+	  GetProp(hWnd, PROP_NAME_HKEY_MOUNTPOINTS2);
+
+	if (hKeyMountPoints2 != NULL)
+	  {
+	    RegCloseKey(hKeyMountPoints2);
+	    RemoveProp(hWnd, PROP_NAME_HKEY_MOUNTPOINTS2);
+	  }
+
+	return TRUE;
+      }
 
     case WM_CLOSE:
       EndDialog(hWnd, IDOK);

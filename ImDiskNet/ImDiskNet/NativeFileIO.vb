@@ -38,6 +38,7 @@ Public Class NativeFileIO
     Public Const FSCTL_LOCK_VOLUME As UInt32 = &H90018
     Public Const FSCTL_DISMOUNT_VOLUME As UInt32 = &H90020
 
+    Public Const IOCTL_DISK_GET_DRIVE_GEOMETRY As UInt32 = &H70000
     Public Const IOCTL_DISK_GET_LENGTH_INFO As UInt32 = &H7405C
     Public Const IOCTL_DISK_GROW_PARTITION As UInt32 = &H7C0D0
 
@@ -286,7 +287,7 @@ Public Class NativeFileIO
       ModuleName As String) As IntPtr
 
     Public Declare Auto Function LoadLibrary Lib "kernel32.dll" (
-      lpFileName As String) As Boolean
+      lpFileName As String) As IntPtr
 
     Public Declare Auto Function FreeLibrary Lib "kernel32.dll" (
       hModule As IntPtr) As Boolean
@@ -348,25 +349,18 @@ Public Class NativeFileIO
       ByRef lpBytesReturned As UInt32,
       lpOverlapped As IntPtr) As Boolean
 
-    Public Declare Function DeviceIoControl Lib "kernel32" Alias "DeviceIoControl" (
-      hDevice As SafeFileHandle,
-      dwIoControlCode As UInt32,
-      lpInBuffer As IntPtr,
-      nInBufferSize As UInt32,
-      ByRef lpOutBuffer As Int64,
-      nOutBufferSize As UInt32,
-      ByRef lpBytesReturned As UInt32,
-      lpOverlapped As IntPtr) As Boolean
+    Public Declare Auto Function GetModuleFileName Lib "kernel32" (
+      hModule As IntPtr,
+      <Out(), MarshalAs(UnmanagedType.LPTStr)> lpFilename As String,
+      nSize As Int32) As Int32
 
-    Public Declare Function DeviceIoControl Lib "kernel32" Alias "DeviceIoControl" (
-      hDevice As SafeFileHandle,
-      dwIoControlCode As UInt32,
-      ByRef lpInBuffer As DISK_GROW_PARTITION,
-      nInBufferSize As UInt32,
-      lpOutBuffer As IntPtr,
-      nOutBufferSize As UInt32,
-      ByRef lpBytesReturned As UInt32,
-      lpOverlapped As IntPtr) As Boolean
+    Public Declare Ansi Function GetProcAddress Lib "kernel32" (
+      hModule As IntPtr,
+      <[In](), MarshalAs(UnmanagedType.LPStr)> lpEntryName As String) As IntPtr
+
+    Public Declare Ansi Function GetProcAddress Lib "kernel32" (
+      hModule As IntPtr,
+      ordinal As IntPtr) As IntPtr
 
   End Class
 #End Region
@@ -390,6 +384,24 @@ Public Class NativeFileIO
     End If
 
   End Sub
+
+  ''' <summary>
+  ''' Encapsulates call to a Win32 API function that returns a value where failure
+  ''' is indicated as a NULL return and GetLastError() returns an error code. If
+  ''' non-zero value is passed to this method it just returns that value. If zero
+  ''' value is passed, it calls GetLastError() and throws a managed exception for
+  ''' that error code.
+  ''' </summary>
+  ''' <param name="result">Return code from a Win32 API function call.</param>
+  <DebuggerHidden()>
+  Public Shared Function Win32Try(Of T)(result As T) As T
+
+    If result Is Nothing Then
+      Throw New Win32Exception
+    End If
+    Return result
+
+  End Function
 
   ''' <summary>
   ''' Calls Win32 API CreateFile() function and encapsulates returned handle in a SafeFileHandle object.
@@ -652,22 +664,42 @@ Public Class NativeFileIO
 
   End Function
 
+  Private Declare Function DeviceIoControl Lib "kernel32" (
+    hDevice As SafeFileHandle,
+    dwIoControlCode As UInt32,
+    lpInBuffer As IntPtr,
+    nInBufferSize As UInt32,
+    <Out()> ByRef lpOutBuffer As Int64,
+    nOutBufferSize As UInt32,
+    ByRef lpBytesReturned As UInt32,
+    lpOverlapped As IntPtr) As Boolean
+
   Public Shared Function GetDiskSize(SafeFileHandle As SafeFileHandle) As Int64
 
     Dim FileSize As Int64
 
-    Win32Try(Win32API.DeviceIoControl(SafeFileHandle, Win32API.IOCTL_DISK_GET_LENGTH_INFO, IntPtr.Zero, 0UI, FileSize, CUInt(Marshal.SizeOf(FileSize.GetType())), 0UI, IntPtr.Zero))
+    Win32Try(DeviceIoControl(SafeFileHandle, Win32API.IOCTL_DISK_GET_LENGTH_INFO, IntPtr.Zero, 0UI, FileSize, CUInt(Marshal.SizeOf(FileSize.GetType())), 0UI, IntPtr.Zero))
 
     Return FileSize
 
   End Function
+
+  Private Declare Function DeviceIoControl Lib "kernel32" (
+    hDevice As SafeFileHandle,
+    dwIoControlCode As UInt32,
+    <[In]()> ByRef lpInBuffer As Win32API.DISK_GROW_PARTITION,
+    nInBufferSize As UInt32,
+    lpOutBuffer As IntPtr,
+    nOutBufferSize As UInt32,
+    ByRef lpBytesReturned As UInt32,
+    lpOverlapped As IntPtr) As Boolean
 
   Public Shared Sub GrowPartition(DiskHandle As SafeFileHandle, PartitionNumber As Integer, BytesToGrow As Int64)
 
     Dim DiskGrowPartition As Win32API.DISK_GROW_PARTITION
     DiskGrowPartition.PartitionNumber = PartitionNumber
     DiskGrowPartition.BytesToGrow = BytesToGrow
-    Win32Try(Win32API.DeviceIoControl(DiskHandle, Win32API.IOCTL_DISK_GROW_PARTITION, DiskGrowPartition, CUInt(Marshal.SizeOf(DiskGrowPartition.GetType())), IntPtr.Zero, 0UI, 0UI, IntPtr.Zero))
+    Win32Try(DeviceIoControl(DiskHandle, Win32API.IOCTL_DISK_GROW_PARTITION, DiskGrowPartition, CUInt(Marshal.SizeOf(DiskGrowPartition.GetType())), IntPtr.Zero, 0UI, 0UI, IntPtr.Zero))
 
   End Sub
 
@@ -763,6 +795,43 @@ Public Class NativeFileIO
     End If
 
     Return Win32API.DeviceIoControl(hDevice, Win32API.FSCTL_LOCK_VOLUME, IntPtr.Zero, 0, IntPtr.Zero, 0, Nothing, Nothing)
+
+  End Function
+
+  Private Declare Function DeviceIoControl Lib "kernel32" (
+    hDevice As SafeFileHandle,
+    dwIoControlCode As UInt32,
+    lpInBuffer As IntPtr,
+    nInBufferSize As UInt32,
+    <Out()> ByRef lpOutBuffer As Win32API.DISK_GEOMETRY,
+    nOutBufferSize As UInt32,
+    ByRef lpBytesReturned As UInt32,
+    lpOverlapped As IntPtr) As Boolean
+
+  ''' <summary>
+  ''' Retrieves disk geometry.
+  ''' </summary>
+  ''' <param name="hDevice">Handle to device.</param>
+  Public Shared Function GetDiskGeometry(hDevice As SafeFileHandle) As Win32API.DISK_GEOMETRY
+
+    Dim DiskGeometry As Win32API.DISK_GEOMETRY
+
+    Win32Try(DeviceIoControl(hDevice, Win32API.IOCTL_DISK_GET_DRIVE_GEOMETRY, IntPtr.Zero, 0, DiskGeometry, CUInt(Marshal.SizeOf(GetType(Win32API.DISK_GEOMETRY))), Nothing, Nothing))
+
+    Return DiskGeometry
+
+  End Function
+
+  Public Shared Function GetProcAddress(hModule As IntPtr, procedureName As String, delegateType As Type) As [Delegate]
+
+    Return Marshal.GetDelegateForFunctionPointer(Win32Try(Win32API.GetProcAddress(hModule, procedureName)), delegateType)
+
+  End Function
+
+  Public Shared Function GetProcAddress(moduleName As String, procedureName As String, delegateType As Type) As [Delegate]
+
+    Dim hModule = Win32Try(Win32API.LoadLibrary(moduleName))
+    Return Marshal.GetDelegateForFunctionPointer(Win32Try(Win32API.GetProcAddress(hModule, procedureName)), delegateType)
 
   End Function
 

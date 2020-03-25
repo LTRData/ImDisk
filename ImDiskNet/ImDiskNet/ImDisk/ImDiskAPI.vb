@@ -303,22 +303,16 @@
     ''' Retrieves a list of virtual disks on this system. Each element in returned list holds a device number of a loaded
     ''' ImDisk virtual disk.
     ''' </summary>
-    Public Shared Function GetDeviceList() As List(Of Int32)
+    Public Shared Function GetDeviceList() As List(Of Integer)
 
-      Dim List As New List(Of Int32)
+      Dim List As New List(Of Integer)
       Dim NativeDeviceList = DLL.ImDiskGetDeviceList()
-      Dim NumberValue As UInt64 = 1
-      Dim Number As Int32 = 0
-      Do
-        If (NativeDeviceList And NumberValue) <> 0 Then
+
+      For Number = 0 To 63
+        If (NativeDeviceList And (1UL << Number)) <> 0 Then
           List.Add(Number)
         End If
-        Number += 1
-        If Number > 63 Then
-          Exit Do
-        End If
-        NumberValue += NumberValue
-      Loop
+      Next
 
       Return List
 
@@ -396,6 +390,74 @@
                                                    Filename,
                                                    NativePath,
                                                    MountPoint))
+
+    End Sub
+
+    ''' <summary>
+    ''' Creates a new ImDisk virtual disk.
+    ''' </summary>
+    ''' <param name="ImageOffset">A skip offset if virtual disk data does not begin immediately at start of disk image file.
+    ''' Frequently used with image formats like Nero NRG which start with a file header not used by ImDisk or Windows
+    ''' filesystem drivers.</param>
+    ''' <param name="Flags">Flags specifying properties for virtual disk. See comments for each flag value.</param>
+    ''' <param name="Filename">Name of disk image file to use or create. If disk image file already exists the DiskSize
+    ''' parameter can be zero in which case current disk image file size will be used as virtual disk size. If Filename
+    ''' paramter is Nothing/null disk will be created in virtual memory and not backed by a physical disk image file.</param>
+    ''' <param name="NativePath">Specifies whether Filename parameter specifies a path in Windows native path format, the
+    ''' path format used by drivers in Windows NT kernels, for example \Device\Harddisk0\Partition1\imagefile.img. If this
+    ''' parameter is False path in FIlename parameter will be interpreted as an ordinary user application path.</param>
+    ''' <param name="MountPoint">Mount point in the form of a drive letter and colon to create for newly created virtual
+    ''' disk. If this parameter is Nothing/null the virtual disk will be created without a drive letter.</param>
+    ''' <param name="DeviceNumber">In: Device number for device to create. Device number must not be in use by an existing
+    ''' virtual disk. For automatic allocation of device number, pass UInt32.MaxValue.
+    '''
+    ''' Out: Device number for created device.</param>
+    Public Shared Sub CreateDevice(ImageOffset As Int64,
+                                   Flags As ImDiskFlags,
+                                   Filename As String,
+                                   NativePath As Boolean,
+                                   MountPoint As String,
+                                   ByRef DeviceNumber As UInt32)
+
+      Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY
+
+      NativeFileIO.Win32Try(DLL.ImDiskCreateDeviceEx(IntPtr.Zero,
+                                                     DeviceNumber,
+                                                     DiskGeometry,
+                                                     ImageOffset,
+                                                     Flags,
+                                                     Filename,
+                                                     NativePath,
+                                                     MountPoint))
+
+    End Sub
+
+    ''' <summary>
+    ''' Creates a new memory backed ImDisk virtual disk with the specified size in bytes.
+    ''' </summary>
+    ''' <param name="DiskSize">Size of virtual disk.</param>
+    ''' <param name="MountPoint">Mount point in the form of a drive letter and colon to create for newly created virtual
+    ''' disk. If this parameter is Nothing/null the virtual disk will be created without a drive letter.</param>
+    ''' <param name="DeviceNumber">In: Device number for device to create. Device number must not be in use by an existing
+    ''' virtual disk. For automatic allocation of device number, pass UInt32.MaxValue.
+    '''
+    ''' Out: Device number for created device.</param>
+    Public Shared Sub CreateDevice(DiskSize As Int64,
+                                   MountPoint As String,
+                                   ByRef DeviceNumber As UInt32)
+
+      Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY With {
+        .Cylinders = DiskSize
+      }
+
+      NativeFileIO.Win32Try(DLL.ImDiskCreateDeviceEx(IntPtr.Zero,
+                                                     DeviceNumber,
+                                                     DiskGeometry,
+                                                     0,
+                                                     0,
+                                                     Nothing,
+                                                     Nothing,
+                                                     MountPoint))
 
     End Sub
 
@@ -700,6 +762,112 @@
     Public Shared Function GetProxyType(Flags As ImDiskFlags) As ImDiskFlags
 
       Return CType(Flags And &HF000UI, ImDiskFlags)
+
+    End Function
+
+    ''' <summary>
+    '''    This function builds a Master Boot Record, MBR, in memory. The MBR will
+    '''    contain a default Initial Program Loader, IPL, which could be used to boot
+    '''    an operating system partition when the MBR is written to a disk.
+    ''' </summary>
+    ''' <param name="DiskGeometry">Pointer to a DISK_GEOMETRY structure that contains
+    ''' information about logical geometry of the disk.
+    ''' 
+    ''' This function only uses the BytesPerSector, SectorsPerTrack and
+    ''' TracksPerCylinder members.
+    ''' 
+    ''' This parameter can be Nothing/null if PartitionInfo parameter is Nothing/null
+    ''' or references an empty array.</param>
+    ''' <param name="PartitionInfo">Array of up to four PARTITION_INFORMATION structures
+    ''' containing information about partitions to store in MBR partition table.
+    ''' 
+    ''' This function only uses the StartingOffset, PartitionLength, BootIndicator and
+    ''' PartitionType members.
+    ''' 
+    ''' This parameter can be Nothing/null to create an empty MBR with just boot code
+    ''' without any partition definitions.</param>
+    ''' <param name="MBR">Pointer to memory buffer of at least 512 bytes where MBR will
+    ''' be built.</param>
+    Public Shared Sub BuildInMemoryMBR(DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+                                       PartitionInfo As NativeFileIO.Win32API.PARTITION_INFORMATION(),
+                                       MBR As Byte())
+
+      NativeFileIO.Win32Try(DLL.ImDiskBuildMBR(DiskGeometry,
+                                               PartitionInfo,
+                                               CByte(If(PartitionInfo Is Nothing, 0, PartitionInfo.Length)),
+                                               MBR,
+                                               New IntPtr(MBR.Length)))
+
+    End Sub
+
+    ''' <summary>
+    '''    This function builds a Master Boot Record, MBR, in memory. The MBR will
+    '''    contain a default Initial Program Loader, IPL, which could be used to boot
+    '''    an operating system partition when the MBR is written to a disk.
+    ''' </summary>
+    ''' <param name="DiskGeometry">Pointer to a DISK_GEOMETRY structure that contains
+    ''' information about logical geometry of the disk.
+    ''' 
+    ''' This function only uses the BytesPerSector, SectorsPerTrack and
+    ''' TracksPerCylinder members.
+    ''' 
+    ''' This parameter can be Nothing/null if PartitionInfo parameter is Nothing/null
+    ''' or references an empty array.</param>
+    ''' <param name="PartitionInfo">Array of up to four PARTITION_INFORMATION structures
+    ''' containing information about partitions to store in MBR partition table.
+    ''' 
+    ''' This function only uses the StartingOffset, PartitionLength, BootIndicator and
+    ''' PartitionType members.
+    ''' 
+    ''' This parameter can be Nothing/null to create an empty MBR with just boot code
+    ''' without any partition definitions.</param>
+    ''' <returns>Memory buffer containing built MBR.</returns>
+    Public Shared Function BuildInMemoryMBR(DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+                                       PartitionInfo As NativeFileIO.Win32API.PARTITION_INFORMATION()) As Byte()
+
+      Dim MBR(0 To 511) As Byte
+
+      NativeFileIO.Win32Try(DLL.ImDiskBuildMBR(DiskGeometry,
+                                               PartitionInfo,
+                                               CByte(If(PartitionInfo Is Nothing, 0, PartitionInfo.Length)),
+                                               MBR,
+                                               New IntPtr(MBR.Length)))
+
+      Return MBR
+
+    End Function
+
+    ''' <summary>
+    ''' This function converts a CHS disk address to LBA format.
+    ''' </summary>
+    ''' <param name="DiskGeometry">Pointer to a DISK_GEOMETRY structure that contains
+    ''' information about logical geometry of the disk. This function only uses the
+    ''' SectorsPerTrack and TracksPerCylinder members.</param>
+    ''' <param name="CHS">Pointer to CHS disk address in three-byte partition table
+    ''' style format.</param>
+    ''' <returns>Calculated LBA disk address.</returns>
+    Public Shared Function ConvertCHSToLBA(DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+                                           CHS As Byte()) As UInteger
+
+      Return DLL.ImDiskConvertCHSToLBA(DiskGeometry, CHS)
+
+    End Function
+
+    ''' <summary>
+    ''' This function converts an LBA disk address to three-byte partition style CHS
+    ''' format.
+    ''' </summary>
+    ''' <param name="DiskGeometry">Pointer to a DISK_GEOMETRY structure that contains
+    ''' information about logical geometry of the disk. This function only uses the
+    ''' SectorsPerTrack and TracksPerCylinder members.</param>
+    ''' <param name="LBA">LBA disk address.</param>
+    ''' <returns>Calculated CHS values expressed in an array of three bytes.</returns>
+    Public Shared Function ConvertCHSToLBA(DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+                                           LBA As UInteger) As Byte()
+
+      Dim bytes = BitConverter.GetBytes(DLL.ImDiskConvertLBAToCHS(DiskGeometry, LBA))
+      Array.Resize(bytes, 3)
+      Return bytes
 
     End Function
 

@@ -8,8 +8,8 @@
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,5,6,36
-PRODUCTVERSION 1,5,6,36
+FILEVERSION 1,5,7,36
+PRODUCTVERSION 1,5,7,36
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -26,12 +26,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", "1.5.6.36\0"
+            VALUE "FileVersion", "1.5.7.36\0"
             VALUE "InternalName", "imdisk\0"
             VALUE "LegalCopyright", "Copyright © 2005-2012 Olof Lagerkvist etc.\0"
             VALUE "OriginalFilename", "imdisk.sys\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", "1.5.6.36\0"
+            VALUE "ProductVersion", "1.5.7.36\0"
         END
     END
     BLOCK "VarFileInfo"

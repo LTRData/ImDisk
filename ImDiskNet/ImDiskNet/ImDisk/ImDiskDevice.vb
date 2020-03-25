@@ -8,7 +8,7 @@
   Public Class ImDiskDevice
     Inherits ImDiskObject
 
-    Private RawDiskStream As ImDiskDeviceStream
+    Private _RawDiskStream As ImDiskDeviceStream
 
     Private Shared Function OpenDeviceHandle(DeviceNumber As UInt32, AccessMode As FileAccess) As SafeFileHandle
 
@@ -103,10 +103,10 @@
     ''' Opens a ImDiskDeviceStream object around this ImDisk device that can be used to directly access disk data.
     ''' </summary>
     Public Function GetRawDiskStream() As ImDiskDeviceStream
-      If RawDiskStream Is Nothing Then
-        RawDiskStream = New ImDiskDeviceStream(SafeFileHandle, AccessMode)
+      If _RawDiskStream Is Nothing Then
+        _RawDiskStream = New ImDiskDeviceStream(SafeFileHandle, AccessMode)
       End If
-      Return RawDiskStream
+      Return _RawDiskStream
     End Function
 
     ''' <summary>
@@ -129,15 +129,25 @@
     ''' </summary>
     ''' <param name="ImageFile">FileStream object opened for writing where disk contents will be written.</param>
     ''' <param name="BufferSize">Buffer size to use when transferring data from disk device to file.</param>
-    ''' <param name="CancelFlag">A boolean flag that will be checked between buffer reads/writes. If flag is set to True
+    ''' <param name="CancelAction">A boolean flag that will be checked between buffer reads/writes. If flag is set to True
     ''' operation will be cancelled and an exception thrown.</param>
     <ComVisible(False)>
-    Public Sub SaveImageFile(ImageFile As FileStream, BufferSize As UInt32, ByRef CancelFlag As Boolean)
+    Public Sub SaveImageFile(ImageFile As FileStream, BufferSize As UInt32, CancelAction As Action(Of Action(Of Boolean)))
 
-      NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
-                                                    ImageFile.SafeFileHandle,
-                                                    BufferSize,
-                                                    CancelFlag))
+      Dim CancelFlag As Integer
+      Dim CancelFlagHandle = GCHandle.Alloc(CancelFlag, GCHandleType.Pinned)
+      Try
+        If CancelAction IsNot Nothing Then
+          CancelAction(Sub(flag) CancelFlag = If(flag, 1, 0))
+        End If
+        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                      ImageFile.SafeFileHandle,
+                                                      BufferSize,
+                                                      CancelFlagHandle.AddrOfPinnedObject()))
+      Finally
+        CancelFlagHandle.free()
+
+      End Try
 
     End Sub
 
@@ -161,15 +171,26 @@
     ''' </summary>
     ''' <param name="ImageFile">Native file handle opened for writing where disk contents will be written.</param>
     ''' <param name="BufferSize">Buffer size to use when transferring data from disk device to file.</param>
-    ''' <param name="CancelFlag">A boolean flag that will be checked between buffer reads/writes. If flag is set to True
+    ''' <param name="CancelAction">A boolean flag that will be checked between buffer reads/writes. If flag is set to True
     ''' operation will be cancelled and an exception thrown.</param>
     <ComVisible(False)>
-    Public Sub SaveImageFile(ImageFile As SafeFileHandle, BufferSize As UInt32, ByRef CancelFlag As Boolean)
+    Public Sub SaveImageFile(ImageFile As SafeFileHandle, BufferSize As UInt32, CancelAction As Action(Of Action(Of Boolean)))
 
-      NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
-                                                    ImageFile,
-                                                    BufferSize,
-                                                    CancelFlag))
+      Dim CancelFlag As Integer
+      Dim CancelFlagHandle = GCHandle.Alloc(CancelFlag, GCHandleType.Pinned)
+      Try
+        If CancelAction IsNot Nothing Then
+          CancelAction(Sub(flag) CancelFlag = If(flag, 1, 0))
+        End If
+        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                      ImageFile,
+                                                      BufferSize,
+                                                      CancelFlagHandle.AddrOfPinnedObject()))
+
+      Finally
+        CancelFlagHandle.Free()
+
+      End Try
 
     End Sub
 
@@ -197,18 +218,27 @@
     ''' </summary>
     ''' <param name="ImageFile">Name of file to which disk contents will be written.</param>
     ''' <param name="BufferSize">Buffer size to use when transferring data from disk device to file.</param>
-    ''' <param name="CancelFlag">A boolean flag that will be checked between buffer reads/writes. If flag is set to True
+    ''' <param name="CancelAction">A boolean flag that will be checked between buffer reads/writes. If flag is set to True
     ''' operation will be cancelled and an exception thrown.</param>
     <ComVisible(False)>
-    Public Sub SaveImageFile(ImageFile As String, BufferSize As UInt32, ByRef CancelFlag As Boolean)
+    Public Sub SaveImageFile(ImageFile As String, BufferSize As UInt32, CancelAction As Action(Of Action(Of Boolean)))
 
       Using ImageFileHandle = NativeFileIO.OpenFileHandle(ImageFile, FileAccess.Write, FileShare.None, FileMode.Create, Overlapped:=False)
 
-        NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
-                                                      ImageFileHandle,
-                                                      BufferSize,
-                                                      CancelFlag))
+        Dim CancelFlag As Integer
+        Dim CancelFlagHandle = GCHandle.Alloc(CancelFlag, GCHandleType.Pinned)
+        Try
+          If CancelAction IsNot Nothing Then
+            CancelAction(Sub(flag) CancelFlag = If(flag, 1, 0))
+          End If
+          NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                                                        ImageFileHandle,
+                                                        BufferSize,
+                                                        CancelFlagHandle.AddrOfPinnedObject()))
+        Finally
+          CancelFlagHandle.Free()
 
+        End Try
       End Using
 
     End Sub
@@ -224,7 +254,7 @@
         NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
                                                         ImageFileHandle,
                                                         0,
-                                                        False))
+                                                        IntPtr.Zero))
 
       End Using
 
@@ -334,9 +364,9 @@
     End Sub
 
     Protected Overrides Sub Dispose(disposing As Boolean)
-      If RawDiskStream IsNot Nothing Then
-        RawDiskStream.Dispose()
-        RawDiskStream = Nothing
+      If _RawDiskStream IsNot Nothing Then
+        _RawDiskStream.Dispose()
+        _RawDiskStream = Nothing
       End If
 
       MyBase.Dispose(disposing)
