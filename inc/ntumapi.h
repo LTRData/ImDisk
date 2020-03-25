@@ -110,6 +110,13 @@ ULONG
 NTAPI 
 RtlNtStatusToDosError(NTSTATUS Status);
 
+NTSYSAPI
+NTSTATUS
+WINAPI
+RtlGetVersion(
+__inout __deref
+POSVERSIONINFOW lpVersionInformation);
+
 #ifdef __cplusplus
 }
 #endif

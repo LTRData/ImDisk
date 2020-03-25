@@ -30,6 +30,13 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define WIN32_LEAN_AND_MEAN
 #define __USE_UNIX98
 
+#ifdef UNICODE
+#undef UNICODE
+#endif
+#ifdef _UNICODE
+#undef _UNICODE
+#endif
+
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -39,10 +46,15 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 #ifdef _WIN32
 
+#pragma warning(disable: 4201)
+
 #include <windows.h>
 #include <winsock.h>
 #include <winioctl.h>
 #include <io.h>
+
+#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "user32.lib")
 
 __inline
 BOOL
@@ -81,12 +93,18 @@ syslog(FILE *Stream, LPCSTR Message, ...)
         if (winerrno == NO_ERROR)
             winerrno = 10000 + errno;
 
-        if (FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+        if (FormatMessage(FORMAT_MESSAGE_MAX_WIDTH_MASK |
             FORMAT_MESSAGE_ALLOCATE_BUFFER |
             FORMAT_MESSAGE_FROM_SYSTEM |
             FORMAT_MESSAGE_IGNORE_INSERTS,
             NULL, winerrno, 0, (LPSTR)&MsgBuf, 0, NULL))
+        {
             CharToOemA(MsgBuf, MsgBuf);
+        }
+        else
+        {
+            MsgBuf = NULL;
+        }
     }
 
     if (MsgBuf != NULL)
@@ -106,6 +124,11 @@ syslog(FILE *Stream, LPCSTR Message, ...)
 #define LOG_ERR       stderr
 
 #define OBJNAME_SIZE  260
+
+LONG
+WINAPI
+ExceptionFilter(
+LPEXCEPTION_POINTERS ExceptionInfo);
 
 HANDLE shm_server_mutex = NULL;
 HANDLE shm_request_event = NULL;
@@ -263,7 +286,7 @@ physical_close(int fd)
     if (dll_mode)
         return dll_close(libhandle);
     else
-        return close(fd);
+        return _close(fd);
 }
 
 #ifdef _WIN32
@@ -592,8 +615,8 @@ vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
             physical_write(new_block_buf,
             sector_size + block_size + sizeof(vhd_info.Footer),
             block_offset_bytes);
-        if (readdone != sector_size + block_size +
-            (safeio_size_t)sizeof(vhd_info.Footer))
+        if (readdone != (safeio_ssize_t)(sector_size + block_size) +
+            (safeio_ssize_t)sizeof(vhd_info.Footer))
         {
             syslog(LOG_ERR, "vhd_write: Error writing new block: %m\n");
 
@@ -630,7 +653,7 @@ vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
 
     // Update allocation bitmap
     readdone = physical_write(buf2, bitmap_datasize, bitmap_offset);
-    if (readdone != bitmap_datasize)
+    if (readdone != (safeio_ssize_t)bitmap_datasize)
     {
         syslog(LOG_ERR, "vhd_write: Error updating block bitmap: %m\n");
 
@@ -846,11 +869,14 @@ main(int argc, char **argv)
 
 #ifdef _WIN32
     WSADATA wsadata;
+
+    SetUnhandledExceptionFilter(ExceptionFilter);
+
     WSAStartup(0x0101, &wsadata);
 #endif
 
     if (argc > 1)
-        if (stricmp(argv[1], "--dll") == 0)
+        if (_stricmp(argv[1], "--dll") == 0)
         {
             fprintf(stderr,
                 "devio with custom DLL support\n"
@@ -940,7 +966,7 @@ main(int argc, char **argv)
         }
 
     if (argc >= 3)
-        if (strnicmp(argv[1], "--dll=", 6) == 0)
+        if (_strnicmp(argv[1], "--dll=", 6) == 0)
         {
 #ifdef _WIN32
             char *dllargs = argv[1] + 6;
@@ -1050,9 +1076,9 @@ main(int argc, char **argv)
     else
     {
         if (devio_info.flags & IMDPROXY_FLAG_RO)
-            fd = open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDONLY);
+            fd = _open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDONLY);
         else
-            fd = open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDWR);
+            fd = _open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDWR);
 
         if (fd == -1)
         {
@@ -1369,16 +1395,27 @@ main(int argc, char **argv)
         }
 
     if (argc > 4)
-        sscanf(argv[4], ULL_FMT, &devio_info.req_alignment);
+    {
+        if (sscanf(argv[4], ULL_FMT, &devio_info.req_alignment) != 1)
+        {
+            syslog(LOG_ERR, "Invalid alignment specification: '%s'\n",
+                argv[4]);
+
+            return -1;
+        }
+    }
     else
+    {
         devio_info.req_alignment = DEF_REQUIRED_ALIGNMENT;
+    }
 
     if (argc > 5)
     {
         char suf = 0;
         if (sscanf(argv[5], "%u%c", &buffer_size, &suf) == 2)
-            switch (suf)
         {
+            switch (suf)
+            {
             case 'T':
                 buffer_size <<= 10;
             case 'G':
@@ -1401,6 +1438,7 @@ main(int argc, char **argv)
                 break;
             default:
                 syslog(LOG_ERR, "Unsupported size suffix: %c\n", suf);
+            }
         }
 
         /*
@@ -1579,7 +1617,7 @@ do_comm(char *comm_device)
     ULONGLONG req = 0;
     u_short port = (u_short)strtoul(comm_device, NULL, 0);
 
-    if (strnicmp(comm_device, "shm:", 4) == 0)
+    if (_strnicmp(comm_device, "shm:", 4) == 0)
     {
 #ifdef _WIN32
         int shmresult = do_comm_shm(comm_device + 4);
@@ -1727,3 +1765,59 @@ do_comm(char *comm_device)
         }
     }
 }
+
+#ifdef _WIN32
+
+LONG
+WINAPI
+ExceptionFilter(LPEXCEPTION_POINTERS ExceptionInfo)
+{
+    LPSTR MsgBuf = NULL;
+    DWORD i;
+
+    if (FormatMessage(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+        FORMAT_MESSAGE_ALLOCATE_BUFFER |
+        FORMAT_MESSAGE_FROM_HMODULE |
+        FORMAT_MESSAGE_IGNORE_INSERTS,
+        GetModuleHandle("ntdll.dll"),
+        ExceptionInfo->ExceptionRecord->ExceptionCode, 0,
+        (LPSTR)&MsgBuf, 0, NULL))
+    {
+        CharToOemA(MsgBuf, MsgBuf);
+    }
+    else
+    {
+        MsgBuf = NULL;
+    }
+
+    if (MsgBuf != NULL)
+    {
+        fprintf(stderr, "\n"
+            "%s\n", MsgBuf);
+
+        LocalFree(MsgBuf);
+    }
+
+    fprintf(stderr,
+        "\n"
+        "Fatal error - unhandled exception.\n"
+        "\n"
+        "Exception 0x%X at address 0x%p\n",
+        ExceptionInfo->ExceptionRecord->ExceptionCode,
+        ExceptionInfo->ExceptionRecord->ExceptionAddress);
+
+    for (i = 0;
+        i < ExceptionInfo->ExceptionRecord->NumberParameters;
+        i++)
+    {
+        fprintf(stderr,
+            "Parameter %u: 0x%p\n",
+            i + 1,
+            ExceptionInfo->ExceptionRecord->ExceptionInformation[i]);
+    }
+
+    flushall();
+    ExitProcess((UINT)-1);
+}
+
+#endif

@@ -38,6 +38,8 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "..\inc\imdisk.h"
 #include "..\inc\imdproxy.h"
 
+#pragma comment(lib, "ntdll.lib")
+
 enum
 {
     IMDISK_CLI_SUCCESS = 0,
@@ -77,6 +79,10 @@ enum
 	       (n)>=_1MB ? _MB(n) : (n)>=_1KB ? _KB(n) : (n))
 #define _p(n) ((n)>=_1TB ? "TB" : (n)>=_1GB ? "GB" :			\
 	       (n)>=_1MB ? "MB" : (n)>=_1KB ? "KB": (n)==1 ? "byte" : "bytes")
+
+#pragma warning(disable: 6255)
+#pragma warning(disable: 28719)
+#pragma warning(disable: 28159)
 
 void __declspec(noreturn)
 ImDiskSyntaxHelp()
@@ -298,6 +304,19 @@ ImDiskSyntaxHelp()
         "        image file. Useful when examining images from some embedded systems\r\n"
         "        and similar where data is stored in reverse byte order.\r\n"
         "\n"
+        "par     Parallel I/O. Valid for file-type virtual disks. With this flag set,\r\n"
+        "        driver sends read and write requests for the virtual disk directly down\r\n"
+        "        to the filesystem driver that handles the image file, within the same\r\n"
+        "        thread context as the original request was made. In some scenarios this\r\n"
+        "        flag can increase performance, particularly when you use several layers\r\n"
+        "        of virtual disks backed by image files stored on other virtual disks,\r\n"
+        "        network file shares or similar storage.\r\n"
+        "\n"
+        "        This flag is not supported in all scenarios depending on other drivers\r\n"
+        "        that need to complete requests to the image file. It could also degrade\r\n"
+        "        performance or cause reads and writes to fail if underlying drivers\r\n"
+        "        cannot handle I/O requests simultaneously.\r\n"
+        "\n"
         "-u unit\r\n"
         "        Along with -a, request a specific unit number for the ImDisk device\r\n"
         "        instead of automatic allocation. Along with -d or -l specifies the\r\n"
@@ -462,10 +481,10 @@ LPCWSTR FormatOptions)
 
     WCHAR temporary_mount_point[] = { 255, L':', 0 };
 
+#pragma warning(suppress: 6305)
     LPWSTR format_cmd = (LPWSTR)
         ImDiskCliAssertNotNull(_alloca(sizeof(format_cmd_prefix) +
-        ((wcslen(temporary_mount_point) + 1) << 1) +
-        (wcslen(FormatOptions) << 1)));
+        sizeof(temporary_mount_point) + (wcslen(FormatOptions) << 1)));
 
     STARTUPINFO startup_info = { sizeof(startup_info) };
     PROCESS_INFORMATION process_info;
@@ -784,14 +803,8 @@ BOOL SaveSettings)
         }
     }
 
-    create_data = _alloca(sizeof(IMDISK_CREATE_DATA) + file_name.Length);
-    if (create_data == NULL)
-    {
-        perror("Memory allocation error");
-        CloseHandle(driver);
-        RtlFreeUnicodeString(&file_name);
-        return IMDISK_CLI_ERROR_FATAL;
-    }
+    create_data = ImDiskCliAssertNotNull(_alloca(sizeof(IMDISK_CREATE_DATA) +
+        file_name.Length));
 
     ZeroMemory(create_data, sizeof(IMDISK_CREATE_DATA) + file_name.Length);
 
@@ -947,15 +960,8 @@ BOOL RemoveSettings)
     }
     else
     {
-        PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
-            _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
+        PIMDISK_CREATE_DATA create_data;
         HANDLE device;
-
-        if (create_data == NULL)
-        {
-            perror("Memory allocation error");
-            return IMDISK_CLI_ERROR_FATAL;
-        }
 
         if (MountPoint == NULL)
         {
@@ -970,9 +976,9 @@ BOOL RemoveSettings)
                 device = ImDiskOpenDeviceByNumber(DeviceNumber,
                 FILE_READ_ATTRIBUTES);
         }
-        else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' :
-            (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0
-            : FALSE)
+        else if ((MountPoint[0] != 0) &&
+            ((wcscmp(MountPoint + 1, L":") == 0) ||
+            (wcscmp(MountPoint + 1, L":\\") == 0)))
         {
             WCHAR drive_letter_path[] = L"\\\\.\\ :";
             drive_letter_path[4] = MountPoint[0];
@@ -1021,8 +1027,9 @@ BOOL RemoveSettings)
                 FILE_READ_ATTRIBUTES);
 
             if (device == INVALID_HANDLE_VALUE)
-                switch (GetLastError())
             {
+                switch (GetLastError())
+                {
                 case ERROR_INVALID_PARAMETER:
                     fputs("This version of Windows only supports drive letters as "
                         "mount points.\r\n"
@@ -1046,10 +1053,12 @@ BOOL RemoveSettings)
                 default:
                     PrintLastError(MountPoint);
                     return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
+                }
             }
         }
 
         if (device == INVALID_HANDLE_VALUE)
+        {
             if (GetLastError() == ERROR_FILE_NOT_FOUND)
             {
                 fputs("No such device.\r\n", stderr);
@@ -1060,12 +1069,17 @@ BOOL RemoveSettings)
                 PrintLastError(L"Error opening device:");
                 return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
             }
+        }
 
         if (!ImDiskCliCheckDriverVersion(device))
         {
             CloseHandle(device);
             return IMDISK_CLI_ERROR_DRIVER_WRONG_VERSION;
         }
+
+        create_data = (PIMDISK_CREATE_DATA)
+            ImDiskCliAssertNotNull(malloc(sizeof(IMDISK_CREATE_DATA) +
+            (MAX_PATH << 2)));
 
         if (!DeviceIoControl(device,
             IOCTL_IMDISK_QUERY_DEVICE,
@@ -1079,6 +1093,7 @@ BOOL RemoveSettings)
             ImDiskOemPrintF(stderr,
                 "%1!ws!: Is that drive really an ImDisk drive?",
                 MountPoint);
+            free(create_data);
             return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
         }
 
@@ -1087,6 +1102,7 @@ BOOL RemoveSettings)
             ImDiskOemPrintF(stderr,
                 "%1!ws!: Is that drive really an ImDisk drive?",
                 MountPoint);
+            free(create_data);
             return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
         }
 
@@ -1103,6 +1119,9 @@ BOOL RemoveSettings)
             if (!ImDiskRemoveRegistrySettings(create_data->DeviceNumber))
                 PrintLastError(L"Registry edit failed");
         }
+
+        free(create_data);
+        create_data = NULL;
 
         puts("Flushing file buffers...");
 
@@ -1244,11 +1263,12 @@ ImDiskCliQueryStatusDriver(BOOL NumericPrint)
 
     for (i = 0; i < 2; i++)
     {
-        device_list = (PULONG)_alloca(sizeof(ULONG) * current_size);
+        device_list = (PULONG)HeapAlloc(GetProcessHeap(),
+            0, sizeof(ULONG) * current_size);
 
         if (device_list == NULL)
         {
-            PrintLastError(L"Memory alloation error:");
+            fprintf(stderr, "Memory alloation error\n");
             return 0;
         }
 
@@ -1259,16 +1279,25 @@ ImDiskCliQueryStatusDriver(BOOL NumericPrint)
         {
         case ERROR_FILE_NOT_FOUND:
             fputs("The ImDisk Virtual Disk Driver is not loaded.\r\n", stderr);
+            HeapFree(GetProcessHeap(), 0, device_list);
             return 0;
 
         case ERROR_MORE_DATA:
             current_size = *device_list + 1;
+            HeapFree(GetProcessHeap(), 0, device_list);
+            device_list = NULL;
             continue;
 
         default:
             PrintLastError(L"Cannot control the ImDisk Virtual Disk Driver:");
+            HeapFree(GetProcessHeap(), 0, device_list);
             return -1;
         }
+    }
+
+    if (device_list == NULL)
+    {
+        return 0;
     }
 
     if (*device_list < 1)
@@ -1276,6 +1305,7 @@ ImDiskCliQueryStatusDriver(BOOL NumericPrint)
         if (!NumericPrint)
             puts("No virtual disks.");
 
+        HeapFree(GetProcessHeap(), 0, device_list);
         return 0;
     }
 
@@ -1283,6 +1313,8 @@ ImDiskCliQueryStatusDriver(BOOL NumericPrint)
         printf("%s%u\n",
         NumericPrint ? "" : "\\Device\\ImDisk",
         device_list[counter]);
+
+    HeapFree(GetProcessHeap(), 0, device_list);
 
     return 0;
 }
@@ -1323,39 +1355,17 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 {
     HANDLE device;
     DWORD dw;
-    PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
-        _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
-
-    if (create_data == NULL)
-    {
-        perror("Memory allocation error");
-        return IMDISK_CLI_ERROR_FATAL;
-    }
+    PIMDISK_CREATE_DATA create_data;
 
     if (MountPoint == NULL)
     {
-        device = ImDiskOpenDeviceByNumber(DeviceNumber,
-            FILE_READ_ATTRIBUTES);
-    }
-    else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' :
-        (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
-        FALSE)
-    {
-        WCHAR drive_letter_path[] = L"\\\\.\\ :";
-
-        drive_letter_path[4] = MountPoint[0];
-
-        DbgOemPrintF((stdout, "Opening %1!ws!...\n", MountPoint));
-
-        device = CreateFile(drive_letter_path,
-            FILE_READ_ATTRIBUTES,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
+        device = ImDiskOpenDeviceByNumber(DeviceNumber, FILE_READ_ATTRIBUTES);
     }
     else
     {
         device = ImDiskOpenDeviceByMountPoint(MountPoint,
             FILE_READ_ATTRIBUTES);
+
         if (device == INVALID_HANDLE_VALUE)
         {
             switch (GetLastError())
@@ -1407,6 +1417,10 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
         return IMDISK_CLI_ERROR_DRIVER_WRONG_VERSION;
     }
 
+    create_data = (PIMDISK_CREATE_DATA)
+        ImDiskCliAssertNotNull(malloc(sizeof(IMDISK_CREATE_DATA) +
+        (MAX_PATH << 2)));
+
     if (!DeviceIoControl(device,
         IOCTL_IMDISK_QUERY_DEVICE,
         NULL,
@@ -1429,6 +1443,7 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
             "%1!ws!: Is that drive really an ImDisk drive?",
             MountPoint);
         CloseHandle(device);
+        free(create_data);
         return IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE;
     }
 
@@ -1458,20 +1473,25 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
         printf("Image file offset: %I64i bytes\n",
         create_data->ImageOffset.QuadPart);
 
-    printf("Size: %I64i bytes (%.4g %s)%s%s%s%s%s.\n",
+    printf("Size: %I64i bytes (%.4g %s)",
         create_data->DiskGeometry.Cylinders.QuadPart,
         _h(create_data->DiskGeometry.Cylinders.QuadPart),
-        _p(create_data->DiskGeometry.Cylinders.QuadPart),
+        _p(create_data->DiskGeometry.Cylinders.QuadPart));
+
+    printf("%s%s%s%s%s.\n",
         IMDISK_READONLY(create_data->Flags) ?
         ", ReadOnly" : "",
         IMDISK_REMOVABLE(create_data->Flags) ?
         ", Removable" : "",
         IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM ?
-        ", Virtual Memory Disk" :
+        ", Virtual Memory" :
         IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_PROXY ?
-        ", Proxy Virtual Disk" :
+        ", Proxy" :
         IMDISK_FILE_TYPE(create_data->Flags) == IMDISK_FILE_TYPE_AWEALLOC ?
-        ", Physical Memory Disk" : ", File Type Virtual Disk",
+        ", Physical Memory" :
+        IMDISK_FILE_TYPE(create_data->Flags) == IMDISK_FILE_TYPE_PARALLEL_IO ?
+        ", Parallel I/O Image File"  :
+        ", Queued I/O Image File",
         IMDISK_DEVICE_TYPE(create_data->Flags) ==
         IMDISK_DEVICE_TYPE_CD ? ", CD-ROM" :
         IMDISK_DEVICE_TYPE(create_data->Flags) ==
@@ -1479,6 +1499,8 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
         IMDISK_DEVICE_TYPE(create_data->Flags) ==
         IMDISK_DEVICE_TYPE_FD ? ", Floppy" : ", HDD",
         create_data->Flags & IMDISK_IMAGE_MODIFIED ? ", Modified" : "");
+
+    free(create_data);
 
     return 0;
 }
@@ -1501,27 +1523,6 @@ DWORD FlagsToChange, DWORD Flags)
         if (device == INVALID_HANDLE_VALUE)
             device = ImDiskOpenDeviceByNumber(DeviceNumber,
             GENERIC_READ);
-    }
-    else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' :
-        (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
-        FALSE)
-    {
-        WCHAR drive_letter_path[] = L"\\\\.\\ :";
-
-        drive_letter_path[4] = MountPoint[0];
-
-        DbgOemPrintF((stdout, "Opening %1!ws!...\n", MountPoint));
-
-        device = CreateFile(drive_letter_path,
-            GENERIC_READ | GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
-
-        if (device == INVALID_HANDLE_VALUE)
-            device = CreateFile(drive_letter_path,
-            GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
     }
     else
     {
@@ -1666,27 +1667,6 @@ LARGE_INTEGER ExtendSize)
         if (device == INVALID_HANDLE_VALUE)
             device = ImDiskOpenDeviceByNumber(DeviceNumber,
             GENERIC_READ);
-    }
-    else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' :
-        (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
-        FALSE)
-    {
-        WCHAR drive_letter_path[] = L"\\\\.\\ :";
-
-        drive_letter_path[4] = MountPoint[0];
-
-        DbgOemPrintF((stdout, "Opening %1!ws!...\n", MountPoint));
-
-        device = CreateFile(drive_letter_path,
-            GENERIC_READ | GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
-
-        if (device == INVALID_HANDLE_VALUE)
-            device = CreateFile(drive_letter_path,
-            GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, NULL);
     }
     else
     {
@@ -1853,7 +1833,7 @@ wmain(int argc, LPWSTR argv[])
                 ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\n"
                 "Version %i.%i.%i - (Compiled " __DATE__ ")\n"
                 "\n"
-                "Copyright (C) 2004-2014 Olof Lagerkvist.\r\n"
+                "Copyright (C) 2004-2015 Olof Lagerkvist.\r\n"
                 "\n"
                 "http://www.ltr-data.se     olof@ltr-data.se\r\n"
                 "\n"
@@ -2056,10 +2036,19 @@ wmain(int argc, LPWSTR argv[])
                         {
                             if (((IMDISK_TYPE(flags) != IMDISK_TYPE_FILE) &
                                 (IMDISK_TYPE(flags) != 0)) |
-                                (IMDISK_FILE_TYPE(flags) != IMDISK_FILE_TYPE_DIRECT))
+                                (IMDISK_FILE_TYPE(flags) != 0))
                                 ImDiskSyntaxHelp();
 
                             flags |= IMDISK_TYPE_FILE | IMDISK_FILE_TYPE_AWEALLOC;
+                        }
+                        else if (wcscmp(opt, L"par") == 0)
+                        {
+                            if (((IMDISK_TYPE(flags) != IMDISK_TYPE_FILE) &
+                                (IMDISK_TYPE(flags) != 0)) |
+                                (IMDISK_FILE_TYPE(flags) != 0))
+                                ImDiskSyntaxHelp();
+
+                            flags |= IMDISK_TYPE_FILE | IMDISK_FILE_TYPE_PARALLEL_IO;
                         }
                         else if (wcscmp(opt, L"bswap") == 0)
                         {
@@ -2108,7 +2097,7 @@ wmain(int argc, LPWSTR argv[])
                 {
                     WCHAR suffix = 0;
 
-                    swscanf(argv[1], L"%I64i%c",
+                    (void)swscanf(argv[1], L"%I64i%c",
                         &disk_geometry.Cylinders, &suffix);
 
                     switch (suffix)
@@ -2122,6 +2111,7 @@ wmain(int argc, LPWSTR argv[])
 
                         {
                             MEMORYSTATUS memstat;
+#pragma warning(suppress: 28159)
                             GlobalMemoryStatus(&memstat);
                             disk_geometry.Cylinders.QuadPart =
                                 disk_geometry.Cylinders.QuadPart *
@@ -2159,6 +2149,7 @@ wmain(int argc, LPWSTR argv[])
                     if (disk_geometry.Cylinders.QuadPart < 0)
                     {
                         MEMORYSTATUS memstat;
+#pragma warning(suppress: 28159)
                         GlobalMemoryStatus(&memstat);
                         disk_geometry.Cylinders.QuadPart =
                             memstat.dwAvailPhys +
@@ -2256,7 +2247,7 @@ wmain(int argc, LPWSTR argv[])
                 {
                     WCHAR suffix = 0;
 
-                    swscanf(argv[1], L"%I64u%c",
+                    (void)swscanf(argv[1], L"%I64u%c",
                         &image_offset, &suffix);
 
                     switch (suffix)
@@ -2487,8 +2478,9 @@ wmain(int argc, LPWSTR argv[])
     ImDiskSyntaxHelp();
 }
 
-#ifndef _WIN64
-// In 32 bit version, we have our own EXE entry to be less dependant of
+#ifndef _DEBUG
+
+// We have our own EXE entry to be less dependant of
 // specific MSVCRT code that may not be available in older Windows versions.
 // It also saves some EXE file size.
 __declspec(noreturn)
@@ -2511,4 +2503,5 @@ wmainCRTStartup()
 
     exit(wmain(argc, argv));
 }
+
 #endif

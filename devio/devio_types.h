@@ -1,7 +1,7 @@
 #ifdef _WIN32
 
-typedef int safeio_size_t;
-typedef int safeio_ssize_t;
+typedef unsigned __int32 safeio_size_t;
+typedef __int32 safeio_ssize_t;
 typedef __int64 off_t_64;
 
 #define ULL_FMT       "%I64u"

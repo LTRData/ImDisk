@@ -47,6 +47,8 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 #include "imdisk.rc.h"
 
+#pragma comment(lib, "comctl32.lib")
+
 /// Macros for "human readable" file sizes.
 #define _1KB  (1ui64<<10)
 #define _1MB  (1ui64<<20)
@@ -70,6 +72,116 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define PROP_NAME_HKEY_MOUNTPOINTS2 L"HKEY_MountPoints2"
 #define PROP_NAME_HANDLE_REFRESH_THREAD L"HANDLE_RefreshThread"
 #define PROP_NAME_HANDLE_EXIT_EVENT L"HANDLE_ExitEvent"
+
+#pragma warning(disable: 28719)
+
+template<typename T> class WHeapMem
+{
+protected:
+    T *ptr;
+
+public:
+    operator bool()
+    {
+        return ptr != NULL;
+    }
+
+    bool operator!()
+    {
+        return ptr == NULL;
+    }
+
+    operator T*()
+    {
+        return ptr;
+    }
+
+    T* operator ->()
+    {
+        return ptr;
+    }
+
+    T* operator+(int i)
+    {
+        return ptr + i;
+    }
+
+    T* operator-(int i)
+    {
+        return ptr - i;
+    }
+
+    T* operator =(T *pBlk)
+    {
+        Free();
+        return ptr = pBlk;
+    }
+
+    DWORD_PTR Count() const
+    {
+        return GetSize() / sizeof(T);
+    }
+
+    DWORD_PTR GetSize() const
+    {
+        if (ptr == NULL)
+            return 0;
+        else
+            return hsize(ptr);
+    }
+
+    /* WHeapMem::ReAlloc()
+    *
+    * This function uses HeapReAlloc() which makes it preserve the data if the
+    * block must be moved to increase.
+    */
+    T* ReAlloc(SIZE_T dwAllocSize, DWORD Flags)
+    {
+        if (ptr != NULL)
+        {
+            T *newblock = (T*)HeapReAlloc(GetProcessHeap(), Flags,
+                ptr, dwAllocSize);
+            if (newblock != NULL)
+                return ptr = newblock;
+            else
+                return NULL;
+        }
+        else
+        {
+            ptr = (T*)HeapAlloc(GetProcessHeap(), Flags, dwAllocSize);
+            return ptr;
+        }
+    }
+
+    T *Free()
+    {
+        if (ptr == NULL)
+            return NULL;
+        else if (HeapFree(GetProcessHeap(), 0, ptr))
+            return ptr = NULL;
+        else
+            return ptr;
+    }
+
+    void Abandon()
+    {
+        ptr = NULL;
+    }
+
+    WHeapMem()
+        : ptr(NULL) { }
+
+    explicit WHeapMem(DWORD dwAllocSize, DWORD Flags)
+        : ptr((T*)HeapAlloc(GetProcessHeap(), Flags, dwAllocSize)) { }
+
+    explicit WHeapMem(T *pBlk)
+        : ptr(pBlk) { }
+
+    ~WHeapMem()
+    {
+        Free();
+    }
+};
 
 extern "C" HINSTANCE hInstance = NULL;
 
@@ -129,9 +241,10 @@ BOOL *lpTranslated
     }
 
     PWCHAR stop_pos;
+#pragma warning(suppress: 28193)
     double size = wcstod(wcSize, &stop_pos);
 
-    if ((stop_pos == wcSize) | (stop_pos[0] != 0))
+    if ((stop_pos == wcSize) || (stop_pos[0] != 0))
     {
         if (lpTranslated != NULL)
             *lpTranslated = FALSE;
@@ -148,14 +261,8 @@ BOOL *lpTranslated
 int
 LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
 {
-    PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
-        _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
-
-    if (create_data == NULL)
-    {
-        MessageBox(hWnd, L"Memory allocation error.", L"ImDisk", MB_ICONSTOP);
-        return -1;
-    }
+    WHeapMem<IMDISK_CREATE_DATA> create_data(sizeof(IMDISK_CREATE_DATA) +
+        (MAX_PATH << 2), HEAP_GENERATE_EXCEPTIONS);
 
     if (!ImDiskQueryDevice(iDeviceNumber, create_data,
         sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2)))
@@ -217,6 +324,9 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
 
     lvi.mask = LVIF_TEXT;
     lvi.iSubItem = 1;
+
+    WHeapMem<WCHAR> mem;
+
     switch (IMDISK_TYPE(create_data->Flags))
     {
     case IMDISK_TYPE_FILE:
@@ -235,10 +345,10 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
                 break;
             }
 
-        lvi.pszText = (LPWSTR)_alloca(create_data->FileNameLength +
-            sizeof(*create_data->FileName));
-        if (lvi.pszText == NULL)
-            return lvi.iItem;
+        mem.ReAlloc(create_data->FileNameLength +
+            sizeof(*create_data->FileName), HEAP_GENERATE_EXCEPTIONS);
+        
+        lvi.pszText = mem;
 
         wcsncpy(lvi.pszText, create_data->FileName,
             create_data->FileNameLength >> 1);
@@ -257,10 +367,10 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
 
             LPWSTR filename = lvi.pszText;
 
-            lvi.pszText = (LPWSTR)_alloca((wcslen(prefix) + wcslen(filename)
-                + 1) << 1);
-            if (lvi.pszText == NULL)
-                return lvi.iItem;
+            mem.ReAlloc((wcslen(prefix) + wcslen(filename)
+                + 1) << 1, HEAP_GENERATE_EXCEPTIONS);
+
+            lvi.pszText = mem;
 
             wcscpy(lvi.pszText, prefix);
             wcscat(lvi.pszText, filename);
@@ -270,11 +380,13 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
     case IMDISK_TYPE_PROXY:
     {
         WCHAR Text[] = L"Proxy through ";
-        lvi.pszText = (LPWSTR)_alloca(create_data->FileNameLength +
+
+        mem.ReAlloc(create_data->FileNameLength +
             sizeof(*create_data->FileName) +
-            sizeof(Text));
-        if (lvi.pszText == NULL)
-            return lvi.iItem;
+            sizeof(Text), HEAP_GENERATE_EXCEPTIONS);
+
+        lvi.pszText = mem;
+
         wcsncpy(lvi.pszText, Text, sizeof(Text) >> 1);
         lvi.pszText[sizeof(Text) >> 1] = 0;
         wcsncat(lvi.pszText, create_data->FileName,
@@ -361,15 +473,13 @@ RefreshList(HWND hWnd, DWORD SelectDeviceNumber)
 
     ULONG current_size = 3;
 
-    PULONG device_list = NULL;
+    WHeapMem<ULONG> device_list;
 
     for (int i = 0; i < 2; i++)
     {
-        device_list = (PULONG)_alloca(sizeof(ULONG) * current_size);
-
-        if (device_list == NULL)
+        if (device_list.ReAlloc(sizeof(ULONG) * current_size, 0) == NULL)
         {
-            MsgBoxLastError(hWnd, L"Memory alloation error:");
+            SetLastError(ERROR_OUTOFMEMORY);
             return false;
         }
 
@@ -506,7 +616,7 @@ OptionsSaveDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     L"Save disk image at offset %I64i in image file "
                     L"%.*ws (where it was originally loaded from). "
                     L"Original MBR or header will be left untouched.",
-                    create_data->ImageOffset,
+                    create_data->ImageOffset.QuadPart,
                     create_data->FileNameLength >> 1,
                     create_data->FileName);
                 buffer[_countof(buffer) - 1] = 0;
@@ -655,19 +765,10 @@ IN DWORD BufferSize,
 IN BOOL IsCdRomType)
 {
     DWORD create_data_size = sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2);
-    PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
-        _alloca(create_data_size);
+    WHeapMem<IMDISK_CREATE_DATA> create_data(create_data_size,
+        HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY);
     PDISK_GEOMETRY disk_geometry = &create_data->DiskGeometry;
     PLARGE_INTEGER disk_size = &create_data->DiskGeometry.Cylinders;
-
-    if (create_data == NULL)
-    {
-        MessageBox(hWnd, L"Memory allocation error.", L"ImDisk", MB_ICONSTOP);
-        return;
-    }
-
-    ZeroMemory(create_data, create_data_size);
-
     DWORD dwRet;
 
     if (!DeviceIoControl(hDev, IOCTL_IMDISK_QUERY_DEVICE, NULL, 0, create_data,
@@ -783,7 +884,7 @@ IN BOOL IsCdRomType)
         // Not saving to existing image file? Create new MBR.
         if (!use_original_file_name)
         {
-            LPBYTE mbr = (LPBYTE)_alloca(default_mbr_size);
+            WHeapMem<BYTE> mbr(default_mbr_size, HEAP_GENERATE_EXCEPTIONS);
             PARTITION_INFORMATION partition_info = { 0 };
             partition_info.StartingOffset.QuadPart =
                 (LONGLONG)
@@ -870,7 +971,7 @@ IN BOOL IsCdRomType)
     }
 
     CloseHandle(hImage);
-    MsgBoxPrintF(hWnd, MB_ICONINFORMATION,
+    ImDiskMsgBoxPrintF(hWnd, MB_ICONINFORMATION,
         L"ImDisk Virtual Disk Driver",
         L"Successfully saved the contents of drive '%1!c!:' to "
         L"image file '%2'.",
@@ -1214,6 +1315,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
             // First, try to parse as integer
             PWCHAR stop_pos = NULL;
+#pragma warning(suppress: 28193)
             disk_geometry.Cylinders.QuadPart = wcstoul(wcSize, &stop_pos, 0);
 
             // If failed, try to parse as double
@@ -1293,9 +1395,12 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             WCHAR drive_letter[3];
             if (GetDlgItemText(hWnd, IDC_EDT_DRIVE, drive_letter, 3) > 0)
             {
+#pragma warning(push)
+#pragma warning(disable: 28193)
                 drive_letter[0] = towupper(drive_letter[0]);
                 drive_letter[1] = L':';
                 drive_letter[2] = 0;
+#pragma warning(pop)
 
                 WCHAR buffer[MAX_PATH << 1];
                 if (QueryDosDevice(drive_letter, buffer,
@@ -1444,11 +1549,13 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 
             // First, try to parse as integer
             PWCHAR stop_pos = NULL;
+#pragma warning(suppress: 28193)
             extend_size.QuadPart = wcstoul(wcSize, &stop_pos, 0);
 
             // If failed, try to parse as double
-            if ((stop_pos == wcSize) | (stop_pos[0] != 0))
+            if ((stop_pos == wcSize) || (stop_pos[0] != 0))
             {
+#pragma warning(suppress: 28193)
                 double size = wcstod(wcSize, &stop_pos);
 
                 if (IsDlgButtonChecked(hWnd, IDC_UNIT_GB))
@@ -1797,9 +1904,11 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 HWND hWndStatus = NULL;
                 bool bCancelFlag = false;
 
+#pragma warning(suppress: 28159)
                 for (DWORD dwStartTime = GetTickCount();
+#pragma warning(suppress: 28159)
                     (GetTickCount() - dwStartTime) < 5000;
-                    Sleep(100), DoEvents(NULL))
+                    Sleep(100), ImDiskFlushWindowMessages(NULL))
                 {
                     DWORD dwErrCode = RegOpenKey(hKeyMountPoints2,
                         mount_key_name,
@@ -1813,7 +1922,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     if (bCancelFlag)
                         break;
 
-                    if (hWndStatus == NULL)
+                    if (hWndStatus != NULL)
                     {
                         EnableWindow(hWnd, FALSE);
                         hWndStatus =
@@ -1879,7 +1988,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             EnableWindow(hWnd, TRUE);
             DestroyWindow(hWndStatus);
 
-            DoEvents(NULL);
+            ImDiskFlushWindowMessages(NULL);
 
             RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
                 IMDISK_AUTO_DEVICE_NUMBER);
@@ -1937,7 +2046,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             EnableWindow(hWnd, TRUE);
             DestroyWindow(hWndStatus);
 
-            DoEvents(NULL);
+            ImDiskFlushWindowMessages(NULL);
 
             RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
                 IMDISK_AUTO_DEVICE_NUMBER);
@@ -1999,7 +2108,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             EnableWindow(hWnd, TRUE);
             DestroyWindow(hWndStatus);
 
-            DoEvents(NULL);
+            ImDiskFlushWindowMessages(NULL);
 
             RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
                 IMDISK_AUTO_DEVICE_NUMBER);
@@ -2036,7 +2145,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
             if ((mount_point[0] < 'A') | (mount_point[0] > 'Z'))
             {
-                MsgBoxPrintF(hWnd, MB_ICONSTOP, L"Unsupported mount point",
+                ImDiskMsgBoxPrintF(hWnd, MB_ICONSTOP, L"Unsupported mount point",
                     L"It is only possible to format drives with a "
                     L"drive letter A: - Z:. This mount point, '%1' "
                     L"is not supported.", mount_point);
@@ -2071,7 +2180,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
                 L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
                 L"\r\n"
-                L"Copyright (C) 2004-2015 Olof Lagerkvist.\r\n"
+                L"Copyright (C) 2004-2014 Olof Lagerkvist.\r\n"
                 L"http://www.ltr-data.se     olof@ltr-data.se\r\n"
                 L"\r\n"
                 L"Permission is hereby granted, free of charge, to any person\r\n"
@@ -2171,17 +2280,8 @@ ImDiskInteractiveCheckSave(HWND hWnd, HANDLE device)
 
     DWORD create_data_size = sizeof(IMDISK_CREATE_DATA) +
         ((MAX_PATH + 2) << 2);
-    PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
-        _alloca(create_data_size);
-
-    if (create_data == NULL)
-    {
-        DWORD last_error = GetLastError();
-        MessageBox(hWnd, L"Memory allocation error.", L"ImDisk",
-            MB_ICONSTOP);
-        SetLastError(last_error);
-        return FALSE;
-    }
+    WHeapMem<IMDISK_CREATE_DATA> create_data(create_data_size,
+        HEAP_GENERATE_EXCEPTIONS);
 
     DWORD dw;
     if (!DeviceIoControl(device,

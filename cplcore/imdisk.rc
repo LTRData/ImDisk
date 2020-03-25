@@ -23,8 +23,8 @@ STRINGTABLE
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION IMDISK_RC_VERSION_FLD,54
-PRODUCTVERSION IMDISK_RC_VERSION_FLD,54
+FILEVERSION IMDISK_RC_VERSION_FLD,55
+PRODUCTVERSION IMDISK_RC_VERSION_FLD,55
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -41,12 +41,12 @@ FILESUBTYPE    0
         {
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "Control Panel Applet for the ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".54\0"
+            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".55\0"
             VALUE "InternalName", "imdisk\0"
             VALUE "LegalCopyright", "Copyright © 2004-2015 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "imdisk.cpl\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".54\0"
+            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".55\0"
         }
     }
     BLOCK "VarFileInfo"
@@ -55,10 +55,10 @@ FILESUBTYPE    0
     }
 }
 
-IDI_APPICON ICON DISCARDABLE "..\cpl\Icons\VD.ico"
-IDI_ICONHD ICON DISCARDABLE "..\cpl\Icons\Disk.ico"
-IDI_ICONFD ICON DISCARDABLE "..\cpl\Icons\Floppy.ico"
-IDI_ICONCD ICON DISCARDABLE "..\cpl\Icons\CD.ico"
+IDI_APPICON ICON DISCARDABLE "Icons\VD.ico"
+IDI_ICONHD ICON DISCARDABLE "Icons\Disk.ico"
+IDI_ICONFD ICON DISCARDABLE "Icons\Floppy.ico"
+IDI_ICONCD ICON DISCARDABLE "Icons\CD.ico"
 
 IDD_CPLAPPLET DIALOG 81, 42, 387, 216
 EXSTYLE WS_EX_APPWINDOW

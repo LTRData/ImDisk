@@ -29,10 +29,6 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0333
-#endif
-
 #include <windows.h>
 #include <winioctl.h>
 #include <ntsecapi.h>
@@ -45,7 +41,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "..\inc\imdproxy.h"
 #include "..\inc\wio.hpp"
 
-#pragma comment(linker, "-subsystem:windows,3.51 -entry:Entry")
+#pragma comment(lib, "ws2_32.lib")
+
+#pragma comment(linker, "-subsystem:windows -entry:Entry")
 
 SERVICE_STATUS ImDiskSvcStatus;
 SERVICE_STATUS_HANDLE ImDiskSvcStatusHandle;
@@ -302,6 +300,7 @@ class ImDiskSvcServerSession
         if (!DeviceIoControl(hDriver,
             IOCTL_IMDISK_REFERENCE_HANDLE,
             &hTarget,
+#pragma warning(suppress: 28132)
             sizeof hTarget,
             &connect_resp.object_ptr,
             sizeof connect_resp.object_ptr,
@@ -484,6 +483,7 @@ ImDiskSvcStart(DWORD, LPWSTR *)
             break;
         }
 
+#pragma warning(suppress: 28197)
         ImDiskSvcServerSession *ServerSession = new ImDiskSvcServerSession;
         if (!ServerSession->IsOk())
         {

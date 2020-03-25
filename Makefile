@@ -15,6 +15,8 @@ INCLUDE=$(INCLUDE);$(MAKEDIR)\inc
 
 UPLOAD_DIR=z:\ltr-website\ltr-data.se\files\
 
+STAMPINF_VERSION=$(IMDISK_VERSION)
+
 all: cli\$(ARCHDIR)\imdisk.exe svc\$(ARCHDIR)\imdsksvc.exe cpl\$(ARCHDIR)\imdisk.cpl cplcore\$(ARCHDIR)\imdisk.cpl sys\$(ARCHDIR)\imdisk.sys awealloc\$(ARCHDIR)\awealloc.sys deviotst\$(ARCHDIR)\deviotst.exe
 
 clean:
@@ -35,9 +37,10 @@ p:\utils\imdisk_source.7z: p:\utils\imdisk.7z 7zSDcfg.txt gpl.txt readme.txt run
 
 p:\utils\imdisk.7z: readme.txt gpl.txt imdisk.inf runwaitw.exe install.cmd uninstall_imdisk.cmd msgboxw.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
 	del p:\utils\imdisk.7z
+	stampinf -f imdisk.inf -a NTx86,NTia64,NTamd64
 	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt imdisk.inf runwaitw.exe install.cmd uninstall_imdisk.cmd msgboxw.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
 
-cli\$(ARCHDIR)\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\$(ARCHDIR)\imdisk.lib
+cli\$(ARCHDIR)\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\$(ARCHDIR)\imdisk.lib cplcore\$(ARCHDIR)\imdisk.lib
 	cd cli
 	build
 	cd $(MAKEDIR)

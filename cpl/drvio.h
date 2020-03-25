@@ -2,10 +2,6 @@
 extern "C" {
 #endif
 
-  VOID
-  WINAPI
-  DoEvents(HWND hWnd);
-
   INT_PTR
   CALLBACK
   StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -17,6 +13,19 @@ extern "C" {
   BOOL
   WINAPI
   ImDiskInteractiveCheckSave(HWND hWnd, HANDLE device);
+
+  /**
+  This function is a quick perror-style way of displaying an error message
+  for the last failed Windows API call.
+
+  hWndParent   Parent window for the MessageBox call.
+
+  Prefix       Text to print before the error message string.
+  */
+  VOID
+      WINAPI
+      MsgBoxLastError(IN HWND hWndParent OPTIONAL,
+      IN LPCWSTR Prefix);
 
   extern
   ULONGLONG

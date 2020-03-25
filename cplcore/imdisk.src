@@ -4,53 +4,7 @@ EXPORTS
 
 #ifdef _X86_
 
-	MsgBoxPrintF
-
-	_MsgBoxLastError@8
-	_ImDiskGetAPIFlags@0
-	_ImDiskSetAPIFlags@8
-	_ImDiskGetPartitionTypeName@12
-	_ImDiskGetOffsetByFileExt@8
-	_ImDiskGetPartitionInformation@16
-	_ImDiskReadFileHandle@24
-	_ImDiskGetPartitionInfoIndirect@20
-	_ImDiskImageContainsISOFS@8
-	_ImDiskImageContainsISOFSIndirect@12
-	_ImDiskStartService@4
-	_ImDiskCreateMountPoint@8
-	_ImDiskRemoveMountPoint@4
-	_ImDiskOpenDeviceByName@8
-	_ImDiskOpenDeviceByNumber@8
-	_ImDiskOpenDeviceByMountPoint@8
-	_ImDiskCheckDriverVersion@4
-	_ImDiskGetVersion@8
-	_ImDiskFindFreeDriveLetter@0
-	_ImDiskGetDeviceList@0
-	_ImDiskGetDeviceListEx@8
-	_ImDiskQueryDevice@12
-	_ImDiskCreateDevice@28
-	_ImDiskCreateDeviceEx@32
-	_ImDiskForceRemoveDevice@8
-	_ImDiskRemoveDevice@12
-	_ImDiskChangeFlags@20
-	_ImDiskExtendDevice@12
-	_ImDiskSaveImageFile@16
-	_ImDiskGetVolumeSize@8
-	_ImDiskGetFormattedGeometry@12
-	_ImDiskGetFormattedGeometryIndirect@16
-	_ImDiskBuildMBR@20
-	_ImDiskConvertCHSToLBA@8
-	_ImDiskConvertLBAToCHS@8
-	_ImDiskAdjustImageFileSize@8
-	_ImDiskNativePathToWin32@4
-	_ImDiskOpenRefreshEvent@4
-	_ImDiskSaveRegistrySettings@4
-	_ImDiskRemoveRegistrySettings@4
-	_ImDiskGetRegistryAutoLoadDevices@4
-	_ImDiskNotifyShellDriveLetter@8
-	_ImDiskNotifyRemovePending@8
-
-	MsgBoxLastError=_MsgBoxLastError@8
+	ImDiskFlushWindowMessages=_ImDiskFlushWindowMessages@4
 	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
 	ImDiskSetAPIFlags=_ImDiskSetAPIFlags@8
 	ImDiskGetPartitionTypeName=_ImDiskGetPartitionTypeName@12
@@ -92,54 +46,6 @@ EXPORTS
 	ImDiskRemoveRegistrySettings=_ImDiskRemoveRegistrySettings@4
 	ImDiskGetRegistryAutoLoadDevices=_ImDiskGetRegistryAutoLoadDevices@4
 	ImDiskNotifyShellDriveLetter=_ImDiskNotifyShellDriveLetter@8
-    ImDiskNotifyRemovePending=_ImDiskNotifyRemovePending@8
-
-#else
-
-	MsgBoxPrintF
-
-	MsgBoxLastError
-	ImDiskGetAPIFlags
-	ImDiskSetAPIFlags
-	ImDiskGetPartitionTypeName
-	ImDiskGetOffsetByFileExt
-	ImDiskGetPartitionInformation
-	ImDiskReadFileHandle
-	ImDiskGetPartitionInfoIndirect
-	ImDiskImageContainsISOFS
-	ImDiskImageContainsISOFSIndirect
-	ImDiskStartService
-	ImDiskCreateMountPoint
-	ImDiskRemoveMountPoint
-	ImDiskOpenDeviceByName
-	ImDiskOpenDeviceByNumber
-	ImDiskOpenDeviceByMountPoint
-	ImDiskCheckDriverVersion
-	ImDiskGetVersion
-	ImDiskFindFreeDriveLetter
-	ImDiskGetDeviceList
-	ImDiskGetDeviceListEx
-	ImDiskQueryDevice
-	ImDiskCreateDevice
-	ImDiskCreateDeviceEx
-	ImDiskForceRemoveDevice
-	ImDiskRemoveDevice
-	ImDiskChangeFlags
-	ImDiskExtendDevice
-	ImDiskSaveImageFile
-	ImDiskGetVolumeSize
-	ImDiskGetFormattedGeometry
-	ImDiskGetFormattedGeometryIndirect
-	ImDiskBuildMBR
-	ImDiskConvertCHSToLBA
-	ImDiskConvertLBAToCHS
-	ImDiskAdjustImageFileSize
-	ImDiskNativePathToWin32
-	ImDiskOpenRefreshEvent
-	ImDiskSaveRegistrySettings
-	ImDiskRemoveRegistrySettings
-	ImDiskGetRegistryAutoLoadDevices
-	ImDiskNotifyShellDriveLetter
-    ImDiskNotifyRemovePending
+	ImDiskNotifyRemovePending=_ImDiskNotifyRemovePending@8
 
 #endif

@@ -44,6 +44,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 extern HINSTANCE hInstance;
 
+IMDISK_API
 void
 WINAPI
 RunDLL_MountFileW(HWND hWnd,
@@ -55,6 +56,7 @@ int nCmdShow)
         (LPARAM)lpszCmdLine);
 }
 
+IMDISK_API
 void
 WINAPI
 RunDLL_MountFile(HWND hWnd,
@@ -66,7 +68,7 @@ int nCmdShow)
     LPWSTR file_name;
 
     file_name_length = (int)(strlen(lpszCmdLine) + 1);
-    file_name = (LPWSTR)malloc(file_name_length << 1);
+    file_name = (LPWSTR)malloc(((size_t)file_name_length) << 1);
 
     if (file_name == NULL)
     {
@@ -91,6 +93,7 @@ int nCmdShow)
     free(file_name);
 }
 
+IMDISK_API
 void
 WINAPI
 RunDLL_RemoveDevice(HWND hWnd,
@@ -112,7 +115,7 @@ int nCmdShow)
 
     if (strlen(lpszCmdLine) < 2 ? TRUE : lpszCmdLine[1] != L':')
     {
-        MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+        ImDiskMsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
             L"Unsupported mount point: '%1!hs!'", lpszCmdLine);
         return;
     }
@@ -131,6 +134,7 @@ int nCmdShow)
     DestroyWindow(hWndStatus);
 }
 
+IMDISK_API
 void
 WINAPI
 RunDLL_SaveImageFile(HWND hWnd,
@@ -150,7 +154,7 @@ int nCmdShow)
         break;
 
     case DRIVE_REMOTE:
-        MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+        ImDiskMsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
             L"Unsupported drive type: '%1!hs!'", lpszCmdLine);
         return;
     }
@@ -166,7 +170,7 @@ int nCmdShow)
 
     if (strlen(lpszCmdLine) < 2 ? TRUE : lpszCmdLine[1] != L':')
     {
-        MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+        ImDiskMsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
             L"Unsupported mount point: '%1!hs!'", lpszCmdLine);
         return;
     }

@@ -42,7 +42,7 @@ extern "C" {
             return -1;
         }
 
-        rc = read(d, buf, nbytes);
+        rc = _read(d, buf, nbytes);
 
         if ((nbytes > 0) && (rc >= 0) && (rc < nbytes))
         {
@@ -62,7 +62,7 @@ extern "C" {
             return -1;
         }
 
-        rc = write(d, buf, nbytes);
+        rc = _write(d, buf, nbytes);
 
         if ((rc >= 0) || (errno != 28))
         {
@@ -87,7 +87,7 @@ extern "C" {
             return -1;
         }
 
-        return write(d, buf, nbytes);
+        return _write(d, buf, nbytes);
     }
 
 #endif

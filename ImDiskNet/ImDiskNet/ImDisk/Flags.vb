@@ -79,14 +79,18 @@
         ProxyTypeSharedMemory = &H3000UI
 
         ''' <summary>
-        ''' Specifies that image file will be used directly.
+        ''' Image file accessed using queued I/O requests.
         ''' </summary>
-        FileTypeDirect = &H0UI
+        FileTypeQueued = &H0UI
         ''' <summary>
-        ''' Specifies that image file should be copied into physical memory block (AWE) and that no changes should be written
+        ''' Copy image file into physical memory block (AWE). No changes are written
         ''' back to image file.
         ''' </summary>
         FileTypeAwe = &H1000UI
+        ''' <summary>
+        ''' Image file accessed using direct parallel I/O requests.
+        ''' </summary>
+        FileTypeParallel = &H2000UI
 
         ''' <summary>
         ''' This flag can only be set by the driver and may be included in the response Flags field from QueryDevice method.

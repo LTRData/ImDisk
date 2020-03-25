@@ -70,8 +70,13 @@ OTHER DEALINGS IN THE SOFTWARE.
 ///
 #define IMDISK_DRIVER_NAME             _T("ImDisk")
 #define IMDISK_DRIVER_PATH             _T("system32\\drivers\\imdisk.sys")
+
+#ifndef AWEALLOC_DRIVER_NAME
 #define AWEALLOC_DRIVER_NAME           _T("AWEAlloc")
-#define AWEALLOC_DEVICE_NAME           IMDISK_DEVICE_DIR_NAME _T("\\AWEAlloc")
+#endif
+#ifndef AWEALLOC_DEVICE_NAME
+#define AWEALLOC_DEVICE_NAME           _T("\\Device\\") AWEALLOC_DRIVER_NAME
+#endif
 
 ///
 /// Global refresh event name
@@ -120,23 +125,28 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define IMDISK_GTE_VISTA() (IMDISK_WINVER_MAJOR() >= 0x06)
 
 #ifndef IMDISK_API
-#define IMDISK_API
+#ifdef IMDISK_CPL_EXPORTS
+#define IMDISK_API __declspec(dllexport)
+#else
+#define IMDISK_API __declspec(dllimport)
+#endif
 #endif
 
 ///
 /// Base value for the IOCTL's.
 ///
-#define FILE_DEVICE_IMDISK				0x8372
+#define FILE_DEVICE_IMDISK				    0x8372
 
-#define IOCTL_IMDISK_QUERY_VERSION		((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x800, METHOD_BUFFERED, 0))
-#define IOCTL_IMDISK_CREATE_DEVICE		((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x801, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
-#define IOCTL_IMDISK_QUERY_DEVICE		((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x802, METHOD_BUFFERED, 0))
-#define IOCTL_IMDISK_QUERY_DRIVER       ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x803, METHOD_BUFFERED, 0))
-#define IOCTL_IMDISK_REFERENCE_HANDLE   ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x804, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
-#define IOCTL_IMDISK_SET_DEVICE_FLAGS   ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x805, METHOD_BUFFERED, 0))
-#define IOCTL_IMDISK_REMOVE_DEVICE      ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x806, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
-#define IOCTL_IMDISK_IOCTL_PASS_THROUGH	((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x807, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
-#define IOCTL_IMDISK_FSCTL_PASS_THROUGH	((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x808, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_IMDISK_QUERY_VERSION		    ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x800, METHOD_BUFFERED, 0))
+#define IOCTL_IMDISK_CREATE_DEVICE		    ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x801, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_IMDISK_QUERY_DEVICE		    ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x802, METHOD_BUFFERED, 0))
+#define IOCTL_IMDISK_QUERY_DRIVER           ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x803, METHOD_BUFFERED, 0))
+#define IOCTL_IMDISK_REFERENCE_HANDLE       ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x804, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_IMDISK_SET_DEVICE_FLAGS       ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x805, METHOD_BUFFERED, 0))
+#define IOCTL_IMDISK_REMOVE_DEVICE          ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x806, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_IMDISK_IOCTL_PASS_THROUGH	    ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x807, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_IMDISK_FSCTL_PASS_THROUGH	    ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x808, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_IMDISK_GET_REFERENCED_HANDLE  ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x809, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
 
 ///
 /// Bit constants for the Flags field in IMDISK_CREATE_DATA
@@ -204,15 +214,19 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 // Types with file mode
 
-/// Proxy connection is direct-type
-#define IMDISK_FILE_TYPE_DIRECT         0x00000000
-/// Proxy connection is over serial line
+/// Serialized I/O to an image file, done in a worker thread
+#define IMDISK_FILE_TYPE_QUEUED_IO      0x00000000
+/// Direct parallel I/O to AWEAlloc driver (physical RAM), done in request
+/// thread
 #define IMDISK_FILE_TYPE_AWEALLOC       0x00001000
+/// Direct parallel I/O to an image file, done in request thread
+#define IMDISK_FILE_TYPE_PARALLEL_IO    0x00002000
 
-/// Extracts the IMDISK_PROXY_TYPE_xxx from flags
+/// Extracts the IMDISK_FILE_TYPE_xxx from flags
 #define IMDISK_FILE_TYPE(x)             ((ULONG)(x) & 0x0000F000)
 
-/// Extracts the IMDISK_PROXY_TYPE_xxx from flags
+/// Flag set by write request dispatchers to indicated that virtual disk has
+/// been since mounted
 #define IMDISK_IMAGE_MODIFIED           0x00010000
 
 /// Macro to determine if flags specify either virtual memory (type vm) or
@@ -400,25 +414,19 @@ extern "C" {
 	*/
 	IMDISK_API BOOL
 		CDECL
-		MsgBoxPrintF(IN HWND hWndParent OPTIONAL,
+		ImDiskMsgBoxPrintF(IN HWND hWndParent OPTIONAL,
 		IN UINT uStyle,
 		IN LPCWSTR lpTitle,
 		IN LPCWSTR lpMessage, ...);
 
-	/**
-	This function is a quick perror-style way of displaying an error message
-	for the last failed Windows API call.
+    /**
+    Synchronously flush Windows message queue to make GUI components responsive.
+    */
+    IMDISK_API VOID
+        WINAPI
+        ImDiskFlushWindowMessages(HWND hWnd);
 
-	hWndParent   Parent window for the MessageBox call.
-
-	Prefix       Text to print before the error message string.
-	*/
-	IMDISK_API VOID
-		WINAPI
-		MsgBoxLastError(IN HWND hWndParent OPTIONAL,
-		IN LPCWSTR Prefix);
-
-	/**
+    /**
 	Used to get a string describing a partition type.
 
 	PartitionType  Partition type from partition table.
@@ -752,7 +760,7 @@ extern "C" {
 	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetDeviceListEx(IN ULONG ListLength,
-		IN OUT PULONG DeviceList);
+		OUT PULONG DeviceList);
 
 	/**
 	This function sends an IOCTL_IMDISK_QUERY_DEVICE control code to an existing
@@ -816,7 +824,8 @@ extern "C" {
 	specifies a Win32/DOS-style path such as C:\imagefile.img.
 
 	MountPoint      Drive letter to assign to the new virtual device. It can be
-	specified on the form F: or F:\.
+	specified on the form F: or F:\. It can also specify an empty directory
+    on another NTFS volume.
 	*/
 	IMDISK_API BOOL
 		WINAPI
@@ -875,8 +884,9 @@ extern "C" {
 	native path, such as \??\C:\imagefile.img or FALSE if it
 	specifies a Win32/DOS-style path such as C:\imagefile.img.
 
-	MountPoint      Drive letter to assign to the new virtual device. It can be
-	specified on the form F: or F:\.
+	MountPoint      Drive letter to assign to the new virtual device. It can
+    be specified on the form F: or F:\. It can also specify an empty directory
+    on another NTFS volume.
 	*/
 	IMDISK_API BOOL
 		WINAPI
@@ -1330,6 +1340,10 @@ extern "C" {
 	    WINAPI
 	    ImDiskNotifyRemovePending(HWND hWnd,
 	    WCHAR DriveLetter);
+
+    IMDISK_API LPWSTR
+        CDECL
+        ImDiskAllocPrintF(LPCWSTR lpMessage, ...);
 
 #ifdef __cplusplus
 }

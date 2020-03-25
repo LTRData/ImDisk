@@ -40,7 +40,11 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "drvio.h"
 #include "mbr.h"
 
+#pragma comment(lib, "ntdll.lib")
+
 #pragma warning(disable: 4100)
+#pragma warning(disable: 6255)
+#pragma warning(disable: 28719)
 
 // Known file format offsets
 typedef struct _KNOWN_FORMAT
@@ -54,17 +58,40 @@ KNOWN_FORMAT KnownFormats[] = {
     { L"sdi", 8 << 9 }
 };
 
-void
+IMDISK_API VOID
 WINAPI
-DoEvents(HWND hWnd)
+ImDiskFlushWindowMessages(HWND hWnd)
 {
     MSG msg;
+    
     while (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
     {
         if (!IsDialogMessage(hWnd, &msg))
+        {
             TranslateMessage(&msg);
+        }
+
         DispatchMessage(&msg);
     }
+}
+
+IMDISK_API LPWSTR
+CDECL
+ImDiskAllocPrintF(LPCWSTR lpMessage, ...)
+{
+    va_list param_list;
+    LPWSTR lpBuf = NULL;
+
+    va_start(param_list, lpMessage);
+
+    if (!FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+        FORMAT_MESSAGE_FROM_STRING, lpMessage, 0, 0,
+        (LPWSTR)&lpBuf, 0, &param_list))
+    {
+        return NULL;
+    }
+
+    return lpBuf;
 }
 
 ULONGLONG APIFlags;
@@ -127,7 +154,7 @@ StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 IMDISK_API BOOL
 CDECL
-MsgBoxPrintF(HWND hWnd, UINT uStyle, LPCWSTR lpTitle, LPCWSTR lpMessage, ...)
+ImDiskMsgBoxPrintF(HWND hWnd, UINT uStyle, LPCWSTR lpTitle, LPCWSTR lpMessage, ...)
 {
     va_list param_list;
     LPWSTR lpBuf = NULL;
@@ -145,24 +172,7 @@ MsgBoxPrintF(HWND hWnd, UINT uStyle, LPCWSTR lpTitle, LPCWSTR lpMessage, ...)
     return msg_result;
 }
 
-LPWSTR
-CDECL
-AllocPrintF(LPCWSTR lpMessage, ...)
-{
-    va_list param_list;
-    LPWSTR lpBuf = NULL;
-
-    va_start(param_list, lpMessage);
-
-    if (!FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-        FORMAT_MESSAGE_FROM_STRING, lpMessage, 0, 0,
-        (LPWSTR)&lpBuf, 0, &param_list))
-        return 0;
-
-    return lpBuf;
-}
-
-IMDISK_API VOID
+VOID
 WINAPI
 MsgBoxLastError(HWND hWnd, LPCWSTR Prefix)
 {
@@ -173,7 +183,7 @@ MsgBoxLastError(HWND hWnd, LPCWSTR Prefix)
         FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL, GetLastError(), 0, (LPWSTR)&MsgBuf, 0, NULL);
 
-    MsgBoxPrintF(hWnd, MB_ICONEXCLAMATION,
+    ImDiskMsgBoxPrintF(hWnd, MB_ICONEXCLAMATION,
         L"ImDisk Virtual Disk Driver",
         L"%1\r\n\r\n%2", Prefix, MsgBuf);
 
@@ -253,6 +263,7 @@ IN DWORD NameSize)
         }
     }
 
+#pragma warning(suppress: 6053)
     wcsncpy(Name, name, NameSize - 1);
     Name[NameSize - 1] = 0;
 }
@@ -368,8 +379,6 @@ PartitionInformation)
         SectorSize = 512;
 
     buffer = (LPBYTE)_alloca(SectorSize << 1);
-    if (buffer == NULL)
-        return FALSE;
 
     if (!ReadFileProc(Handle, buffer, *Offset, SectorSize, &read_size))
         return FALSE;
@@ -574,7 +583,7 @@ WINAPI
 ImDiskCreateMountPoint(LPCWSTR MountPoint, LPCWSTR Target)
 {
     WORD iSize = (WORD)((wcslen(Target) + 1) << 1);
-    REPARSE_DATA_JUNCTION ReparseData = { 0 };
+    PREPARSE_DATA_JUNCTION ReparseData = NULL;
     HANDLE hDir;
     DWORD dw;
 
@@ -626,21 +635,28 @@ ImDiskCreateMountPoint(LPCWSTR MountPoint, LPCWSTR Target)
     if (hDir == INVALID_HANDLE_VALUE)
         return FALSE;
 
-    if ((iSize + 6 > sizeof(ReparseData.Data)) | (iSize == 0))
+    if ((iSize + 6 > sizeof(ReparseData->Data)) | (iSize == 0))
     {
         SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
     }
 
-    ReparseData.ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
-    ReparseData.ReparseDataLength = (WORD)(8 + iSize + 2 + iSize + 2);
-    ReparseData.NameLength = (WORD)iSize;
-    ReparseData.DisplayNameOffset = (WORD)(iSize + 2);
-    ReparseData.DisplayNameLength = (WORD)iSize;
-    wcscpy((LPWSTR)ReparseData.Data, Target);
-    ((LPWSTR)ReparseData.Data)[(iSize >> 1) - 1] = L'\\';
-    wcscpy((LPWSTR)(ReparseData.Data + ReparseData.DisplayNameOffset), Target);
-    ((LPWSTR)(ReparseData.Data + ReparseData.DisplayNameOffset))
+    ReparseData = HeapAlloc(GetProcessHeap(),
+        HEAP_GENERATE_EXCEPTIONS,
+        sizeof(REPARSE_DATA_JUNCTION));
+
+    __analysis_assume(ReparseData != NULL);
+
+    ReparseData->ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
+    ReparseData->ReparseDataLength = (WORD)(8 + iSize + 2 + iSize + 2);
+    ReparseData->NameLength = (WORD)iSize;
+    ReparseData->DisplayNameOffset = (WORD)(iSize + 2);
+    ReparseData->DisplayNameLength = (WORD)iSize;
+    wcscpy((LPWSTR)ReparseData->Data, Target);
+    ((LPWSTR)ReparseData->Data)[(iSize >> 1) - 1] = L'\\';
+    wcscpy((LPWSTR)(ReparseData->Data + ReparseData->DisplayNameOffset),
+        Target);
+    ((LPWSTR)(ReparseData->Data + ReparseData->DisplayNameOffset))
         [(iSize >> 1) - 1] = L'\\';
 
     if (!DeviceIoControl(hDir, FSCTL_SET_REPARSE_POINT, &ReparseData,
@@ -648,12 +664,14 @@ ImDiskCreateMountPoint(LPCWSTR MountPoint, LPCWSTR Target)
     {
         DWORD last_error = GetLastError();
         CloseHandle(hDir);
+        HeapFree(GetProcessHeap(), 0, ReparseData);
         SetLastError(last_error);
         return FALSE;
     }
     else
     {
         CloseHandle(hDir);
+        HeapFree(GetProcessHeap(), 0, ReparseData);
         return TRUE;
     }
 }
@@ -662,7 +680,7 @@ IMDISK_API BOOL
 WINAPI
 ImDiskRemoveMountPoint(LPCWSTR MountPoint)
 {
-    REPARSE_DATA_JUNCTION ReparseData = { 0 };
+    REPARSE_GUID_DATA_BUFFER ReparseData = { 0 };
     HANDLE hDir;
     DWORD dw;
 
@@ -809,7 +827,8 @@ IMDISK_API HANDLE
 WINAPI
 ImDiskOpenDeviceByNumber(DWORD DeviceNumber, DWORD AccessMode)
 {
-    WCHAR device_path[MAX_PATH];
+    WCHAR device_path[_countof(IMDISK_DEVICE_BASE_NAME) + 16];
+
     UNICODE_STRING file_name;
 
     // Build device path, e.g. \Device\ImDisk2
@@ -818,6 +837,7 @@ ImDiskOpenDeviceByNumber(DWORD DeviceNumber, DWORD AccessMode)
     device_path[_countof(device_path) - 1] = 0;
 
     RtlInitUnicodeString(&file_name, device_path);
+
     return ImDiskOpenDeviceByName(&file_name, AccessMode);
 }
 
@@ -827,13 +847,23 @@ ImDiskOpenDeviceByMountPoint(LPCWSTR MountPoint, DWORD AccessMode)
 {
     UNICODE_STRING DeviceName;
     WCHAR DriveLetterPath[] = L"\\DosDevices\\ :";
-    REPARSE_DATA_JUNCTION ReparseData = { 0 };
+    PREPARSE_DATA_JUNCTION ReparseData = NULL;
+    HANDLE h;
 
-    if (wcslen(MountPoint) == 2 ? MountPoint[1] == L':' : FALSE)
+    if ((MountPoint[0] != 0) &&
+        ((wcscmp(MountPoint + 1, L":") == 0) ||
+        (wcscmp(MountPoint + 1, L":\\") == 0)))
     {
         DriveLetterPath[12] = MountPoint[0];
 
         RtlInitUnicodeString(&DeviceName, DriveLetterPath);
+    }
+    else if (((wcsncmp(MountPoint, L"\\\\?\\", 4) == 0) ||
+        (wcsncmp(MountPoint, L"\\\\.\\", 4) == 0)) &&
+        (wcschr(MountPoint + 4, L'\\') == NULL))
+    {
+        return CreateFile(MountPoint, AccessMode,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
     }
     else
     {
@@ -849,37 +879,49 @@ ImDiskOpenDeviceByMountPoint(LPCWSTR MountPoint, DWORD AccessMode)
         if (hDir == INVALID_HANDLE_VALUE)
             return INVALID_HANDLE_VALUE;
 
+        ReparseData = HeapAlloc(GetProcessHeap(),
+            HEAP_GENERATE_EXCEPTIONS,
+            sizeof(REPARSE_DATA_JUNCTION));
+
         if (!DeviceIoControl(hDir, FSCTL_GET_REPARSE_POINT,
             NULL, 0,
-            &ReparseData, sizeof ReparseData,
+            ReparseData, sizeof(REPARSE_DATA_JUNCTION),
             &dw, NULL))
         {
             DWORD last_error = GetLastError();
             CloseHandle(hDir);
+            HeapFree(GetProcessHeap(), 0, ReparseData);
             SetLastError(last_error);
             return INVALID_HANDLE_VALUE;
         }
 
         CloseHandle(hDir);
 
-        if (ReparseData.ReparseTag != IO_REPARSE_TAG_MOUNT_POINT)
+        if (ReparseData->ReparseTag != IO_REPARSE_TAG_MOUNT_POINT)
         {
+            HeapFree(GetProcessHeap(), 0, ReparseData);
             SetLastError(ERROR_NOT_A_REPARSE_POINT);
             return INVALID_HANDLE_VALUE;
         }
 
-        DeviceName.Length = ReparseData.NameLength;
-        DeviceName.Buffer = (PWSTR)ReparseData.Data + ReparseData.NameOffset;
+        DeviceName.Length = ReparseData->NameLength;
+        DeviceName.Buffer = (PWSTR)ReparseData->Data +
+            ReparseData->NameOffset;
         DeviceName.MaximumLength = DeviceName.Length;
     }
-
+    
     if (DeviceName.Buffer[(DeviceName.Length >> 1) - 1] == L'\\')
     {
         DeviceName.Buffer[(DeviceName.Length >> 1) - 1] = 0;
         DeviceName.Length -= 2;
     }
 
-    return ImDiskOpenDeviceByName(&DeviceName, AccessMode);
+    h = ImDiskOpenDeviceByName(&DeviceName, AccessMode);
+
+    if (ReparseData != NULL)
+        HeapFree(GetProcessHeap(), 0, ReparseData);
+
+    return h;
 }
 
 IMDISK_API BOOL
@@ -1005,7 +1047,7 @@ ImDiskGetDeviceList()
 IMDISK_API BOOL
 WINAPI
 ImDiskGetDeviceListEx(IN ULONG ListLength,
-IN OUT ULONG *DeviceList)
+OUT ULONG *DeviceList)
 {
     UNICODE_STRING file_name;
     HANDLE driver;
@@ -1171,7 +1213,8 @@ LPWSTR MountPoint)
                 return FALSE;
         }
 
-        DoEvents(NULL);
+        ImDiskFlushWindowMessages(NULL);
+
         if (hWnd != NULL)
             SetWindowText(hWnd, L"The ImDisk Virtual Disk Driver was loaded.");
     }
@@ -1220,7 +1263,6 @@ LPWSTR MountPoint)
 
             if (ImDiskStartService(AWEALLOC_DRIVER_NAME))
             {
-                puts("AWEAlloc driver was loaded into the kernel.");
                 continue;
             }
 
@@ -1354,15 +1396,6 @@ LPWSTR MountPoint)
         prefixed_name = (LPWSTR)
             _alloca(((wcslen(namespace_prefix) + wcslen(FileName)) << 1) + 1);
 
-        if (prefixed_name == NULL)
-        {
-            NtClose(driver);
-            if (hWnd != NULL)
-                MessageBox(hWnd, L"Memory allocation error.",
-                L"ImDisk Virtual Disk Driver", MB_ICONSTOP);
-            return FALSE;
-        }
-
         wcscpy(prefixed_name, namespace_prefix);
         wcscat(prefixed_name, FileName);
 
@@ -1391,30 +1424,25 @@ LPWSTR MountPoint)
         SetWindowText(hWnd, L"Creating virtual disk...");
 
     create_data = (PIMDISK_CREATE_DATA)_alloca(sizeof(IMDISK_CREATE_DATA) + file_name.Length);
-    if (create_data == NULL)
-    {
-        NtClose(driver);
-        RtlFreeUnicodeString(&file_name);
-        if (hWnd != NULL)
-            MessageBox(hWnd, L"Memory allocation error.",
-            L"ImDisk Virtual Disk Driver", MB_ICONSTOP);
-        return FALSE;
-    }
 
     ZeroMemory(create_data, sizeof(IMDISK_CREATE_DATA) + file_name.Length);
 
     // Check if mount point is a drive letter or junction point
-    if (MountPoint != NULL)
-        if ((wcslen(MountPoint) == 2) ? MountPoint[1] == L':' : FALSE)
-            create_data->DriveLetter = MountPoint[0];
+    if ((MountPoint != NULL) && (MountPoint[0] != 0) &&
+        ((wcscmp(MountPoint + 1, L":") == 0) ||
+        ((wcscmp(MountPoint + 1, L":\\") == 0))))
+    {
+        create_data->DriveLetter = MountPoint[0];
+    }
 
     if (DeviceNumber != NULL)
         create_data->DeviceNumber = *DeviceNumber;
+    else
+        create_data->DeviceNumber = IMDISK_AUTO_DEVICE_NUMBER;
 
     if (ImageOffset != NULL)
         create_data->ImageOffset = *ImageOffset;
 
-    create_data->DeviceNumber = IMDISK_AUTO_DEVICE_NUMBER;
     create_data->DiskGeometry = *DiskGeometry;
     create_data->Flags = Flags;
     create_data->FileNameLength = file_name.Length;
@@ -1602,7 +1630,7 @@ LPCWSTR MountPoint)
     DWORD dw;
     BOOL force_dismount = FALSE;
 
-    if (MountPoint == NULL)
+    if ((MountPoint == NULL) || (MountPoint[0] == 0))
     {
         if (hWnd != NULL)
             SetWindowText(hWnd, L"Opening device...");
@@ -1618,11 +1646,10 @@ LPCWSTR MountPoint)
             device = ImDiskOpenDeviceByNumber(DeviceNumber,
             FILE_READ_ATTRIBUTES);
     }
-    else if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' :
-        (wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
-        FALSE)
+    else if ((wcscmp(MountPoint + 1, L":") == 0) ||
+        (wcscmp(MountPoint + 1, L":\\") == 0))
     {
-        WCHAR drive_letter_path[] = L"\\\\.\\ :";
+        WCHAR drive_letter_path[] = L"\\\\?\\ :";
         drive_letter_path[4] = MountPoint[0];
 
         // Notify processes that this device is about to be removed.
@@ -1686,7 +1713,7 @@ LPCWSTR MountPoint)
         {
             NtClose(device);
             if (hWnd != NULL)
-                MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+                ImDiskMsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
                 L"Not an ImDisk Virtual Disk: '%1'", MountPoint);
 
             return FALSE;
@@ -1912,7 +1939,7 @@ DWORD Flags)
     else
     {
         if (hWnd != NULL)
-            MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+            ImDiskMsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
             L"Unsupported mount point: '%1'", MountPoint);
         SetLastError(ERROR_INVALID_FUNCTION);
         return FALSE;
@@ -1930,7 +1957,7 @@ DWORD Flags)
         {
             NtClose(device);
             if (hWnd != NULL)
-                MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
+                ImDiskMsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
                 L"Not an ImDisk Virtual Disk: '%1'", MountPoint);
 
             return FALSE;
@@ -2179,7 +2206,7 @@ IN LPBOOL CancelFlag OPTIONAL)
     {
         if (CancelFlag != NULL)
         {
-            DoEvents(NULL);
+            ImDiskFlushWindowMessages(NULL);
 
             if (*CancelFlag)
             {
@@ -2568,6 +2595,7 @@ ImDiskOpenRefreshEvent(BOOL InheritHandle)
     }
 
     // Add NULL DACL to the security descriptor.
+#pragma warning(suppress: 6248)
     if (!SetSecurityDescriptorDacl(sec_descr,
         TRUE,     // bDaclPresent flag  
         NULL,
@@ -2651,7 +2679,7 @@ ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData)
         return FALSE;
     }
 
-    value_name = AllocPrintF(IMDISK_CFG_IMAGE_FILE_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_IMAGE_FILE_PREFIX L"%1!u!",
         CreateData->DeviceNumber);
     if (value_name == NULL)
     {
@@ -2662,7 +2690,7 @@ ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData)
     if (CreateData->FileNameLength > 0)
     {
         LPWSTR value_data =
-            AllocPrintF(L"%1!.*ws!",
+            ImDiskAllocPrintF(L"%1!.*ws!",
             (int)(CreateData->FileNameLength /
             sizeof(*CreateData->FileName)),
             CreateData->FileName);
@@ -2694,7 +2722,7 @@ ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData)
 
     LocalFree(value_name);
 
-    value_name = AllocPrintF(IMDISK_CFG_SIZE_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_SIZE_PREFIX L"%1!u!",
         CreateData->DeviceNumber);
     if (value_name == NULL)
     {
@@ -2723,7 +2751,7 @@ ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData)
 
     LocalFree(value_name);
 
-    value_name = AllocPrintF(IMDISK_CFG_FLAGS_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_FLAGS_PREFIX L"%1!u!",
         CreateData->DeviceNumber);
     if (value_name == NULL)
     {
@@ -2752,7 +2780,7 @@ ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData)
 
     LocalFree(value_name);
 
-    value_name = AllocPrintF(IMDISK_CFG_DRIVE_LETTER_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_DRIVE_LETTER_PREFIX L"%1!u!",
         CreateData->DeviceNumber);
     if (value_name == NULL)
     {
@@ -2784,7 +2812,7 @@ ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData)
 
     LocalFree(value_name);
 
-    value_name = AllocPrintF(IMDISK_CFG_OFFSET_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_OFFSET_PREFIX L"%1!u!",
         CreateData->DeviceNumber);
     if (value_name == NULL)
     {
@@ -2874,7 +2902,7 @@ ImDiskRemoveRegistrySettings(DWORD DeviceNumber)
         }
     }
 
-    value_name = AllocPrintF(IMDISK_CFG_IMAGE_FILE_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_IMAGE_FILE_PREFIX L"%1!u!",
         DeviceNumber);
     if (value_name == NULL)
     {
@@ -2886,7 +2914,7 @@ ImDiskRemoveRegistrySettings(DWORD DeviceNumber)
 
     LocalFree(value_name);
 
-    value_name = AllocPrintF(IMDISK_CFG_SIZE_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_SIZE_PREFIX L"%1!u!",
         DeviceNumber);
     if (value_name == NULL)
     {
@@ -2898,7 +2926,7 @@ ImDiskRemoveRegistrySettings(DWORD DeviceNumber)
 
     LocalFree(value_name);
 
-    value_name = AllocPrintF(IMDISK_CFG_FLAGS_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_FLAGS_PREFIX L"%1!u!",
         DeviceNumber);
     if (value_name == NULL)
     {
@@ -2910,7 +2938,7 @@ ImDiskRemoveRegistrySettings(DWORD DeviceNumber)
 
     LocalFree(value_name);
 
-    value_name = AllocPrintF(IMDISK_CFG_DRIVE_LETTER_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_DRIVE_LETTER_PREFIX L"%1!u!",
         DeviceNumber);
     if (value_name == NULL)
     {
@@ -2922,7 +2950,7 @@ ImDiskRemoveRegistrySettings(DWORD DeviceNumber)
 
     LocalFree(value_name);
 
-    value_name = AllocPrintF(IMDISK_CFG_OFFSET_PREFIX L"%1!u!",
+    value_name = ImDiskAllocPrintF(IMDISK_CFG_OFFSET_PREFIX L"%1!u!",
         DeviceNumber);
     if (value_name == NULL)
     {
@@ -2977,4 +3005,3 @@ ImDiskGetRegistryAutoLoadDevices(LPDWORD LoadDevicesValue)
 
     return TRUE;
 }
-

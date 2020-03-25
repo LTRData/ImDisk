@@ -219,6 +219,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Exclude="@(ClInclude)" Include="*.h;*.hpp;*.hxx;*.hm;*.inl;*.xsd" />
+    <ClInclude Include="..\inc\imdisk.h" />
+    <ClInclude Include="..\inc\imdiskver.h" />
+    <ClInclude Include="..\inc\imdproxy.h" />
+    <ClInclude Include="..\inc\ntkmapi.h" />
   </ItemGroup>
   <!-- /Necessary to pick up propper files from local directory when in the IDE-->
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

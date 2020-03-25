@@ -9,5 +9,4 @@ Z:\ltr-website\ltr-data.se\files\devio.exe: devio.exe
 	copy /y devio.exe Z:\ltr-website\ltr-data.se\files\\
 
 devio.exe: devio.c ..\inc\*.h safeio.c safeio.h devio.h devio_types.h Makefile.win32
-	cl /WX /W4 /wd4201 /wd4204 /wd4996 /Ox /G7 /GR- /MD /nologo devio.c safeio_win32.cpp /link /defaultlib:bufferoverflowU.lib /defaultlib:ws2_32.lib /defaultlib:user32.lib /opt:nowin98,ref,icf=10 /largeaddressaware /release /nologo
-	del *.obj
+	cl /WX /W4 /wd4201 /wd4204 /wd4996 /Ox /G7 /GR- /MD /nologo devio.c safeio_win32.cpp /link /defaultlib:bufferoverflowU.lib /opt:nowin98,ref,icf=10 /largeaddressaware /release /nologo

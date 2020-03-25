@@ -19,7 +19,6 @@
   </Choose>
   <PropertyGroup>
     <TARGETNAME Condition="'$(OVERRIDE_TARGETNAME)'!='true'">imdisk</TARGETNAME>
-    <TARGETPATH Condition="'$(OVERRIDE_TARGETPATH)'!='true'">.</TARGETPATH>
     <TARGETTYPE Condition="'$(OVERRIDE_TARGETTYPE)'!='true'">PROGRAM</TARGETTYPE>
     <SOURCES Condition="'$(OVERRIDE_SOURCES)'!='true'">imdisk.c imdisk.rc</SOURCES>
     <UMTYPE Condition="'$(OVERRIDE_UMTYPE)'!='true'">console</UMTYPE>
