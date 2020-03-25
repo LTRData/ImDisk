@@ -2,7 +2,7 @@
 
 Module ServerModule
 
-    <MTAThread()>
+    <MTAThread>
     Sub Main(args As String())
 
         Try

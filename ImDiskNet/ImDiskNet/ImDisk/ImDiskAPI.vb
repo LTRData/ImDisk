@@ -364,8 +364,8 @@ Namespace ImDisk
         ''' <remarks></remarks>
         Public Shared Sub AutoFindOffsetAndSize(Imagefile As String,
                                                 SectorSize As UInt32,
-                                                <Out()> ByRef Offset As Long,
-                                                <Out()> ByRef Size As Long)
+                                                <Out> ByRef Offset As Long,
+                                                <Out> ByRef Size As Long)
 
             Offset = 0
             Size = 0

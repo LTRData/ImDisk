@@ -15,8 +15,8 @@
         End Function
 
         Public Sub AutoFindOffsetAndSize(Imagefile As String,
-                                         <Out()> ByRef Offset As LARGE_INTEGER,
-                                         <Out()> ByRef Size As LARGE_INTEGER,
+                                         <Out> ByRef Offset As LARGE_INTEGER,
+                                         <Out> ByRef Size As LARGE_INTEGER,
                                          Optional SectorSize As Int32 = 512)
 
             ImDiskAPI.AutoFindOffsetAndSize(Imagefile, CUInt(SectorSize), Offset, Size)
@@ -65,14 +65,14 @@
 
         End Function
 
-        Public Sub ExtendDevice(DeviceNumber As Int32, <[In]()> ByRef ExtendSize As LARGE_INTEGER, Optional StatusControl As Int32 = 0)
+        Public Sub ExtendDevice(DeviceNumber As Int32, <[In]> ByRef ExtendSize As LARGE_INTEGER, Optional StatusControl As Int32 = 0)
 
             ImDiskAPI.ExtendDevice(CUInt(DeviceNumber), CLng(ExtendSize), New IntPtr(StatusControl))
 
         End Sub
 
-        Public Sub CreateDevice(<[In]()> ByRef DiskSize As LARGE_INTEGER,
-                                <[In]()> ByRef ImageOffset As LARGE_INTEGER,
+        Public Sub CreateDevice(<[In]> ByRef DiskSize As LARGE_INTEGER,
+                                <[In]> ByRef ImageOffset As LARGE_INTEGER,
                                 Optional Filename As String = Nothing,
                                 Optional MountPoint As String = Nothing,
                                 Optional TracksPerCylinder As Int32 = 0,
@@ -95,8 +95,8 @@
 
         End Sub
 
-        Public Sub CreateDeviceEx(<[In]()> ByRef DiskSize As LARGE_INTEGER,
-                                  <[In]()> ByRef ImageOffset As LARGE_INTEGER,
+        Public Sub CreateDeviceEx(<[In]> ByRef DiskSize As LARGE_INTEGER,
+                                  <[In]> ByRef ImageOffset As LARGE_INTEGER,
                                   Optional Filename As String = Nothing,
                                   Optional MountPoint As String = Nothing,
                                   Optional TracksPerCylinder As Int32 = 0,
@@ -143,15 +143,15 @@
 
         End Sub
 
-        Public Sub QueryDevice(<[In]()> ByRef DeviceNumber As Int32,
-                               <Out()> ByRef DiskSize As LARGE_INTEGER,
-                               <Out()> ByRef ImageOffset As LARGE_INTEGER,
-                               <Out()> Optional ByRef TracksPerCylinder As Int32 = 0,
-                               <Out()> Optional ByRef SectorsPerTrack As Int32 = 0,
-                               <Out()> Optional ByRef BytesPerSector As Int32 = 0,
-                               <Out()> Optional ByRef Flags As ImDiskFlags = 0,
-                               <Out()> Optional ByRef DriveLetter As String = Nothing,
-                               <Out()> Optional ByRef Filename As String = Nothing)
+        Public Sub QueryDevice(<[In]> ByRef DeviceNumber As Int32,
+                               <Out> ByRef DiskSize As LARGE_INTEGER,
+                               <Out> ByRef ImageOffset As LARGE_INTEGER,
+                               <Out> Optional ByRef TracksPerCylinder As Int32 = 0,
+                               <Out> Optional ByRef SectorsPerTrack As Int32 = 0,
+                               <Out> Optional ByRef BytesPerSector As Int32 = 0,
+                               <Out> Optional ByRef Flags As ImDiskFlags = 0,
+                               <Out> Optional ByRef DriveLetter As String = Nothing,
+                               <Out> Optional ByRef Filename As String = Nothing)
 
             Dim _DeviceNumber = CUInt(DeviceNumber)
             Dim _DiskSize As Int64

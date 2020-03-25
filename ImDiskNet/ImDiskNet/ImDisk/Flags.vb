@@ -3,7 +3,7 @@
     ''' <summary>
     ''' Values for ImDisk flags fields used when creating, querying or modifying virtual disks.
     ''' </summary>
-    <Flags()>
+    <Flags>
     Public Enum ImDiskFlags As UInt32
 
         ''' <summary>

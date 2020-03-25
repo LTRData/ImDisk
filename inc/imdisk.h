@@ -49,18 +49,21 @@ OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 ///
-/// The base names for the device objects created in \Device
+/// Base names for device objects created in \Device
 ///
 #define IMDISK_DEVICE_DIR_NAME         _T("\\Device")
 #define IMDISK_DEVICE_BASE_NAME        IMDISK_DEVICE_DIR_NAME  _T("\\ImDisk")
 #define IMDISK_CTL_DEVICE_NAME         IMDISK_DEVICE_BASE_NAME _T("Ctl")
 
 ///
-/// The symlinks to the device objects created in \DosDevices
+/// Symlinks created in \DosDevices to device objects
 ///
-#define IMDISK_CTL_DOSDEV              _T("ImDiskCtl")
-#define IMDISK_CTL_DOSDEV_NAME         _T("\\\\.\\")        IMDISK_CTL_DOSDEV
-#define IMDISK_CTL_SYMLINK_NAME        _T("\\DosDevices\\") IMDISK_CTL_DOSDEV
+#define IMDISK_SYMLNK_NATIVE_DIR_NAME  _T("\\DosDevices")
+#define IMDISK_SYMLNK_WIN32_DIR_NAME   _T("\\\\?")
+#define IMDISK_SYMLNK_NATIVE_BASE_NAME IMDISK_SYMLNK_NATIVE_DIR_NAME  _T("\\ImDisk")
+#define IMDISK_SYMLNK_WIN32_BASE_NAME  IMDISK_SYMLNK_WIN32_DIR_NAME   _T("\\ImDisk")
+#define IMDISK_CTL_SYMLINK_NAME        IMDISK_SYMLNK_NATIVE_BASE_NAME _T("Ctl")
+#define IMDISK_CTL_DOSDEV_NAME         IMDISK_SYMLNK_WIN32_BASE_NAME  _T("Ctl")
 
 ///
 /// The driver name and image path

@@ -332,7 +332,7 @@ Namespace Server.Services
         ''' object in the list when the list is disposed.
         ''' </summary>
         ''' <typeparam name="T"></typeparam>
-        <ComVisible(False)> _
+        <ComVisible(False)>
         Private Class DisposableList(Of T As IDisposable)
             Inherits List(Of T)
 

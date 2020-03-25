@@ -10,7 +10,7 @@
         ''' <summary>
         ''' ImDisk API behaviour flags.
         ''' </summary>
-        <Flags()>
+        <Flags>
         Public Enum ImDiskAPIFlags As UInt64
 
             ''' <summary>
@@ -42,38 +42,38 @@
 
         Public Declare Unicode Function ImDiskStartService _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> ServiceName As String
+            <MarshalAs(UnmanagedType.LPWStr), [In]> ServiceName As String
           ) As Boolean
 
         Public Declare Unicode Function ImDiskGetOffsetByFileExt _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> ImageFileName As String,
+            <MarshalAs(UnmanagedType.LPWStr), [In]> ImageFileName As String,
             ByRef Offset As Int64
           ) As Boolean
 
         Public Declare Unicode Function ImDiskGetPartitionInformation _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> ImageFileName As String,
+            <MarshalAs(UnmanagedType.LPWStr), [In]> ImageFileName As String,
             SectorSize As UInt32,
-            <[In]()> ByRef Offset As Int64,
+            <[In]> ByRef Offset As Int64,
             PartitionInformation As IntPtr
           ) As Boolean
 
         Public Declare Unicode Function ImDiskGetPartitionInformation _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> ImageFileName As String,
+            <MarshalAs(UnmanagedType.LPWStr), [In]> ImageFileName As String,
             SectorSize As UInt32,
-            <[In]()> ByRef Offset As Int64,
-            <MarshalAs(UnmanagedType.LPArray), Out()> PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION()
+            <[In]> ByRef Offset As Int64,
+            <MarshalAs(UnmanagedType.LPArray), Out> PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION()
           ) As Boolean
 
         Public Delegate Function ImDiskReadFileManagedProc _
           (
             Handle As IntPtr,
-            <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=3), Out()> Buffer As Byte(),
+            <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=3), Out> Buffer As Byte(),
             Offset As Int64,
             NumberOfBytes As UInt32,
-            <Out()> ByRef NumberOfBytesRead As UInt32
+            <Out> ByRef NumberOfBytesRead As UInt32
           ) As Boolean
 
         Public Delegate Function ImDiskReadFileUnmanagedProc _
@@ -82,16 +82,16 @@
             Buffer As IntPtr,
             Offset As Int64,
             NumberOfBytes As UInt32,
-            <Out()> ByRef NumberOfBytesRead As UInt32
+            <Out> ByRef NumberOfBytesRead As UInt32
           ) As Boolean
 
         Public Declare Unicode Function ImDiskReadFileHandle _
           Lib "imdisk.cpl" (
             Handle As IntPtr,
-            <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=3), Out()> Buffer As Byte(),
+            <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=3), Out> Buffer As Byte(),
             Offset As Int64,
             NumberOfBytes As UInt32,
-            <Out()> ByRef NumberOfBytesRead As UInt32
+            <Out> ByRef NumberOfBytesRead As UInt32
           ) As Boolean
 
         Public Declare Unicode Function ImDiskGetPartitionInfoIndirect _
@@ -99,7 +99,7 @@
             Handle As IntPtr,
             <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileManagedProc,
             SectorSize As UInt32,
-            <[In]()> ByRef Offset As Int64,
+            <[In]> ByRef Offset As Int64,
             PartitionInformation As IntPtr
           ) As Boolean
 
@@ -108,8 +108,8 @@
             Handle As IntPtr,
             <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileManagedProc,
             SectorSize As UInt32,
-            <[In]()> ByRef Offset As Int64,
-            <MarshalAs(UnmanagedType.LPArray), Out()> PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION()
+            <[In]> ByRef Offset As Int64,
+            <MarshalAs(UnmanagedType.LPArray), Out> PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION()
           ) As Boolean
 
         Public Declare Unicode Function ImDiskGetPartitionInfoIndirect _
@@ -117,7 +117,7 @@
             Handle As IntPtr,
             <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileUnmanagedProc,
             SectorSize As UInt32,
-            <[In]()> ByRef Offset As Int64,
+            <[In]> ByRef Offset As Int64,
             PartitionInformation As IntPtr
           ) As Boolean
 
@@ -126,62 +126,62 @@
             Handle As IntPtr,
             <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileUnmanagedProc,
             SectorSize As UInt32,
-            <[In]()> ByRef Offset As Int64,
-            <MarshalAs(UnmanagedType.LPArray), Out()> PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION()
+            <[In]> ByRef Offset As Int64,
+            <MarshalAs(UnmanagedType.LPArray), Out> PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION()
           ) As Boolean
 
         Public Declare Unicode Function ImDiskImageContainsISOFS _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> ImageFileName As String,
-            <[In]()> ByRef Offset As Int64
+            <MarshalAs(UnmanagedType.LPWStr), [In]> ImageFileName As String,
+            <[In]> ByRef Offset As Int64
           ) As Boolean
 
         Public Declare Unicode Function ImDiskImageContainsISOFSIndirect _
           Lib "imdisk.cpl" (
             Handle As IntPtr,
             <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileManagedProc,
-            <[In]()> ByRef Offset As Int64
+            <[In]> ByRef Offset As Int64
           ) As Boolean
 
         Public Declare Unicode Function ImDiskImageContainsISOFSIndirect _
           Lib "imdisk.cpl" (
             Handle As IntPtr,
             <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileUnmanagedProc,
-            <[In]()> ByRef Offset As Int64
+            <[In]> ByRef Offset As Int64
           ) As Boolean
 
         Public Declare Unicode Function ImDiskGetFormattedGeometry _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> ImageFileName As String,
-            <[In]()> ByRef Offset As Int64,
-            <Out()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY
+            <MarshalAs(UnmanagedType.LPWStr), [In]> ImageFileName As String,
+            <[In]> ByRef Offset As Int64,
+            <Out> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY
           ) As Boolean
 
         Public Declare Unicode Function ImDiskGetFormattedGeometryIndirect _
           Lib "imdisk.cpl" (
             Handle As IntPtr,
             <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileManagedProc,
-            <[In]()> ByRef Offset As Int64,
-            <Out()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY
+            <[In]> ByRef Offset As Int64,
+            <Out> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY
           ) As Boolean
 
         Public Declare Unicode Function ImDiskGetFormattedGeometryIndirect _
           Lib "imdisk.cpl" (
             Handle As IntPtr,
             <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileUnmanagedProc,
-            <[In]()> ByRef Offset As Int64,
-            <Out()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY
+            <[In]> ByRef Offset As Int64,
+            <Out> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY
           ) As Boolean
 
         Public Declare Unicode Function ImDiskCreateMountPoint _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> Directory As String,
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> Target As String
+            <MarshalAs(UnmanagedType.LPWStr), [In]> Directory As String,
+            <MarshalAs(UnmanagedType.LPWStr), [In]> Target As String
           ) As Boolean
 
         Public Declare Unicode Function ImDiskRemoveMountPoint _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> MountPoint As String
+            <MarshalAs(UnmanagedType.LPWStr), [In]> MountPoint As String
           ) As Boolean
 
         Public Declare Unicode Function ImDiskOpenDeviceByNumber _
@@ -192,7 +192,7 @@
 
         Public Declare Unicode Function ImDiskOpenDeviceByMountPoint _
           Lib "imdisk.cpl" (
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> MountPoint As String,
+            <MarshalAs(UnmanagedType.LPWStr), [In]> MountPoint As String,
             AccessMode As UInt32
           ) As SafeFileHandle
 
@@ -223,9 +223,9 @@
             ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
             ByRef ImageOffset As Int64,
             Flags As UInt32,
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> Filename As String,
+            <MarshalAs(UnmanagedType.LPWStr), [In]> Filename As String,
             <MarshalAs(UnmanagedType.Bool)> NativePath As Boolean,
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> MountPoint As String
+            <MarshalAs(UnmanagedType.LPWStr), [In]> MountPoint As String
           ) As Boolean
 
         Public Declare Unicode Function ImDiskCreateDeviceEx _
@@ -235,16 +235,16 @@
             ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
             ByRef ImageOffset As Int64,
             Flags As UInt32,
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> Filename As String,
+            <MarshalAs(UnmanagedType.LPWStr), [In]> Filename As String,
             <MarshalAs(UnmanagedType.Bool)> NativePath As Boolean,
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> MountPoint As String
+            <MarshalAs(UnmanagedType.LPWStr), [In]> MountPoint As String
           ) As Boolean
 
         Public Declare Unicode Function ImDiskRemoveDevice _
           Lib "imdisk.cpl" (
             hWndStatusText As IntPtr,
             DeviceNumber As UInt32,
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> MountPoint As String
+            <MarshalAs(UnmanagedType.LPWStr), [In]> MountPoint As String
           ) As Boolean
 
         Public Declare Unicode Function ImDiskForceRemoveDevice _
@@ -263,7 +263,7 @@
           Lib "imdisk.cpl" (
             hWndStatusText As IntPtr,
             DeviceNumber As UInt32,
-            <MarshalAs(UnmanagedType.LPWStr), [In]()> MountPoint As String,
+            <MarshalAs(UnmanagedType.LPWStr), [In]> MountPoint As String,
             FlagsToChange As UInt32,
             Flags As UInt32
           ) As Boolean
@@ -271,7 +271,7 @@
         Public Declare Unicode Function ImDiskQueryDevice _
           Lib "imdisk.cpl" (
             DeviceNumber As UInt32,
-            <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=2), Out()> CreateData As Byte(),
+            <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=2), Out> CreateData As Byte(),
             CreateDataSize As Int32
           ) As Boolean
 
@@ -315,7 +315,7 @@
         Public Declare Unicode Function ImDiskQueryDevice _
           Lib "imdisk.cpl" (
             DeviceNumber As UInt32,
-            <Out()> ByRef CreateData As ImDiskCreateData,
+            <Out> ByRef CreateData As ImDiskCreateData,
             CreateDataSize As Int32
           ) As Boolean
 
@@ -323,7 +323,7 @@
           Lib "imdisk.cpl" (
           ) As Char
 
-        <Obsolete()>
+        <Obsolete>
         Public Declare Unicode Function ImDiskGetDeviceList _
           Lib "imdisk.cpl" (
           ) As UInt64
@@ -336,8 +336,8 @@
 
         Public Declare Unicode Function ImDiskBuildMBR _
           Lib "imdisk.cpl" (
-            <[In]()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
-            <MarshalAs(UnmanagedType.LPArray), [In]()> PartitionInfo As NativeFileIO.Win32API.PARTITION_INFORMATION(),
+            <[In]> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+            <MarshalAs(UnmanagedType.LPArray), [In]> PartitionInfo As NativeFileIO.Win32API.PARTITION_INFORMATION(),
             NumberOfParts As Byte,
             <MarshalAs(UnmanagedType.LPArray)> MBR As Byte(),
             MBRSize As IntPtr
@@ -345,13 +345,13 @@
 
         Public Declare Unicode Function ImDiskConvertCHSToLBA _
           Lib "imdisk.cpl" (
-            <[In]()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+            <[In]> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
             <MarshalAs(UnmanagedType.LPArray)> CHS As Byte()
           ) As UInt32
 
         Public Declare Unicode Function ImDiskConvertLBAToCHS _
           Lib "imdisk.cpl" (
-            <[In]()> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+            <[In]> ByRef DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
             LBA As UInt32
           ) As UInt32
 
@@ -386,7 +386,7 @@
         Public Declare Unicode Function ImDiskNotifyShellDriveLetter _
             Lib "imdisk.cpl" _
             (WindowHandle As IntPtr,
-             <MarshalAs(UnmanagedType.LPWStr), [In]()> DriveLetterPath As String
+             <MarshalAs(UnmanagedType.LPWStr), [In]> DriveLetterPath As String
              ) As Boolean
 
         Public Declare Unicode Function ImDiskNotifyRemovePending _

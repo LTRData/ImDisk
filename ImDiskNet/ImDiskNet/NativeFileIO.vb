@@ -200,7 +200,7 @@ Public Class NativeFileIO
             Public dwWaitHint As Integer
         End Structure
 
-        <Flags()>
+        <Flags>
         Public Enum DEFINE_DOS_DEVICE_FLAGS As UInt32
             DDD_EXACT_MATCH_ON_REMOVE = &H4
             DDD_NO_BROADCAST_SYSTEM = &H8
@@ -312,11 +312,11 @@ Public Class NativeFileIO
 
         Public Declare Auto Function GetCommTimeouts Lib "kernel32" (
           hFile As SafeFileHandle,
-          <Out()> ByRef lpCommTimeouts As COMMTIMEOUTS) As Boolean
+          <Out> ByRef lpCommTimeouts As COMMTIMEOUTS) As Boolean
 
         Public Declare Auto Function SetCommTimeouts Lib "kernel32" (
           hFile As SafeFileHandle,
-          <[In]()> ByRef lpCommTimeouts As COMMTIMEOUTS) As Boolean
+          <[In]> ByRef lpCommTimeouts As COMMTIMEOUTS) As Boolean
 
         Public Declare Auto Function CreateFile Lib "kernel32" (
           lpFileName As String,
@@ -334,9 +334,9 @@ Public Class NativeFileIO
         Public Declare Function DeviceIoControl Lib "kernel32" Alias "DeviceIoControl" (
           hDevice As SafeFileHandle,
           dwIoControlCode As UInt32,
-          <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=3), [In]()> lpInBuffer As Byte(),
+          <MarshalAs(UnmanagedType.LPArray), [In]> lpInBuffer As Byte(),
           nInBufferSize As UInt32,
-          <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=5), Out()> lpOutBuffer As Byte(),
+          <MarshalAs(UnmanagedType.LPArray, SizeParamIndex:=6), Out> lpOutBuffer As Byte(),
           nOutBufferSize As UInt32,
           ByRef lpBytesReturned As UInt32,
           lpOverlapped As IntPtr) As Boolean
@@ -398,7 +398,7 @@ Public Class NativeFileIO
     ''' that error code.
     ''' </summary>
     ''' <param name="result">Return code from a Win32 API function call.</param>
-    <DebuggerHidden()>
+    <DebuggerHidden>
     Public Shared Function Win32Try(Of T)(result As T) As T
 
         If result Is Nothing Then
@@ -643,13 +643,13 @@ Public Class NativeFileIO
 
         Dim pinptr = GCHandle.Alloc(State, GCHandleType.Pinned)
         Try
-            Win32Try(Win32API.DeviceIoControl(SafeFileHandle, _
-                                              Win32API.FSCTL_SET_COMPRESSION, _
-                                              pinptr.AddrOfPinnedObject(), _
-                                              2UI, _
-                                              IntPtr.Zero, _
-                                              0UI, _
-                                              Nothing, _
+            Win32Try(Win32API.DeviceIoControl(SafeFileHandle,
+                                              Win32API.FSCTL_SET_COMPRESSION,
+                                              pinptr.AddrOfPinnedObject(),
+                                              2UI,
+                                              IntPtr.Zero,
+                                              0UI,
+                                              Nothing,
                                               IntPtr.Zero))
 
         Finally
@@ -674,7 +674,7 @@ Public Class NativeFileIO
       dwIoControlCode As UInt32,
       lpInBuffer As IntPtr,
       nInBufferSize As UInt32,
-      <Out()> ByRef lpOutBuffer As Int64,
+      <Out> ByRef lpOutBuffer As Int64,
       nOutBufferSize As UInt32,
       ByRef lpBytesReturned As UInt32,
       lpOverlapped As IntPtr) As Boolean
@@ -692,7 +692,7 @@ Public Class NativeFileIO
     Private Declare Function DeviceIoControl Lib "kernel32" (
       hDevice As SafeFileHandle,
       dwIoControlCode As UInt32,
-      <[In]()> ByRef lpInBuffer As Win32API.DISK_GROW_PARTITION,
+      <[In]> ByRef lpInBuffer As Win32API.DISK_GROW_PARTITION,
       nInBufferSize As UInt32,
       lpOutBuffer As IntPtr,
       nOutBufferSize As UInt32,
@@ -808,7 +808,7 @@ Public Class NativeFileIO
       dwIoControlCode As UInt32,
       lpInBuffer As IntPtr,
       nInBufferSize As UInt32,
-      <Out()> ByRef lpOutBuffer As Win32API.DISK_GEOMETRY,
+      <Out> ByRef lpOutBuffer As Win32API.DISK_GEOMETRY,
       nOutBufferSize As UInt32,
       ByRef lpBytesReturned As UInt32,
       lpOverlapped As IntPtr) As Boolean
