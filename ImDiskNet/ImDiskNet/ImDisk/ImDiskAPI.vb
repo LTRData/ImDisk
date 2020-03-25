@@ -975,6 +975,16 @@ Namespace ImDisk
         End Function
 
         ''' <summary>
+        ''' Check if flags indicate shared write mode.
+        ''' </summary>
+        ''' <param name="Flags">Flag field to check.</param>
+        Public Function IsSharedImage(Flags As ImDiskFlags) As Boolean
+
+            Return (Flags And ImDiskFlags.SharedImage) = ImDiskFlags.SharedImage
+
+        End Function
+
+        ''' <summary>
         ''' Gets device type bits from a Flag field.
         ''' </summary>
         ''' <param name="Flags">Flag field to check.</param>

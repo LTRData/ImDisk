@@ -234,6 +234,7 @@ typedef struct _DEVICE_EXTENSION
 	BOOLEAN parallel_io;         // TRUE if image I/O is done in dispatcher thread
 	PUCHAR image_buffer;         // For vm type
 	BOOLEAN byte_swap;           // If image I/O should swap each pair of bytes
+    BOOLEAN shared_image;        // Image opened for shared writing
 	PROXY_CONNECTION proxy;      // Proxy connection data
 	UNICODE_STRING file_name;    // Name of image file, if any
 	WCHAR drive_letter;          // Drive letter if maintained by the driver
@@ -2147,28 +2148,39 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		{
 			desired_access = GENERIC_READ;
 
-			if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) ||
-				((IMDISK_TYPE(CreateData->Flags) != IMDISK_TYPE_VM) &&
-					!IMDISK_READONLY(CreateData->Flags)))
-				desired_access |= GENERIC_WRITE;
+            if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) ||
+                ((IMDISK_TYPE(CreateData->Flags) != IMDISK_TYPE_VM) &&
+                !IMDISK_READONLY(CreateData->Flags)))
+            {
+                desired_access |= GENERIC_WRITE;
+            }
 
 			share_access = FILE_SHARE_READ | FILE_SHARE_DELETE;
 
-			if (IMDISK_READONLY(CreateData->Flags) ||
-				(IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM))
-				share_access |= FILE_SHARE_WRITE;
+            if (IMDISK_READONLY(CreateData->Flags) ||
+                (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) ||
+                IMDISK_SHARED_IMAGE(CreateData->Flags))
+            {
+                share_access |= FILE_SHARE_WRITE;
+            }
 
 			create_options = FILE_NON_DIRECTORY_FILE |
 				FILE_NO_INTERMEDIATE_BUFFERING |
 				FILE_SYNCHRONOUS_IO_NONALERT;
 
-			if (IMDISK_SPARSE_FILE(CreateData->Flags))
-				create_options |= FILE_OPEN_FOR_BACKUP_INTENT;
+            if (IMDISK_SPARSE_FILE(CreateData->Flags))
+            {
+                create_options |= FILE_OPEN_FOR_BACKUP_INTENT;
+            }
 
-			if (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY)
-				create_options |= FILE_SEQUENTIAL_ONLY;
-			else
-				create_options |= FILE_RANDOM_ACCESS;
+            if (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY)
+            {
+                create_options |= FILE_SEQUENTIAL_ONLY;
+            }
+            else
+            {
+                create_options |= FILE_RANDOM_ACCESS;
+            }
 
 			KdPrint(("ImDisk: Passing DesiredAccess=%#x ShareAccess=%#x CreateOptions=%#x\n",
 				desired_access, share_access, create_options));
@@ -3516,6 +3528,12 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		device_extension->byte_swap = TRUE;
 	else
 		device_extension->byte_swap = FALSE;
+
+    // Image opened for shared writing
+    if (IMDISK_SHARED_IMAGE(CreateData->Flags))
+        device_extension->shared_image = TRUE;
+    else
+        device_extension->shared_image = FALSE;
 
 	device_extension->image_buffer = image_buffer;
 	device_extension->file_handle = file_handle;
@@ -5082,6 +5100,9 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
 		if (device_extension->use_set_zero_data)
 			create_data->Flags |= IMDISK_OPTION_SPARSE_FILE;
+
+        if (device_extension->shared_image)
+            create_data->Flags |= IMDISK_OPTION_SHARED_IMAGE;
 
 		create_data->ImageOffset = device_extension->image_offset;
 
@@ -8639,7 +8660,7 @@ ImDiskUnmapOrZeroProxy(IN PPROXY_CONNECTION Proxy,
 	if ((Proxy->connection_type == PROXY_CONNECTION_SHM) &&
 		(byte_size >= (Proxy->shared_memory_size - IMDPROXY_HEADER_SIZE)))
 	{
-		status = STATUS_INVALID_PARAMETER;
+		status = STATUS_BUFFER_OVERFLOW;
 		IoStatusBlock->Information = 0;
 		IoStatusBlock->Status = status;
 		return status;

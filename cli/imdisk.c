@@ -304,6 +304,12 @@ ImDiskSyntaxHelp()
         "        image file. Useful when examining images from some embedded systems\r\n"
         "        and similar where data is stored in reverse byte order.\r\n"
         "\n"
+        "shared  Instructs driver to open image file in shared write mode even when\r\n"
+        "        image is opened for writing. This can be useful to mount each partition\r\n"
+        "        of a multi-partition image as separate virtual disks with different\r\n"
+        "        image file offsets and sizes. It could potentially corrupt filesystems\r\n"
+        "        if used with incorrect offset and size parameters so use with caution!\r\n"
+        "\n"
         "par     Parallel I/O. Valid for file-type virtual disks. With this flag set,\r\n"
         "        driver sends read and write requests for the virtual disk directly down\r\n"
         "        to the filesystem driver that handles the image file, within the same\r\n"
@@ -1478,7 +1484,9 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
         _h(create_data->DiskGeometry.Cylinders.QuadPart),
         _p(create_data->DiskGeometry.Cylinders.QuadPart));
 
-    printf("%s%s%s%s%s.\n",
+    printf("%s%s%s%s%s%s.\n",
+        IMDISK_SHARED_IMAGE(create_data->Flags) ?
+        ", Shared image" : "",
         IMDISK_READONLY(create_data->Flags) ?
         ", ReadOnly" : "",
         IMDISK_REMOVABLE(create_data->Flags) ?
@@ -2054,18 +2062,34 @@ wmain(int argc, LPWSTR argv[])
                         {
                             flags |= IMDISK_OPTION_BYTE_SWAP;
                         }
+                        else if (wcscmp(opt, L"shared") == 0)
+                        {
+                            flags |= IMDISK_OPTION_SHARED_IMAGE;
+                        }
                         else if (IMDISK_DEVICE_TYPE(flags) != 0)
+                        {
                             ImDiskSyntaxHelp();
+                        }
                         else if (wcscmp(opt, L"hd") == 0)
+                        {
                             flags |= IMDISK_DEVICE_TYPE_HD;
+                        }
                         else if (wcscmp(opt, L"fd") == 0)
+                        {
                             flags |= IMDISK_DEVICE_TYPE_FD;
+                        }
                         else if (wcscmp(opt, L"cd") == 0)
+                        {
                             flags |= IMDISK_DEVICE_TYPE_CD;
+                        }
                         else if (wcscmp(opt, L"raw") == 0)
+                        {
                             flags |= IMDISK_DEVICE_TYPE_RAW;
+                        }
                         else
+                        {
                             ImDiskSyntaxHelp();
+                        }
                 }
 
                 argc--;

@@ -229,11 +229,18 @@ OTHER DEALINGS IN THE SOFTWARE.
 /// been since mounted
 #define IMDISK_IMAGE_MODIFIED           0x00010000
 
+/// This flag causes the driver to open image files in shared write mode even
+/// if the image is opened for writing. This could be useful in some cases,
+/// but could easily corrupt filesystems on image files if used incorrectly.
+#define IMDISK_OPTION_SHARED_IMAGE      0x00020000
+/// Check if flags indicate shared write mode
+#define IMDISK_SHARED_IMAGE(x)          ((ULONG)(x) & 0x00020000)
+
 /// Macro to determine if flags specify either virtual memory (type vm) or
 /// physical memory (type file with awealloc) virtual disk drive
 #define IMDISK_IS_MEMORY_DRIVE(x) \
-  ((IMDISK_TYPE(x) == IMDISK_TYPE_VM) | \
-   ((IMDISK_TYPE(x) == IMDISK_TYPE_FILE) & \
+  ((IMDISK_TYPE(x) == IMDISK_TYPE_VM) || \
+   ((IMDISK_TYPE(x) == IMDISK_TYPE_FILE) && \
     (IMDISK_FILE_TYPE(x) == IMDISK_FILE_TYPE_AWEALLOC)))
 
 /// Specify as device number to automatically select first free.
@@ -253,7 +260,7 @@ typedef struct _IMDISK_CREATE_DATA
 	LARGE_INTEGER   ImageOffset;
 	/// Creation flags. Type of device and type of connection.
 	ULONG           Flags;
-	/// Driveletter (if used, otherwise zero).
+	/// Drive letter (if used, otherwise zero).
 	WCHAR           DriveLetter;
 	/// Length in bytes of the FileName member.
 	USHORT          FileNameLength;

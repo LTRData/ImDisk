@@ -99,6 +99,13 @@
         ''' </summary>
         Modified = &H10000UI
 
+        ''' <summary>
+        ''' This flag causes the driver to open image files in shared write mode even
+        ''' if the image Is opened for writing. This could be useful in some cases,
+        ''' but could easily corrupt filesystems on image files if used incorrectly.
+        ''' </summary>
+        SharedImage = &H20000UI
+
     End Enum
 
 End Namespace

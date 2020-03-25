@@ -217,6 +217,12 @@
 
         End Function
 
+        Public Function IsSharedImage(Flags As ImDiskFlags) As Boolean
+
+            Return (Flags And ImDiskFlags.SharedImage) = ImDiskFlags.SharedImage
+
+        End Function
+
         Public Function GetDeviceType(Flags As ImDiskFlags) As ImDiskFlags
 
             Return CType(Flags And &HF0UI, ImDiskFlags)

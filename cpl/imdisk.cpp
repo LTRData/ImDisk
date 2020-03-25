@@ -815,7 +815,7 @@ IN BOOL IsCdRomType)
         INT_PTR i = DialogBoxParam(hInstance,
             MAKEINTRESOURCE(IDD_DLG_OPTIONS_SAVE),
             hWnd, OptionsSaveDlgProc,
-            (LPARAM)create_data);
+            (LPARAM)(LPVOID)create_data);
 
         if (i == IDCANCEL)
             return;
