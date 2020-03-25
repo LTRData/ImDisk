@@ -1,7 +1,7 @@
 [Version]
 signature = "$Windows NT$"
 Provider = "LTR Data"
-DriverVer=11/16/2015,6.0.6001.18000
+DriverVer=12/08/2015,6.0.6001.18000
 
 
 [SourceDisksNames]

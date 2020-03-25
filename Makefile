@@ -110,7 +110,7 @@ sys\$(ARCHDIR)\imdisk.sys: sys\sources sys\*.cpp sys\*.rc inc\*.h
 	cd $(MAKEDIR)
 	$(SIGNTOOL) /n "$(COMPANYNAME)" /d "ImDisk Virtual Disk Driver" /du "$(COMPANYURL)" /ac $(CERTPATH) /t "$(TIMESTAMP_WEBSERVICE)" $@
 
-awealloc\$(ARCHDIR)\awealloc.sys: awealloc\sources awealloc\*.c awealloc\*.rc
+awealloc\$(ARCHDIR)\awealloc.sys: awealloc\sources awealloc\*.c awealloc\*.rc inc\*.h
 	cd awealloc
 	build
 	cd $(MAKEDIR)

@@ -10,7 +10,7 @@ default: devio.$(UNAME)
 
 static: devio.static.$(UNAME)
 
-publish: /usr/utils/devio.bz2 /usr/utils/devio.lzma
+publish: /usr/utils/devio.gz /usr/utils/devio.xz
 
 install: /usr/local/bin/devio
 
@@ -22,11 +22,11 @@ devio.$(UNAME): devio.c ../inc/*.h safeio.c safeio.h devio_types.h Makefile
 devio.static.$(UNAME): devio.c ../inc/*.h safeio.c safeio.h devio_types.h Makefile
 	cc $(CC_OPT) -static -o devio.static.$(UNAME) devio.c safeio.c
 
-/usr/utils/devio.bz2: devio.static.$(UNAME)
-	bzip2 < devio.static.$(UNAME) > /usr/utils/devio_$(UNAME).bz2
+/usr/utils/devio.gz: devio.static.$(UNAME)
+	gzip -9 < devio.static.$(UNAME) > /usr/utils/devio_$(UNAME).gz
 
-/usr/utils/devio.lzma: devio.static.$(UNAME)
-	lzma e -si -so < devio.static.$(UNAME) > /usr/utils/devio_$(UNAME).lzma
+/usr/utils/devio.xz: devio.static.$(UNAME)
+	xz < devio.static.$(UNAME) > /usr/utils/devio_$(UNAME).xz
 
 /usr/local/bin/devio: devio.$(UNAME)
 	install devio.$(UNAME) /usr/local/bin/devio

@@ -1875,10 +1875,10 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
     // Blank filenames only supported for memory disks where size is specified.
     if ((CreateData->FileNameLength == 0) &&
         !(((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
-            (CreateData->DiskGeometry.Cylinders.QuadPart > 0)) |
+            (CreateData->DiskGeometry.Cylinders.QuadPart > 65536)) |
             ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
                 (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC) &
-                (CreateData->DiskGeometry.Cylinders.QuadPart > 0))))
+                (CreateData->DiskGeometry.Cylinders.QuadPart > 65536))))
     {
         KdPrint(("ImDisk: Blank filenames only supported for memory disks where "
             "size is specified..\n"));
@@ -2911,7 +2911,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
                 (ULONG)proxy_info.req_alignment));
         }
 
-        if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
+        if (CreateData->DiskGeometry.Cylinders.QuadPart <= 65536)
         {
             SIZE_T free_size = 0;
 
@@ -5539,14 +5539,6 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
             (PDEVICE_MANAGE_DATA_SET_ATTRIBUTES)
             Irp->AssociatedIrp.SystemBuffer;
 
-        int i;
-
-        int items;
-
-        PDEVICE_DATA_SET_RANGE range;
-
-        FILE_ZERO_DATA_INFORMATION fltrim = { 0 };
-
         if ((io_stack->Parameters.DeviceIoControl.InputBufferLength <
             sizeof(DEVICE_MANAGE_DATA_SET_ATTRIBUTES)) ||
             (io_stack->Parameters.DeviceIoControl.InputBufferLength <
@@ -5556,7 +5548,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
             break;
         }
 
-        if ((attrs->Action & DeviceDsmAction_Trim) == 0)
+        if (attrs->Action != DeviceDsmAction_Trim)
         {
             status = STATUS_INVALID_DEVICE_REQUEST;
             break;
@@ -5564,16 +5556,13 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
         status = STATUS_SUCCESS;
 
-        items = attrs->DataSetRangesLength /
+        int items = attrs->DataSetRangesLength /
             sizeof(DEVICE_DATA_SET_RANGE);
 
         if (items <= 0)
         {
             break;
         }
-
-        range = (PDEVICE_DATA_SET_RANGE)
-            ((PUCHAR)attrs + attrs->DataSetRangesOffset);
 
         if ((device_extension->use_proxy && !device_extension->proxy_unmap) ||
             device_extension->vm_disk ||
@@ -5584,55 +5573,24 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
         if (device_extension->use_proxy)
         {
-            range = (PDEVICE_DATA_SET_RANGE)
-                ExAllocatePoolWithTag(PagedPool,
-                    items * sizeof(DEVICE_DATA_SET_RANGE), POOL_TAG);
-
-            if (range == NULL)
-            {
-                status = STATUS_INSUFFICIENT_RESOURCES;
-                break;
-            }
-
-            RtlCopyMemory(range, (PUCHAR)attrs + attrs->DataSetRangesOffset,
-                items * sizeof(DEVICE_DATA_SET_RANGE));
-
-            if (device_extension->image_offset.QuadPart > 0)
-            {
-                int i;
-                for (i = 0; i < items; i++)
-                {
-                    range[i].StartingOffset +=
-                        device_extension->image_offset.QuadPart;
-                }
-            }
-
-            status = ImDiskUnmapOrZeroProxy(
-                &device_extension->proxy,
-                IMDPROXY_REQ_UNMAP,
-                &Irp->IoStatus,
-                &device_extension->terminate_thread,
-                items,
-                range);
-
-            ExFreePoolWithTag(range, POOL_TAG);
-
-            KdPrint(("ImDisk: Unmap result on device %i: %#x.\n",
-                device_extension->device_number,
-                status));
-
+            status = STATUS_PENDING;
             break;
         }
 
-        for (i = 0; i < items; i++)
+        FILE_ZERO_DATA_INFORMATION zerodata = { 0 };
+
+        PDEVICE_DATA_SET_RANGE range = (PDEVICE_DATA_SET_RANGE)
+            ((PUCHAR)attrs + attrs->DataSetRangesOffset);
+
+        for (int i = 0; i < items; i++)
         {
             KdPrint(("ImDisk: Trim request 0x%I64X bytes at 0x%I64X\n",
                 range[i].LengthInBytes, range[i].StartingOffset));
 
-            fltrim.FileOffset.QuadPart = range[i].StartingOffset +
+            zerodata.FileOffset.QuadPart = range[i].StartingOffset +
                 device_extension->image_offset.QuadPart;
 
-            fltrim.BeyondFinalZero.QuadPart = fltrim.FileOffset.QuadPart +
+            zerodata.BeyondFinalZero.QuadPart = zerodata.FileOffset.QuadPart +
                 range[i].LengthInBytes;
 
             status = ZwFsControlFile(
@@ -5642,8 +5600,8 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
                 NULL,
                 &Irp->IoStatus,
                 FSCTL_SET_ZERO_DATA,
-                &fltrim,
-                sizeof(fltrim),
+                &zerodata,
+                sizeof(zerodata),
                 NULL,
                 0);
 
@@ -5673,7 +5631,7 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
             RtlZeroMemory(fltrim, fltrim_size);
 
             fltrim->NumRanges = items;
-            for (i = 0; i < items; i++)
+            for (int i = 0; i < items; i++)
             {
                 KdPrint(("ImDisk: Trim request 0x%I64X bytes at 0x%I64X\n",
                     range[i].LengthInBytes, range[i].StartingOffset));
@@ -7037,10 +6995,12 @@ ImDiskDeviceThread(IN PVOID Context)
             ImDiskReleaseLock(&lock_handle);
 
             if (device_extension->last_io_data == NULL)
+            {
                 device_extension->last_io_data = (PUCHAR)
-                ExAllocatePoolWithTag(NonPagedPool,
-                    io_stack->Parameters.Write.Length,
-                    POOL_TAG);
+                    ExAllocatePoolWithTag(NonPagedPool,
+                        io_stack->Parameters.Write.Length,
+                        POOL_TAG);
+            }
 
             if (device_extension->last_io_data == NULL)
             {
@@ -7052,7 +7012,9 @@ ImDiskDeviceThread(IN PVOID Context)
             RtlCopyMemory(device_extension->last_io_data, system_buffer,
                 io_stack->Parameters.Write.Length);
 
-            if (device_extension->use_set_zero_data &&
+            if ((device_extension->use_set_zero_data ||
+                (device_extension->use_proxy &&
+                    device_extension->proxy_zero)) &&
                 ImDiskIsBufferZero(device_extension->last_io_data,
                     io_stack->Parameters.Write.Length))
             {
@@ -7060,8 +7022,10 @@ ImDiskDeviceThread(IN PVOID Context)
             }
 
             if ((!set_zero_data) && device_extension->byte_swap)
+            {
                 ImDiskByteSwapBuffer(device_extension->last_io_data,
                     irp->IoStatus.Information);
+            }
 
             if (device_extension->use_proxy)
             {
@@ -7078,6 +7042,12 @@ ImDiskDeviceThread(IN PVOID Context)
                             &device_extension->terminate_thread,
                             1,
                             &range);
+
+                    if (NT_SUCCESS(irp->IoStatus.Status))
+                    {
+                        irp->IoStatus.Information =
+                            io_stack->Parameters.Write.Length;
+                    }
                 }
                 else
                 {
@@ -7392,6 +7362,58 @@ ImDiskDeviceThread(IN PVOID Context)
             }
 
 #endif // INCLUDE_VFD_ORIGIN
+
+            case IOCTL_STORAGE_MANAGE_DATA_SET_ATTRIBUTES:
+            {
+                irp->IoStatus.Information = 0;
+
+                PDEVICE_MANAGE_DATA_SET_ATTRIBUTES attrs =
+                    (PDEVICE_MANAGE_DATA_SET_ATTRIBUTES)
+                    irp->AssociatedIrp.SystemBuffer;
+
+                irp->IoStatus.Status = STATUS_SUCCESS;
+
+                int items = attrs->DataSetRangesLength /
+                    sizeof(DEVICE_DATA_SET_RANGE);
+
+                PDEVICE_DATA_SET_RANGE range = (PDEVICE_DATA_SET_RANGE)
+                    ExAllocatePoolWithTag(PagedPool,
+                        items * sizeof(DEVICE_DATA_SET_RANGE), POOL_TAG);
+
+                if (range == NULL)
+                {
+                    irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+                    break;
+                }
+
+                RtlCopyMemory(range, (PUCHAR)attrs + attrs->DataSetRangesOffset,
+                    items * sizeof(DEVICE_DATA_SET_RANGE));
+
+                if (device_extension->image_offset.QuadPart > 0)
+                {
+                    for (int i = 0; i < items; i++)
+                    {
+                        range[i].StartingOffset +=
+                            device_extension->image_offset.QuadPart;
+                    }
+                }
+
+                irp->IoStatus.Status = ImDiskUnmapOrZeroProxy(
+                    &device_extension->proxy,
+                    IMDPROXY_REQ_UNMAP,
+                    &irp->IoStatus,
+                    &device_extension->terminate_thread,
+                    items,
+                    range);
+
+                ExFreePoolWithTag(range, POOL_TAG);
+
+                KdPrint(("ImDisk: Unmap result on device %i: %#x.\n",
+                    device_extension->device_number,
+                    irp->IoStatus.Status));
+
+                break;
+            }
 
             case IOCTL_DISK_GROW_PARTITION:
             {
