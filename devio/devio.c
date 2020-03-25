@@ -1,7 +1,7 @@
 /*
     Server end for ImDisk Virtual Disk Driver proxy operation.
 
-    Copyright (C) 2005-2012 Olof Lagerkvist.
+    Copyright (C) 2005-2014 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -177,6 +177,7 @@ off_t_64 offset = 0;
 IMDPROXY_INFO_RESP devio_info = { 0 };
 char dll_mode = 0;
 char vhd_mode = 0;
+char auto_vhd_detect = 1;
 
 struct _VHD_INFO
 {
@@ -837,7 +838,7 @@ main(int argc, char **argv)
       {
 	fprintf(stderr,
 		"devio with custom DLL support\n"
-		"Copyright (C) 2005-2012 Olof Lagerkvist.\n"
+		"Copyright (C) 2005-2014 Olof Lagerkvist.\n"
 		"\n"
 		"Usage for unmanaged C/C++ DLL files:\n"
 		"devio --dll=dllfile;procedure other_devio_parameters ...\n"
@@ -960,6 +961,14 @@ main(int argc, char **argv)
       }
 
   if (argc >= 4)
+    if (strcmp(argv[1], "--novhd") == 0)
+      {
+	auto_vhd_detect = 0;
+	argv++;
+	argc--;
+      }
+
+  if (argc >= 4)
     if (strcmp(argv[1], "-r") == 0)
       {
 	devio_info.flags |= IMDPROXY_FLAG_RO;
@@ -970,7 +979,7 @@ main(int argc, char **argv)
   if ((argc < 3) | (argc > 7))
     {
       fprintf(stderr,
-	      "devio - Device I/O Service ver 3.02\n"
+	      "devio - Device I/O Service ver 3.03\n"
 	      "With support for Microsoft VHD format, custom DLL files and shared memory proxy\n"
 	      "operation.\n"
 	      "Copyright (C) 2005-2012 Olof Lagerkvist.\n"
@@ -1040,9 +1049,11 @@ main(int argc, char **argv)
 
   // Autodetect Microsoft .vhd files
   readdone = physical_read(&vhd_info, (safeio_size_t) sizeof(vhd_info), 0);
-  if ((readdone == sizeof(vhd_info)) &
-      ((strncmp(vhd_info.Header.Cookie, "cxsparse", 8) == 0) &
-       (strncmp(vhd_info.Footer.Cookie, "conectix", 8) == 0)))
+  if (auto_vhd_detect &&
+      (readdone == sizeof(vhd_info)) &&
+      (strncmp(vhd_info.Header.Cookie, "cxsparse", 8) == 0) &&
+      (strncmp(vhd_info.Footer.Cookie, "conectix", 8) == 0) &&
+      vhd_info.Footer.DiskType == 0x03000000UL)
     {
       void *geometry = &vhd_info.Footer.DiskGeometry;
 

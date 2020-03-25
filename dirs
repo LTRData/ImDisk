@@ -1,3 +1,5 @@
+INCLUDE=$(INCLUDE);$(MAKEDIR)\inc
+
 DIRS=sys \
      cpl \
      cplcore \

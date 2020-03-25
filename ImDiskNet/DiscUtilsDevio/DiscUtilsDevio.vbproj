@@ -72,9 +72,9 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="DiscUtils, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+    <Reference Include="DiscUtils, Version=0.11.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\discutils_9a798b768c01\src\bin\Release\DiscUtils.dll</HintPath>
+      <HintPath>.\DiscUtils.dll</HintPath>
     </Reference>
     <Reference Include="System" />
   </ItemGroup>

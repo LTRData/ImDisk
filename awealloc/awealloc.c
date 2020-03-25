@@ -54,6 +54,10 @@
 #define AWEALLOC_DEVICE_NAME    L"\\Device\\AWEAlloc"
 #define AWEALLOC_SYMLINK_NAME   L"\\DosDevices\\AWEAlloc"
 
+#define AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY ((STATUS_SEVERITY_INFORMATIONAL << 30) | \
+    (1 << 29) | \
+    (STATUS_INSUFFICIENT_RESOURCES & 0x1FFFFFFF))
+
 // FILE_OBJECT context for "files" handled by this driver
 
 typedef struct _BLOCK_DESCRIPTOR
@@ -1137,7 +1141,7 @@ AWEAllocSetSize(IN POBJECT_CONTEXT Context,
 		       NULL,
 		       0,
 		       1000,
-		       STATUS_INSUFFICIENT_RESOURCES,
+		       AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
 		       101,
 		       STATUS_INSUFFICIENT_RESOURCES,
 		       0,
@@ -1162,7 +1166,7 @@ AWEAllocSetSize(IN POBJECT_CONTEXT Context,
 		       NULL,
 		       0,
 		       1000,
-		       STATUS_INSUFFICIENT_RESOURCES,
+		       AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
 		       101,
 		       STATUS_INSUFFICIENT_RESOURCES,
 		       0,
@@ -1187,7 +1191,7 @@ AWEAllocSetSize(IN POBJECT_CONTEXT Context,
 		       NULL,
 		       0,
 		       1000,
-		       STATUS_INSUFFICIENT_RESOURCES,
+		       AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
 		       101,
 		       STATUS_INSUFFICIENT_RESOURCES,
 		       0,
@@ -1212,7 +1216,7 @@ AWEAllocSetSize(IN POBJECT_CONTEXT Context,
 		       NULL,
 		       0,
 		       1000,
-		       STATUS_INSUFFICIENT_RESOURCES,
+		       AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
 		       101,
 		       STATUS_INSUFFICIENT_RESOURCES,
 		       0,
