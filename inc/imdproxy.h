@@ -29,11 +29,11 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define _INC_IMDPROXY_
 
 #if !defined(_WIN32) && !defined(_NTDDK_)
-typedef long LONG;
-typedef unsigned long ULONG;
-typedef long long LONGLONG;
-typedef unsigned long long ULONGLONG;
-typedef unsigned short WCHAR;
+typedef int32_t LONG;
+typedef uint32_t ULONG;
+typedef int64_t LONGLONG;
+typedef uint64_t ULONGLONG;
+typedef u_short WCHAR;
 #endif
 
 #define IMDPROXY_SVC                    L"ImDskSvc"

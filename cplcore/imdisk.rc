@@ -9,12 +9,6 @@
 #include <windows.h>
 #include <commctrl.h>
 
-STRINGTABLE 
-{
- IDS_CPLAPPLET_TITLE, "ImDisk Virtual Disk Driver"
- IDS_CPLAPPLET_DESCRIPTION, "ImDisk Virtual Disk Driver"
-}
-
 #include "..\inc\imdiskver.h"
 
 /////////////////////////////////////////////////////////////////////////////
@@ -54,4 +48,3 @@ FILESUBTYPE    0
         VALUE "Translation", 0x409, 1200
     }
 }
-

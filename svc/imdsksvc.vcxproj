@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="PropertySheets">
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v110</PlatformToolset>
     <ConfigurationType>Application</ConfigurationType>
     <DriverType />
     <TARGETNAME>imdsksvc</TARGETNAME>
@@ -40,6 +40,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <TargetVersion>Win7</TargetVersion>
     <UseDebugLibraries>False</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <TargetVersion>Win7</TargetVersion>
@@ -48,6 +49,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <TargetVersion>Win7</TargetVersion>
     <UseDebugLibraries>False</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <!-- Needed by any VcxProj -->
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -56,26 +58,26 @@
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
     <Import Project="..\imdisk.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7_wnet_x64.props" />
+    <Import Project="..\wdk7.props" />
+    <Import Project="..\wdk7_wnet_x64.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
     <Import Project="..\imdisk.props" />
     <Import Project="..\imdiskdbg.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7.props" />
+    <Import Project="..\wdk7_secondary.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
     <Import Project="..\imdisk.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7_w2k_x86.props" />
+    <Import Project="..\wdk7.props" />
+    <Import Project="..\wdk7_w2k_x86.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
     <Import Project="..\imdisk.props" />
     <Import Project="..\imdiskdbg.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7.props" />
+    <Import Project="..\wdk7_secondary.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <!-- The WrappedTaskItems label is used by the conversion tool to identify the location where items 
@@ -90,6 +92,9 @@
     <Link>
       <SubSystem>Console</SubSystem>
     </Link>
+    <ClCompile>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Link>
@@ -100,6 +105,9 @@
     <Link>
       <SubSystem>Console</SubSystem>
     </Link>
+    <ClCompile>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <!-- We only add items (e.g. form ClSourceFiles) that do not already exist (e.g in the ClCompile list), this avoids duplication -->

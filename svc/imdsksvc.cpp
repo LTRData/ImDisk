@@ -45,7 +45,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma comment(lib, "ws2_32.lib")
 
-#pragma comment(linker, "-subsystem:windows -entry:Entry")
+#pragma comment(linker, "/subsystem:Windows")
 
 SERVICE_STATUS ImDiskSvcStatus;
 SERVICE_STATUS_HANDLE ImDiskSvcStatusHandle;
@@ -54,12 +54,7 @@ HANDLE ImDiskSvcStopEvent = NULL;
 // Define DEBUG if you want debug output.
 //#define DEBUG
 
-#ifndef DEBUG
-
-#define KdPrint(x)
-#define KdPrintLastError(x)
-
-#else
+#if defined(DEBUG) || defined(_DEBUG)
 
 #define KdPrint(x)          DbgPrintF          x
 #define KdPrintLastError(x) DbgPrintLastError  x
@@ -98,6 +93,12 @@ DbgPrintLastError(LPCSTR Prefix)
 
     LocalFree(MsgBuf);
 }
+
+#else
+
+#define KdPrint(x)
+#define KdPrintLastError(x)
+
 #endif
 
 class ImDiskSvcServerSession
@@ -578,9 +579,12 @@ ImDiskSvcStart(DWORD, LPWSTR *)
 }
 
 extern "C"
-void
-__declspec(noreturn)
-Entry()
+int
+CALLBACK
+wWinMain(HINSTANCE,
+    HINSTANCE,
+    LPWSTR,
+    int)
 {
     WSADATA wsadata;
     WSAStartup(0x0101, &wsadata);
@@ -595,7 +599,7 @@ Entry()
     if (ImDiskSvcStopEvent == NULL)
     {
         KdPrintLastError(("CreateEvent() failed"));
-        ExitProcess(0);
+        return 0;
     }
 
     if (!StartServiceCtrlDispatcher(ServiceTable))
@@ -604,9 +608,26 @@ Entry()
             "ImDisk Service",
             MB_ICONSTOP | MB_TASKMODAL);
 
-        ExitProcess(0);
+        return 0;
     }
 
     SetEvent(ImDiskSvcStopEvent);
-    ExitThread(1);
+    
+    return 1;
 }
+
+#if !defined(_DEBUG) && !defined(DEBUG) && (defined(_WIN64) || _MSC_VER < 1600)
+
+// We have our own EXE entry to be less dependent on
+// specific MSVCRT code that may not be available in older Windows versions.
+// It also saves some EXE file size.
+__declspec(noreturn)
+extern "C"
+void
+__cdecl
+wWinMainCRTStartup()
+{
+    ExitProcess(wWinMain(NULL, NULL, NULL, 0));
+}
+
+#endif

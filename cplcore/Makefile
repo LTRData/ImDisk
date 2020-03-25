@@ -26,3 +26,6 @@ mbr.h: ..\cpl\$@
 imdisk.rc: ..\cpl\$@
 	copy ..\cpl\$@ $@
 
+imdisk.rc.h: ..\cpl\$@
+	copy ..\cpl\$@ $@
+

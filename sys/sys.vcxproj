@@ -191,7 +191,7 @@
   <ItemGroup Label="WrappedTaskItems" />
   <ItemGroup>
     <!-- We only add items (e.g. form ClSourceFiles) that do not already exist (e.g in the ClCompile list), this avoids duplication -->
-    <ClCompile Include="@(ClSourceFiles)" Exclude="@(ClCompile)" />
+    <ClCompile Include="imdisk.cpp" Exclude="@(ClCompile)" />
     <ResourceCompile Include="@(RcSourceFiles)" Exclude="@(ResourceCompile)" />
     <Midl Include="@(IdlSourceFiles)" Exclude="@(Midl)" />
     <MessageCompile Include="@(McSourceFiles)" Exclude="@(MessageCompile)" />

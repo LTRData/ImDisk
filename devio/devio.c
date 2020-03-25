@@ -49,7 +49,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #pragma warning(disable: 4201)
 
 #include <windows.h>
-#include <winsock.h>
+#include <winsock2.h>
 #include <winioctl.h>
 #include <io.h>
 
@@ -146,11 +146,6 @@ HANDLE shm_response_event = NULL;
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
-#define closesocket(s) close(s)
-#ifndef O_BINARY
-#define O_BINARY       0
-#endif
-
 #endif
 
 #include "../inc/imdproxy.h"
@@ -176,15 +171,26 @@ HANDLE shm_response_event = NULL;
 #define dbglog(x)
 #endif
 
-typedef union _LONGLONG_SWAP
+//typedef union _LONGLONG_SWAP
+//{
+//    int64_t v64;
+//    struct
+//    {
+//        int32_t v1;
+//        int32_t v2;
+//    } v32;
+//} longlongswap;
+
+int64_t GetBigEndian64(int8_t *storage)
 {
-    long long v64;
-    struct
+    int i;
+    int64_t number = 0;
+    for (i = 0; i < sizeof(int64_t); i++)
     {
-        long v1;
-        long v2;
-    } v32;
-} longlongswap;
+        number |= (int64_t)storage[i] << ((sizeof(int64_t) - i - 1) << 3);
+    }
+    return number;
+}
 
 int fd = -1;
 void *libhandle = NULL;
@@ -206,46 +212,46 @@ struct _VHD_INFO
 {
     struct _VHD_FOOTER
     {
-        char Cookie[8];
-        u_long Features;
-        u_long FileFormatVersion;
-        off_t_64 DataOffset;
-        u_long TimeStamp;
-        u_long CreatorApplication;
-        u_long CreatorVersion;
-        u_long CreatorHostOS;
-        off_t_64 OriginalSize;
-        off_t_64 CurrentSize;
-        u_long DiskGeometry;
-        u_long DiskType;
-        u_long Checksum;
-        char UniqueID[16];
-        char SavedState;
-        char Padding[427];
+        uint8_t Cookie[8];
+        uint32_t Features;
+        uint32_t FileFormatVersion;
+        int64_t DataOffset;
+        uint32_t TimeStamp;
+        uint32_t CreatorApplication;
+        uint32_t CreatorVersion;
+        uint32_t CreatorHostOS;
+        int64_t OriginalSize;
+        int8_t CurrentSize[sizeof(int64_t)];
+        uint32_t DiskGeometry;
+        uint32_t DiskType;
+        uint32_t Checksum;
+        uint8_t UniqueID[16];
+        uint8_t SavedState;
+        uint8_t Padding[427];
     } Footer;
 
     struct _VHD_HEADER
     {
-        char Cookie[8];
-        off_t_64 DataOffset;
-        off_t_64 TableOffset;
-        u_long HeaderVersion;
-        u_long MaxTableEntries;
-        u_long BlockSize;
-        u_long Checksum;
-        char ParentUniqueID[16];
-        u_long ParentTimeStamp;
-        u_long Reserved1;
-        wchar_t ParentName[256];
+        uint8_t Cookie[8];
+        int64_t DataOffset;
+        int8_t TableOffset[sizeof(int64_t)];
+        uint32_t HeaderVersion;
+        uint32_t MaxTableEntries;
+        uint32_t BlockSize;
+        uint32_t Checksum;
+        uint8_t ParentUniqueID[16];
+        uint32_t ParentTimeStamp;
+        uint32_t Reserved1;
+        uint16_t ParentName[256];
         struct _VHD_PARENT_LOCATOR
         {
-            u_long PlatformCode;
-            u_long PlatformDataSpace;
-            u_long PlatformDataLength;
-            u_long Reserved1;
-            off_t_64 PlatformDataOffset;
+            uint32_t PlatformCode;
+            uint32_t PlatformDataSpace;
+            uint32_t PlatformDataLength;
+            uint32_t Reserved1;
+            int64_t PlatformDataOffset;
         } ParentLocator[8];
-        char Padding[256];
+        uint8_t Padding[256];
     } Header;
 
 } vhd_info = { { { 0 } } };
@@ -253,8 +259,8 @@ struct _VHD_INFO
 safeio_size_t block_size = 0;
 safeio_size_t sector_size = 512;
 off_t_64 table_offset = 0;
-short block_shift = 0;
-short sector_shift = 0;
+int16_t block_shift = 0;
+int16_t sector_shift = 0;
 off_t_64 current_size = 0;
 
 dllread_proc dll_read = NULL;
@@ -421,7 +427,7 @@ vhd_read(char *io_ptr, safeio_size_t size, off_t_64 offset)
     off_t_64 block_number;
     off_t_64 data_offset;
     safeio_size_t in_block_offset;
-    u_long block_offset;
+    uint32_t block_offset;
     safeio_size_t first_size = size;
     off_t_64 second_offset = 0;
     safeio_size_t second_size = 0;
@@ -491,7 +497,7 @@ vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
     off_t_64 block_number;
     off_t_64 data_offset;
     safeio_size_t in_block_offset;
-    u_long block_offset;
+    uint32_t block_offset;
     safeio_size_t first_size = size;
     off_t_64 second_offset = 0;
     safeio_size_t second_size = 0;
@@ -591,7 +597,7 @@ vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
         }
 
         // Store pointer to new block start sector in BAT
-        block_offset = htonl((u_long)(block_offset_bytes >> sector_shift));
+        block_offset = htonl((uint32_t)(block_offset_bytes >> sector_shift));
         readdone =
             physical_write(&block_offset, sizeof(block_offset), data_offset);
         if (readdone != sizeof(block_offset))
@@ -736,8 +742,8 @@ read_data()
         if (req_block.length != readdone)
         {
             syslog(LOG_ERR,
-                "Partial read at " ULL_FMT ": Got " ULL_FMT ", req " ULL_FMT ".\n",
-                (offset + req_block.offset), (off_t_64)readdone, req_block.length);
+                "Partial read at " SLL_FMT ": Got " SLL_FMT ", req " ULL_FMT ".\n",
+                (int64_t)(offset + req_block.offset), (int64_t)readdone, req_block.length);
         }
     }
 
@@ -746,7 +752,7 @@ read_data()
 
     if (!comm_write(&resp_block, sizeof resp_block))
     {
-        syslog(LOG_ERR, "Warning: I/O stream incosistency.\n");
+        syslog(LOG_ERR, "Warning: I/O stream inconsistency.\n");
         return 0;
     }
 
@@ -826,12 +832,12 @@ write_data()
             if (writedone < 0)
             {
                 syslog(LOG_ERR, "Write error (code " ULL_FMT ") at " ULL_FMT ": Req " ULL_FMT ".\n",
-                    (off_t_64)resp_block.errorno, (off_t_64)(offset + req_block.offset), (off_t_64)req_block.length);
+                    resp_block.errorno, offset + req_block.offset, req_block.length);
             }
             else
             {
                 syslog(LOG_ERR, "Partial write at " ULL_FMT ": Got " ULL_FMT ", req " ULL_FMT ".\n",
-                    (off_t_64)(offset + req_block.offset), (off_t_64)resp_block.length, (off_t_64)req_block.length);
+                    resp_block.errorno, offset + req_block.offset, req_block.length);
             }
         }
 
@@ -1091,10 +1097,11 @@ main(int argc, char **argv)
 
     // Autodetect Microsoft .vhd files
     readdone = physical_read(&vhd_info, (safeio_size_t) sizeof(vhd_info), 0);
+
     if (auto_vhd_detect &&
         (readdone == sizeof(vhd_info)) &&
-        (strncmp(vhd_info.Header.Cookie, "cxsparse", 8) == 0) &&
-        (strncmp(vhd_info.Footer.Cookie, "conectix", 8) == 0) &&
+        (strncmp((char*)vhd_info.Header.Cookie, "cxsparse", 8) == 0) &&
+        (strncmp((char*)vhd_info.Footer.Cookie, "conectix", 8) == 0) &&
         vhd_info.Footer.DiskType == 0x03000000UL)
     {
         void *geometry = &vhd_info.Footer.DiskGeometry;
@@ -1110,15 +1117,18 @@ main(int argc, char **argv)
         puts("Detected dynamically expanding Microsoft VHD image file format.");
 
         // Calculate vhd shifts
-        ((longlongswap*)&current_size)->v32.v1 =
-            ntohl(((longlongswap*)&vhd_info.Footer.CurrentSize)->v32.v2);
-        ((longlongswap*)&current_size)->v32.v2 =
-            ntohl(((longlongswap*)&vhd_info.Footer.CurrentSize)->v32.v1);
+        current_size = GetBigEndian64(vhd_info.Footer.CurrentSize);
+        table_offset = GetBigEndian64(vhd_info.Header.TableOffset);
 
-        ((longlongswap*)&table_offset)->v32.v1 =
-            ntohl(((longlongswap*)&vhd_info.Header.TableOffset)->v32.v2);
-        ((longlongswap*)&table_offset)->v32.v2 =
-            ntohl(((longlongswap*)&vhd_info.Header.TableOffset)->v32.v1);
+        //((longlongswap*)&current_size)->v32.v1 =
+        //    ntohl(((longlongswap*)&vhd_info.Footer.CurrentSize)->v32.v2);
+        //((longlongswap*)&current_size)->v32.v2 =
+        //    ntohl(((longlongswap*)&vhd_info.Footer.CurrentSize)->v32.v1);
+
+        //((longlongswap*)&table_offset)->v32.v1 =
+        //    ntohl(((longlongswap*)&vhd_info.Header.TableOffset)->v32.v2);
+        //((longlongswap*)&table_offset)->v32.v2 =
+        //    ntohl(((longlongswap*)&vhd_info.Header.TableOffset)->v32.v1);
 
         sector_size = 512;
 
@@ -1149,7 +1159,7 @@ main(int argc, char **argv)
         ULONGLONG spec_size = 0;
         char suf = 0;
 
-        if (sscanf(argv[3], SLL_FMT "%c", &spec_size, &suf) == 2)
+        if (sscanf(argv[3], ULL_FMT "%c", &spec_size, &suf) == 2)
         {
             switch (suf)
             {
@@ -1179,7 +1189,7 @@ main(int argc, char **argv)
 
             devio_info.file_size = spec_size;
         }
-        else if ((spec_size >= 0) & (spec_size <= 8))
+        else if (spec_size <= 8)
         {
             partition_number = (int)spec_size;
         }
@@ -1309,8 +1319,8 @@ main(int argc, char **argv)
                             (*(u_int*)(mbr + 512 - 66 + (i << 4) + 8)) <<
                             sector_shift;
 
-                        printf("Reading extended partition table at " ULL_FMT
-                            ".\n", offset);
+                        printf("Reading extended partition table at " SLL_FMT
+                            ".\n", (int64_t)offset);
 
                         if (logical_read(mbr, 512, offset) == 512)
                             if ((*(u_short*)(mbr + 0x01FE) == 0xAA55) &
@@ -1360,35 +1370,44 @@ main(int argc, char **argv)
     if (offset == 0)
         if (argc > 4)
         {
+            int64_t offset64 = offset;
+
             char suf = 0;
-            if (sscanf(argv[4], SLL_FMT "%c", &offset, &suf) == 2)
+            if (sscanf(argv[4], SLL_FMT "%c", &offset64, &suf) == 2)
                 switch (suf)
             {
                 case 'T':
-                    offset <<= 10;
+                    offset64 <<= 10;
                 case 'G':
-                    offset <<= 10;
+                    offset64 <<= 10;
                 case 'M':
-                    offset <<= 10;
+                    offset64 <<= 10;
                 case 'K':
-                    offset <<= 10;
+                    offset64 <<= 10;
                 case 'B':
                     break;
                 case 't':
-                    offset *= 1000;
+                    offset64 *= 1000;
                 case 'g':
-                    offset *= 1000;
+                    offset64 *= 1000;
                 case 'm':
-                    offset *= 1000;
+                    offset64 *= 1000;
                 case 'k':
-                    offset *= 1000;
+                    offset64 *= 1000;
                 case 'b':
                     break;
                 default:
                     syslog(LOG_ERR, "Unsupported size suffix: %c\n", suf);
             }
             else
-                offset <<= 9;
+                offset64 <<= 9;
+            
+            if ((((int64_t)(-1) - (off_t_64)(-1)) & offset64) != 0)
+            {
+                syslog(LOG_ERR, "Offset too big for this system.\n");
+            }
+
+            offset = (off_t_64)offset64;
 
             argc--;
             argv++;
@@ -1412,7 +1431,7 @@ main(int argc, char **argv)
     if (argc > 5)
     {
         char suf = 0;
-        if (sscanf(argv[5], "%u%c", &buffer_size, &suf) == 2)
+        if (sscanf(argv[5], SIZ_FMT "%c", &buffer_size, &suf) == 2)
         {
             switch (suf)
             {
@@ -1450,10 +1469,10 @@ main(int argc, char **argv)
     printf("Total size: " SLL_FMT " bytes. Using " ULL_FMT " bytes from offset "
         SLL_FMT ".\n"
         "Required alignment: " ULL_FMT " bytes.\n"
-        "Buffer size: %u bytes.\n",
-        current_size,
+        "Buffer size: " SIZ_FMT " bytes.\n",
+        (int64_t)current_size,
         devio_info.file_size,
-        offset,
+        (int64_t)offset,
         devio_info.req_alignment,
         buffer_size);
 
@@ -1643,7 +1662,7 @@ do_comm(char *comm_device)
     else if (port != 0)
     {
         struct sockaddr_in saddr = { 0 };
-        int i;
+        socklen_t i;
         SOCKET ssd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (ssd == -1)
         {
@@ -1775,7 +1794,7 @@ ExceptionFilter(LPEXCEPTION_POINTERS ExceptionInfo)
     LPSTR MsgBuf = NULL;
     DWORD i;
 
-    if (FormatMessage(FORMAT_MESSAGE_MAX_WIDTH_MASK |
+    if (FormatMessage(78 |
         FORMAT_MESSAGE_ALLOCATE_BUFFER |
         FORMAT_MESSAGE_FROM_HMODULE |
         FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -1816,7 +1835,7 @@ ExceptionFilter(LPEXCEPTION_POINTERS ExceptionInfo)
             ExceptionInfo->ExceptionRecord->ExceptionInformation[i]);
     }
 
-    flushall();
+    _flushall();
     ExitProcess((UINT)-1);
 }
 

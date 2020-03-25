@@ -38,6 +38,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "drvio.h"
 
 #include "imdisk.rc.h"
+#include "resource.h"
 
 #pragma warning(disable: 4100)
 #pragma warning(disable: 4204)

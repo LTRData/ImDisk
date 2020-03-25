@@ -1,23 +1,32 @@
-UNAME!=uname
-UNAME?=$(shell uname)
+UNAME_S!=uname
+UNAME_S?=$(shell uname)
 
-all: devio.$(UNAME)
+UNAME_M!=uname -m
+UNAME_M?=$(shell uname -m)
+
+UNAME=$(UNAME_S)_$(UNAME_M)
+
+default: devio.$(UNAME)
+
+static: devio.static.$(UNAME)
 
 publish: /usr/utils/devio.bz2 /usr/utils/devio.lzma
 
 install: /usr/local/bin/devio
 
+CC_OPT=-Wall -Werror -Os -D_XBS5_ILP32_OFFBIG
+
 devio.$(UNAME): devio.c ../inc/*.h safeio.c safeio.h devio_types.h Makefile
-	gcc -Wall -Werror -Os -o devio.$(UNAME) devio.c safeio.c
+	cc $(CC_OPT) -o devio.$(UNAME) devio.c safeio.c
 
 devio.static.$(UNAME): devio.c ../inc/*.h safeio.c safeio.h devio_types.h Makefile
-	gcc -Wall -Werror -static -Os -o devio.static.$(UNAME) devio.c safeio.c
+	cc $(CC_OPT) -static -o devio.static.$(UNAME) devio.c safeio.c
 
 /usr/utils/devio.bz2: devio.static.$(UNAME)
-	bzip2 < devio.static.$(UNAME) > /usr/utils/devio.bz2
+	bzip2 < devio.static.$(UNAME) > /usr/utils/devio_$(UNAME).bz2
 
 /usr/utils/devio.lzma: devio.static.$(UNAME)
-	lzma e devio.static.$(UNAME) /usr/utils/devio.lzma
+	lzma e -si -so < devio.static.$(UNAME) > /usr/utils/devio_$(UNAME).lzma
 
 /usr/local/bin/devio: devio.$(UNAME)
-	cp devio.$(UNAME) /usr/local/bin/devio
+	install devio.$(UNAME) /usr/local/bin/devio

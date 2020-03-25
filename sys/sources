@@ -1,7 +1,7 @@
 TARGETNAME=imdisk
 TARGETPATH=.
 TARGETTYPE=DRIVER
-SOURCES=imdisk.c imdisk.rc
+SOURCES=imdisk.cpp imdisk.rc
 MSC_WARNING_LEVEL=/W4 /WX /wd4201 /wd4204 /wd4221
 !IF "$(NTDEBUG)" != "ntsd"
 MSC_OPTIMIZATION=/Ox /GF

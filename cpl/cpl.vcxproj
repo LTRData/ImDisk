@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="PropertySheets">
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v110</PlatformToolset>
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <DriverType />
     <TARGETNAME>imdisk</TARGETNAME>
@@ -41,6 +41,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <TargetVersion>Win7</TargetVersion>
     <UseDebugLibraries>False</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <TargetVersion>Win7</TargetVersion>
@@ -49,6 +50,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <TargetVersion>Win7</TargetVersion>
     <UseDebugLibraries>False</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
   </PropertyGroup>
   <!-- Needed by any VcxProj -->
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -57,28 +59,26 @@
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
     <Import Project="..\imdisk.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7_wnet_x64.props" />
+    <Import Project="..\wdk7.props" />
+    <Import Project="..\wdk7_wnet_x64.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
     <Import Project="..\imdisk.props" />
     <Import Project="..\imdiskdbg.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7_wnet_x64.props" />
+    <Import Project="..\wdk7_secondary.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
     <Import Project="..\imdisk.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7_w2k_x86.props" />
+    <Import Project="..\wdk7.props" />
+    <Import Project="..\wdk7_w2k_x86.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
     <Import Project="..\imdisk.props" />
     <Import Project="..\imdiskdbg.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7.props" />
-    <Import Project="C:\Users\olof.OLOFDOM\Source\wdk7_w2k_x86.props" />
+    <Import Project="..\wdk7_secondary.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -95,7 +95,12 @@
   </PropertyGroup>
   <!-- The WrappedTaskItems label is used by the conversion tool to identify the location where items 
         associated with wrapped tasks will reside.-->
-  <ItemGroup Label="WrappedTaskItems" />
+  <ItemGroup Label="WrappedTaskItems">
+    <Image Include="Icons\CD.ico" />
+    <Image Include="Icons\Disk.ico" />
+    <Image Include="Icons\Floppy.ico" />
+    <Image Include="Icons\VD.ico" />
+  </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile />
     <ClCompile />
@@ -130,6 +135,7 @@
     </Link>
     <ClCompile>
       <PreprocessorDefinitions>IMDISK_CPL_EXPORTS;_WIN32_WINNT=0x0500;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -141,6 +147,7 @@
     </Link>
     <ClCompile>
       <PreprocessorDefinitions>IMDISK_CPL_EXPORTS;_UNICODE;UNICODE;_WIN32_WINNT=0x0502;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -154,6 +161,7 @@
     <MessageCompile Include="@(McSourceFiles)" Exclude="@(MessageCompile)" />
     <MASM Include="@(AsmSourceFiles)" Exclude="@(MASM)" />
     <GenerateBmf Include="@(MofSourceFiles)" Exclude="@(GenerateBmf)" />
+    <ResourceCompile Include="dlg.rc" />
     <ResourceCompile Include="imdisk.rc" />
   </ItemGroup>
   <!-- Set default environment variables, e.g. for stampinf -->

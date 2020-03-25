@@ -1,4 +1,5 @@
 /*
+
 Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
 Copyright (C) 2004-2015 Olof Lagerkvist.
@@ -395,10 +396,12 @@ LPVOID
 ImDiskCliAssertNotNull(LPVOID Ptr)
 {
     if (Ptr == NULL)
+    {
         RaiseException(STATUS_NO_MEMORY,
-        EXCEPTION_NONCONTINUABLE,
-        0,
-        NULL);
+            EXCEPTION_NONCONTINUABLE,
+            0,
+            NULL);
+    }
 
     return Ptr;
 }
@@ -467,10 +470,11 @@ LPCWSTR ValidTargetPath)
         }
 
         ImDiskOemPrintF(stderr,
-            "Temporary drive letter %1!ws! points to '%2!ws!' instead of expected '%3!ws!'.",
+            "Drive letter %1!ws! points to '%2!ws!' instead of expected '%3!ws!'. "
+            "Will attempt to redefine drive letter.",
             DriveLetter, target, ValidTargetPath);
     }
-    else
+    else if (GetLastError() != ERROR_FILE_NOT_FOUND)
     {
         PrintLastError(L"Error verifying temporary drive letter:");
     }
@@ -501,6 +505,8 @@ LPCWSTR FormatOptions)
     STARTUPINFO startup_info = { sizeof(startup_info) };
     PROCESS_INFORMATION process_info;
 
+    BOOL temp_drive_defined = FALSE;
+
     int iReturnCode;
 
     HANDLE hMutex = CreateMutex(NULL, FALSE, format_mutex);
@@ -529,24 +535,16 @@ LPCWSTR FormatOptions)
     else
     {
         temporary_mount_point[0] = ImDiskFindFreeDriveLetter();
+
+        temp_drive_defined = TRUE;
     }
 
     if (temporary_mount_point[0] == 0)
     {
         fprintf
             (stderr,
-            "Format failed. No free drive letters available.\r\n");
+                "Format failed. No free drive letters available.\r\n");
 
-        ReleaseMutex(hMutex);
-        CloseHandle(hMutex);
-        return IMDISK_CLI_ERROR_FORMAT;
-    }
-
-    if (!DefineDosDevice(DDD_RAW_TARGET_PATH,
-        temporary_mount_point,
-        DevicePath))
-    {
-        PrintLastError(L"Error defining drive letter:");
         ReleaseMutex(hMutex);
         CloseHandle(hMutex);
         return IMDISK_CLI_ERROR_FORMAT;
@@ -555,20 +553,34 @@ LPCWSTR FormatOptions)
     if (!ImDiskCliValidateDriveLetterTarget(temporary_mount_point,
         DevicePath))
     {
-        if (!DefineDosDevice(DDD_REMOVE_DEFINITION |
-            DDD_EXACT_MATCH_ON_REMOVE |
-            DDD_RAW_TARGET_PATH,
+        if (!DefineDosDevice(DDD_RAW_TARGET_PATH,
             temporary_mount_point,
             DevicePath))
-            PrintLastError(L"Error undefining temporary drive letter:");
+        {
+            PrintLastError(L"Error defining drive letter:");
+            ReleaseMutex(hMutex);
+            CloseHandle(hMutex);
+            return IMDISK_CLI_ERROR_FORMAT;
+        }
 
-        ReleaseMutex(hMutex);
-        CloseHandle(hMutex);
-        
-        return IMDISK_CLI_ERROR_FORMAT;
+        if (!ImDiskCliValidateDriveLetterTarget(temporary_mount_point,
+            DevicePath))
+        {
+            if (!DefineDosDevice(DDD_REMOVE_DEFINITION |
+                DDD_EXACT_MATCH_ON_REMOVE |
+                DDD_RAW_TARGET_PATH,
+                temporary_mount_point,
+                DevicePath))
+                PrintLastError(L"Error undefining temporary drive letter:");
+
+            ReleaseMutex(hMutex);
+            CloseHandle(hMutex);
+
+            return IMDISK_CLI_ERROR_FORMAT;
+        }
     }
 
-    puts("Formatting disk...");
+    printf("Formatting disk %ws...\n", temporary_mount_point);
 
     wcscpy(format_cmd, format_cmd_prefix);
     wcscat(format_cmd, temporary_mount_point);
@@ -589,12 +601,15 @@ LPCWSTR FormatOptions)
         iReturnCode = IMDISK_CLI_ERROR_FORMAT;
     }
 
-    if (!DefineDosDevice(DDD_REMOVE_DEFINITION |
-        DDD_EXACT_MATCH_ON_REMOVE |
-        DDD_RAW_TARGET_PATH,
-        temporary_mount_point,
-        DevicePath))
-        PrintLastError(L"Error undefining temporary drive letter:");
+    if (temp_drive_defined)
+    {
+        if (!DefineDosDevice(DDD_REMOVE_DEFINITION |
+            DDD_EXACT_MATCH_ON_REMOVE |
+            DDD_RAW_TARGET_PATH,
+            temporary_mount_point,
+            DevicePath))
+            PrintLastError(L"Error undefining temporary drive letter:");
+    }
 
     if (!ReleaseMutex(hMutex))
         PrintLastError(L"Error releasing mutex:");
@@ -2379,7 +2394,7 @@ wmain(int argc, LPWSTR argv[])
                     (op_mode != OP_MODE_CREATE)))
                     ImDiskSyntaxHelp();
 
-                mount_point = argv[1];
+                mount_point = CharUpper(argv[1]);
 
                 argc--;
                 argv++;
@@ -2529,7 +2544,9 @@ wmain(int argc, LPWSTR argv[])
     ImDiskSyntaxHelp();
 }
 
-#ifndef _DEBUG
+#pragma intrinsic(_InterlockedCompareExchange)
+
+#if !defined(_DEBUG) && !defined(DEBUG) && (defined(_WIN64) || _MSC_VER < 1600)
 
 // We have our own EXE entry to be less dependent on
 // specific MSVCRT code that may not be available in older Windows versions.

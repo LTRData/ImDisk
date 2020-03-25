@@ -47,6 +47,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "mbr.h"
 
 #include "imdisk.rc.h"
+#include "resource.h"
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -1086,6 +1087,73 @@ AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
     }
 }
 
+BOOL
+InitNewDialog(HWND hWnd, WPARAM /*wParam*/, LPARAM lParam)
+{
+    if (SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, CB_ADDSTRING, 0,
+        (LPARAM)L"") == CB_ERR)
+    {
+        MsgBoxLastError(hWnd, L"Error filling drive list");
+        return FALSE;
+    }
+    
+    INT_PTR index = 1;
+    INT_PTR start_pos = 0;
+    DWORD logical_drives = GetLogicalDrives();
+    WCHAR wcMountPoint[3] = L"?";
+
+    for (WCHAR search = L'A'; search <= L'Z'; search++)
+    {
+        if ((logical_drives & (1 << (search - L'A'))) == 0)
+        {
+            wcMountPoint[0] = search;
+
+            if (SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, CB_ADDSTRING, 0,
+                (LPARAM)wcMountPoint) == CB_ERR)
+            {
+                MsgBoxLastError(hWnd, L"Error filling drive list");
+                return FALSE;
+            }
+
+            if (start_pos == 0 && search > L'C')
+            {
+                start_pos = index;
+            }
+
+            index++;
+        }
+    }
+    
+    SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, CB_SETCURSEL, start_pos, 0);
+
+    SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, CB_LIMITTEXT, (WPARAM)1,
+        0);
+
+    SendDlgItemMessage(hWnd, IDC_EDT_IMAGEFILE, EM_SETLIMITTEXT,
+        (WPARAM)MAX_PATH, 0);
+
+    CheckDlgButton(hWnd, IDC_UNIT_MB, BST_CHECKED);
+    CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_CHECKED);
+    CheckDlgButton(hWnd, IDC_DT_AUTO, BST_CHECKED);
+
+    if (lParam != 0)
+    {
+        // Clear any leading and trailing quotes
+        LPWSTR file_name = (LPWSTR)lParam;
+        if (file_name[0] == L'"')
+        {
+            size_t file_name_last_pos = wcslen(file_name) - 1;
+            if (file_name[file_name_last_pos] == L'"')
+                (file_name++)[file_name_last_pos] = 0;
+        }
+
+        SetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, file_name);
+        AutoFindOffsetAndSize(file_name, hWnd);
+    }
+
+    return TRUE;
+}
+
 INT_PTR
 CALLBACK
 NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -1094,35 +1162,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
     case WM_INITDIALOG:
     {
-        WCHAR free_drive_letter[3] = L" ";
-        free_drive_letter[0] = ImDiskFindFreeDriveLetter();
-        SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, WM_SETTEXT, 0,
-            (LPARAM)(LPCWSTR)free_drive_letter);
-
-        SendDlgItemMessage(hWnd, IDC_EDT_IMAGEFILE, EM_SETLIMITTEXT,
-            (WPARAM)MAX_PATH, 0);
-        SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, EM_SETLIMITTEXT, (WPARAM)1,
-            0);
-
-        CheckDlgButton(hWnd, IDC_UNIT_MB, BST_CHECKED);
-        CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_CHECKED);
-        CheckDlgButton(hWnd, IDC_DT_AUTO, BST_CHECKED);
-
-        if (lParam != 0)
-        {
-            // Clear any leading and trailing quotes
-            LPWSTR file_name = (LPWSTR)lParam;
-            if (file_name[0] == L'"')
-            {
-                size_t file_name_last_pos = wcslen(file_name) - 1;
-                if (file_name[file_name_last_pos] == L'"')
-                    (file_name++)[file_name_last_pos] = 0;
-            }
-
-            SetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, file_name);
-            AutoFindOffsetAndSize(file_name, hWnd);
-        }
-
+        InitNewDialog(hWnd, wParam, lParam);
         return TRUE;
     }
 
