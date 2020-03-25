@@ -578,14 +578,32 @@ ImDiskStartService(LPWSTR ServiceName)
     return TRUE;
 }
 
+typedef struct _REPARSE_DATA_JUNCTION
+{
+    DWORD ReparseTag;
+    WORD ReparseDataLength;
+    WORD Reserved;
+    WORD NameOffset;
+    WORD NameLength;
+    WORD DisplayNameOffset;
+    WORD DisplayNameLength;
+    BYTE Data[65536];
+} REPARSE_DATA_JUNCTION, *PREPARSE_DATA_JUNCTION;
+
 IMDISK_API BOOL
 WINAPI
 ImDiskCreateMountPoint(LPCWSTR MountPoint, LPCWSTR Target)
 {
     WORD iSize = (WORD)((wcslen(Target) + 1) << 1);
-    PREPARSE_DATA_JUNCTION ReparseData = NULL;
+    PREPARSE_DATA_BUFFER ReparseData = NULL;
     HANDLE hDir;
     DWORD dw;
+    DWORD buffer_size = FIELD_OFFSET(REPARSE_DATA_BUFFER,
+        MountPointReparseBuffer.PathBuffer) + iSize + 2 + iSize + 2;
+    WORD data_length = FIELD_OFFSET(REPARSE_DATA_BUFFER,
+        MountPointReparseBuffer.PathBuffer) -
+        FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer) + iSize +
+        2 + iSize + 2;
 
     if ((wcslen(MountPoint) == 2) &&
         (MountPoint[1] == L':'))
@@ -635,32 +653,39 @@ ImDiskCreateMountPoint(LPCWSTR MountPoint, LPCWSTR Target)
     if (hDir == INVALID_HANDLE_VALUE)
         return FALSE;
 
-    if ((iSize + 6 > sizeof(ReparseData->Data)) | (iSize == 0))
+    if ((iSize + 6 > MAXIMUM_REPARSE_DATA_BUFFER_SIZE) | (iSize == 0))
     {
         SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
     }
 
     ReparseData = HeapAlloc(GetProcessHeap(),
-        HEAP_GENERATE_EXCEPTIONS,
-        sizeof(REPARSE_DATA_JUNCTION));
+        HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+        buffer_size);
 
     __analysis_assume(ReparseData != NULL);
 
     ReparseData->ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
-    ReparseData->ReparseDataLength = (WORD)(8 + iSize + 2 + iSize + 2);
-    ReparseData->NameLength = (WORD)iSize;
-    ReparseData->DisplayNameOffset = (WORD)(iSize + 2);
-    ReparseData->DisplayNameLength = (WORD)iSize;
-    wcscpy((LPWSTR)ReparseData->Data, Target);
-    ((LPWSTR)ReparseData->Data)[(iSize >> 1) - 1] = L'\\';
-    wcscpy((LPWSTR)(ReparseData->Data + ReparseData->DisplayNameOffset),
-        Target);
-    ((LPWSTR)(ReparseData->Data + ReparseData->DisplayNameOffset))
-        [(iSize >> 1) - 1] = L'\\';
+    
+    ReparseData->ReparseDataLength = data_length;
 
-    if (!DeviceIoControl(hDir, FSCTL_SET_REPARSE_POINT, &ReparseData,
-        16 + iSize + 2 + iSize + 2, NULL, 0, &dw, NULL))
+    ReparseData->MountPointReparseBuffer.SubstituteNameLength = (WORD)iSize;
+
+    wcscpy(ReparseData->MountPointReparseBuffer.PathBuffer, Target);
+    ReparseData->MountPointReparseBuffer.PathBuffer[(iSize >> 1) - 1] = L'\\';
+
+    ReparseData->MountPointReparseBuffer.PrintNameOffset = (WORD)iSize + 2;
+    ReparseData->MountPointReparseBuffer.PrintNameLength = (WORD)iSize;
+
+    wcscpy(ReparseData->MountPointReparseBuffer.PathBuffer +
+        (ReparseData->MountPointReparseBuffer.PrintNameOffset >> 1), Target);
+
+    ReparseData->MountPointReparseBuffer.PathBuffer[
+        ((ReparseData->MountPointReparseBuffer.PrintNameOffset + iSize) >>
+            1) - 1] = L'\\';
+
+    if (!DeviceIoControl(hDir, FSCTL_SET_REPARSE_POINT, ReparseData,
+        buffer_size, NULL, 0, &dw, NULL))
     {
         DWORD last_error = GetLastError();
         CloseHandle(hDir);
@@ -847,7 +872,7 @@ ImDiskOpenDeviceByMountPoint(LPCWSTR MountPoint, DWORD AccessMode)
 {
     UNICODE_STRING DeviceName;
     WCHAR DriveLetterPath[] = L"\\DosDevices\\ :";
-    PREPARSE_DATA_JUNCTION ReparseData = NULL;
+    PREPARSE_DATA_BUFFER ReparseData = NULL;
     HANDLE h;
 
     if ((MountPoint[0] != 0) &&
@@ -869,6 +894,9 @@ ImDiskOpenDeviceByMountPoint(LPCWSTR MountPoint, DWORD AccessMode)
     {
         HANDLE hDir;
         DWORD dw;
+        DWORD buffer_size =
+            FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer) +
+            MAXIMUM_REPARSE_DATA_BUFFER_SIZE;
 
         hDir = CreateFile(MountPoint, GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
@@ -880,12 +908,12 @@ ImDiskOpenDeviceByMountPoint(LPCWSTR MountPoint, DWORD AccessMode)
             return INVALID_HANDLE_VALUE;
 
         ReparseData = HeapAlloc(GetProcessHeap(),
-            HEAP_GENERATE_EXCEPTIONS,
-            sizeof(REPARSE_DATA_JUNCTION));
+            HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+            buffer_size);
 
         if (!DeviceIoControl(hDir, FSCTL_GET_REPARSE_POINT,
             NULL, 0,
-            ReparseData, sizeof(REPARSE_DATA_JUNCTION),
+            ReparseData, buffer_size,
             &dw, NULL))
         {
             DWORD last_error = GetLastError();
@@ -904,9 +932,13 @@ ImDiskOpenDeviceByMountPoint(LPCWSTR MountPoint, DWORD AccessMode)
             return INVALID_HANDLE_VALUE;
         }
 
-        DeviceName.Length = ReparseData->NameLength;
-        DeviceName.Buffer = (PWSTR)ReparseData->Data +
-            ReparseData->NameOffset;
+        DeviceName.Length =
+            ReparseData->MountPointReparseBuffer.SubstituteNameLength;
+        
+        DeviceName.Buffer = (PWSTR)
+            ((PUCHAR)ReparseData->MountPointReparseBuffer.PathBuffer +
+            ReparseData->MountPointReparseBuffer.SubstituteNameOffset);
+        
         DeviceName.MaximumLength = DeviceName.Length;
     }
     

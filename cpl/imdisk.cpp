@@ -2404,7 +2404,9 @@ ImDiskInteractiveCheckSave(HWND hWnd, HANDLE device)
     }
 }
 
-EXTERN_C LONG APIENTRY
+EXTERN_C
+IMDISK_API
+LONG APIENTRY
 CPlApplet(HWND hwndCPl,	        // handle to Control Panel window
 UINT uMsg,	        // message
 LPARAM /*lParam1*/,	// first message parameter

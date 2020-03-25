@@ -8,7 +8,7 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{ff9b3f4a-c5d0-4215-9d57-120a2e5974ca}</ProjectGuid>
-    <SHFBSchemaVersion>1.9.9.0</SHFBSchemaVersion>
+    <SHFBSchemaVersion>2015.6.5.0</SHFBSchemaVersion>
     <!-- AssemblyName, Name, and RootNamespace are not used by SHFB but Visual
          Studio adds them anyway -->
     <AssemblyName>Documentation</AssemblyName>
@@ -30,14 +30,15 @@
     </DocumentationSources>
     <ApiFilter>
       <Filter entryType="Namespace" fullName="LTR.IO" isExposed="False" />
-<Filter entryType="Namespace" fullName="LTR.IO.ImDisk" isExposed="True">
-  <Filter entryType="Class" fullName="LTR.IO.ImDisk.DLL" filterName="DLL" isExposed="False" />
-  <Filter entryType="Enumeration" fullName="LTR.IO.ImDisk.DLL.ImDiskAPIFlags" filterName="DLL.ImDiskAPIFlags" isExposed="True" />
-  <Filter entryType="Structure" fullName="LTR.IO.ImDisk.DLL.ImDiskCreateData" filterName="DLL.ImDiskCreateData" isExposed="True" />
-  <Filter entryType="Delegate" fullName="LTR.IO.ImDisk.DLL.ImDiskReadFileManagedProc" filterName="DLL.ImDiskReadFileManagedProc" isExposed="True" />
-  <Filter entryType="Delegate" fullName="LTR.IO.ImDisk.DLL.ImDiskReadFileUnmanagedProc" filterName="DLL.ImDiskReadFileUnmanagedProc" isExposed="True" />
-</Filter>
-<Filter entryType="Namespace" fullName="LTR.IO.ImDisk.ComInterop" isExposed="False" /></ApiFilter>
+      <Filter entryType="Namespace" fullName="LTR.IO.ImDisk" isExposed="True">
+        <Filter entryType="Class" fullName="LTR.IO.ImDisk.DLL" filterName="DLL" isExposed="False" />
+        <Filter entryType="Enumeration" fullName="LTR.IO.ImDisk.DLL.ImDiskAPIFlags" filterName="DLL.ImDiskAPIFlags" isExposed="True" />
+        <Filter entryType="Structure" fullName="LTR.IO.ImDisk.DLL.ImDiskCreateData" filterName="DLL.ImDiskCreateData" isExposed="True" />
+        <Filter entryType="Delegate" fullName="LTR.IO.ImDisk.DLL.ImDiskReadFileManagedProc" filterName="DLL.ImDiskReadFileManagedProc" isExposed="True" />
+        <Filter entryType="Delegate" fullName="LTR.IO.ImDisk.DLL.ImDiskReadFileUnmanagedProc" filterName="DLL.ImDiskReadFileUnmanagedProc" isExposed="True" />
+      </Filter>
+      <Filter entryType="Namespace" fullName="LTR.IO.ImDisk.ComInterop" isExposed="False" />
+    </ApiFilter>
     <ComponentConfigurations />
     <HelpAttributes />
     <NamespaceSummaries />

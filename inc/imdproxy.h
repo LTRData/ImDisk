@@ -42,6 +42,7 @@ typedef unsigned short WCHAR;
 
 #define IMDPROXY_FLAG_RO                0x01
 #define IMDPROXY_FLAG_SUPPORTS_UNMAP    0x02
+#define IMDPROXY_FLAG_SUPPORTS_ZERO     0x04
 
 typedef enum _IMDPROXY_REQ
 {
@@ -51,7 +52,8 @@ typedef enum _IMDPROXY_REQ
     IMDPROXY_REQ_WRITE,
     IMDPROXY_REQ_CONNECT,
     IMDPROXY_REQ_CLOSE,
-    IMDPROXY_REQ_UNMAP
+	IMDPROXY_REQ_UNMAP,
+	IMDPROXY_REQ_ZERO
 } IMDPROXY_REQ, *PIMDPROXY_REQ;
 
 typedef struct _IMDPROXY_CONNECT_REQ
@@ -102,14 +104,25 @@ typedef struct _IMDPROXY_WRITE_RESP
 
 typedef struct _IMDPROXY_UNMAP_REQ
 {
-    ULONGLONG request_code;
-    ULONGLONG length;
+	ULONGLONG request_code;
+	ULONGLONG length;
 } IMDPROXY_UNMAP_REQ, *PIMDPROXY_UNMAP_REQ;
 
 typedef struct _IMDPROXY_UNMAP_RESP
 {
-    ULONGLONG errorno;
+	ULONGLONG errorno;
 } IMDPROXY_UNMAP_RESP, *PIMDPROXY_UNMAP_RESP;
+
+typedef struct _IMDPROXY_ZERO_REQ
+{
+	ULONGLONG request_code;
+	ULONGLONG length;
+} IMDPROXY_ZERO_REQ, *PIMDPROXY_ZERO_REQ;
+
+typedef struct _IMDPROXY_ZERO_RESP
+{
+	ULONGLONG errorno;
+} IMDPROXY_ZERO_RESP, *PIMDPROXY_ZERO_RESP;
 
 // For shared memory proxy communication only. Offset to data area in
 // shared memory.

@@ -23,8 +23,8 @@ STRINGTABLE
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION IMDISK_RC_VERSION_FLD,55
-PRODUCTVERSION IMDISK_RC_VERSION_FLD,55
+FILEVERSION IMDISK_RC_VERSION_FLD,57
+PRODUCTVERSION IMDISK_RC_VERSION_FLD,57
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -41,12 +41,12 @@ FILESUBTYPE    0
         {
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "Control Panel Applet for the ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".55\0"
+            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".57\0"
             VALUE "InternalName", "imdisk\0"
             VALUE "LegalCopyright", "Copyright © 2004-2015 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "imdisk.cpl\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".55\0"
+            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".57\0"
         }
     }
     BLOCK "VarFileInfo"
