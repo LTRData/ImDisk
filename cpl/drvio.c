@@ -165,13 +165,14 @@ MsgBoxLastError(HWND hWnd, LPCWSTR Prefix)
 VOID
 WINAPI
 ImDiskGetPartitionTypeName(IN BYTE PartitionType,
-			   OUT LPWSTR Name,
+			   IN OUT LPWSTR Name,
 			   IN DWORD NameSize)
 {
   LPWSTR name;
+  WCHAR other_type[] = L"Type XXh";
 
   // Clear out NTFT signature if present.
-  switch (PartitionType & 0x7F)
+  switch (PartitionType & 0x6F)
     {
     case PARTITION_ENTRY_UNUSED:
       name = L"Unused";
@@ -217,13 +218,20 @@ ImDiskGetPartitionTypeName(IN BYTE PartitionType,
       name = L"Unix";
       break;
 
-    case 0xA5:
-      name = L"BSD";
-      break;
-
     default:
-      name = L"Unknown";
-      break;
+      switch (PartitionType)
+	{
+	case 0xA5:
+	  name = L"BSD";
+	  break;
+
+	default:
+	  {
+	    wsprintf(other_type, L"Type %.2Xh", PartitionType);
+	    name = other_type;
+	    break;
+	  }
+	}
     }
 
   wcsncpy(Name, name, NameSize - 1);
@@ -233,7 +241,7 @@ ImDiskGetPartitionTypeName(IN BYTE PartitionType,
 BOOL
 WINAPI
 ImDiskGetOffsetByFileExt(IN LPCWSTR ImageFile,
-			 OUT PLARGE_INTEGER Offset)
+			 IN OUT PLARGE_INTEGER Offset)
 {
   LPWSTR path_sep;
   PKNOWN_FORMAT known_format;
@@ -269,7 +277,8 @@ WINAPI
 ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 			      IN DWORD SectorSize OPTIONAL,
 			      IN PLARGE_INTEGER Offset OPTIONAL,
-			      OUT PPARTITION_INFORMATION PartitionInformation)
+			      IN OUT PPARTITION_INFORMATION
+			      PartitionInformation)
 {
   HANDLE hImageFile;
   BOOL bResult;
@@ -299,7 +308,7 @@ typedef BOOL (WINAPI *ImDiskReadFileProc)(IN HANDLE Handle,
 					  IN OUT LPVOID Buffer,
 					  IN LARGE_INTEGER Offset,
 					  IN DWORD NumberOfBytesToRead,
-					  OUT LPDWORD NumberOfBytesRead);
+					  IN OUT LPDWORD NumberOfBytesRead);
 
 BOOL
 WINAPI
@@ -307,7 +316,7 @@ ImDiskReadFileHandle(IN HANDLE Handle,
 		     IN OUT LPVOID Buffer,
 		     IN LARGE_INTEGER Offset,
 		     IN DWORD NumberOfBytesToRead,
-		     OUT LPDWORD NumberOfBytesRead)
+		     IN OUT LPDWORD NumberOfBytesRead)
 {
   if (SetFilePointer(Handle, Offset.LowPart, &Offset.HighPart,
 		     FILE_BEGIN) == INVALID_SET_FILE_POINTER)
@@ -327,7 +336,8 @@ ImDiskGetPartitionInfoIndirect(IN HANDLE Handle,
 			       IN ImDiskReadFileProc ReadFileProc,
 			       IN DWORD SectorSize OPTIONAL,
 			       IN PLARGE_INTEGER Offset OPTIONAL,
-			       OUT PPARTITION_INFORMATION PartitionInformation)
+			       IN OUT PPARTITION_INFORMATION
+			       PartitionInformation)
 {
   LPBYTE buffer = NULL;
   DWORD read_size = 0;
@@ -425,6 +435,69 @@ ImDiskGetPartitionInfoIndirect(IN HANDLE Handle,
     }
 
   return TRUE;
+}
+
+BOOL
+WINAPI
+ImDiskImageContainsISOFS(IN LPCWSTR ImageFile,
+			 IN PLARGE_INTEGER Offset OPTIONAL)
+{
+  HANDLE hImageFile;
+  BOOL bResult;
+  DWORD dwLastError;
+
+  hImageFile = CreateFile(ImageFile, GENERIC_READ, FILE_SHARE_READ |
+			  FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+			  OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+
+  if (hImageFile == INVALID_HANDLE_VALUE)
+    return FALSE;
+
+  bResult = ImDiskImageContainsISOFSIndirect(hImageFile,
+					     ImDiskReadFileHandle,
+					     Offset);
+
+  dwLastError = GetLastError();
+  CloseHandle(hImageFile);
+  SetLastError(dwLastError);
+
+  return bResult;
+}
+
+BOOL
+WINAPI
+ImDiskImageContainsISOFSIndirect(IN HANDLE Handle,
+				 IN ImDiskReadFileProc ReadFileProc,
+				 IN PLARGE_INTEGER Offset OPTIONAL)
+{
+  const char magic[] = {0x01, 'C', 'D', '0', '0', '1', 0x01};
+  char buffer[sizeof(magic)];
+  LARGE_INTEGER final_offset;
+  DWORD read_size = 0;
+
+  final_offset.QuadPart = 0x8000;
+  if (Offset != NULL)
+    final_offset.QuadPart += Offset->QuadPart;
+
+  if (!ReadFileProc(Handle, buffer, final_offset, sizeof(buffer), &read_size))
+    return FALSE;
+
+  if (read_size != sizeof(buffer))
+    {
+      SetLastError(ERROR_DISK_CORRUPT);
+      return FALSE;
+    }
+
+  if (memcmp(magic, buffer, sizeof(magic)) == 0)
+    {
+      SetLastError(NO_ERROR);
+      return TRUE;
+    }
+  else
+    {
+      SetLastError(NO_ERROR);
+      return FALSE;
+    }
 }
 
 BOOL
@@ -2051,7 +2124,7 @@ ImDiskAdjustImageFileSize(IN HANDLE FileHandle,
 BOOL
 WINAPI
 ImDiskGetVolumeSize(IN HANDLE Handle,
-		    OUT PLONGLONG Size)
+		    IN OUT PLONGLONG Size)
 {
   PARTITION_INFORMATION partition_info = { 0 };
   DISK_GEOMETRY disk_geometry = { 0 };
@@ -2097,6 +2170,61 @@ ImDiskGetVolumeSize(IN HANDLE Handle,
     }
 
   return FALSE;
+}
+
+BOOL
+WINAPI
+ImDiskGetFormattedGeometry(IN LPCWSTR ImageFile,
+			   IN PLARGE_INTEGER Offset OPTIONAL,
+			   IN OUT PDISK_GEOMETRY DiskGeometry)
+{
+  HANDLE hImageFile;
+  BOOL bResult;
+  DWORD dwLastError;
+
+  hImageFile = CreateFile(ImageFile, GENERIC_READ, FILE_SHARE_READ |
+			  FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+			  OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+
+  if (hImageFile == INVALID_HANDLE_VALUE)
+    return FALSE;
+
+  bResult = ImDiskGetFormattedGeometryIndirect(hImageFile,
+					       ImDiskReadFileHandle,
+					       Offset,
+					       DiskGeometry);
+
+  dwLastError = GetLastError();
+  CloseHandle(hImageFile);
+  SetLastError(dwLastError);
+
+  return bResult;
+}
+
+BOOL
+WINAPI
+ImDiskGetFormattedGeometryIndirect(IN HANDLE Handle,
+				   IN ImDiskReadFileProc ReadFileProc,
+				   IN PLARGE_INTEGER Offset OPTIONAL,
+				   IN OUT PDISK_GEOMETRY DiskGeometry)
+{
+  FAT_VBR fat_vbr;
+  LARGE_INTEGER offset = { 0 };
+  DWORD read_size;
+
+  if (Offset != NULL)
+    offset = *Offset;
+
+  if (!ReadFileProc(Handle, &fat_vbr, offset, sizeof(fat_vbr), &read_size))
+    return FALSE;
+
+  DiskGeometry->Cylinders.QuadPart = 0;
+  DiskGeometry->MediaType          = fat_vbr.BPB.MediaDescriptor;
+  DiskGeometry->TracksPerCylinder  = fat_vbr.BPB.NumberOfHeads;
+  DiskGeometry->SectorsPerTrack    = fat_vbr.BPB.SectorsPerTrack;
+  DiskGeometry->BytesPerSector     = fat_vbr.BPB.BytesPerSector;
+
+  return TRUE;
 }
 
 BOOL
@@ -2198,11 +2326,11 @@ ImDiskConvertLBAToCHS(IN PDISK_GEOMETRY DiskGeometry,
 
   DWORD cylinder =
     LBA /
-    DiskGeometry->TracksPerCylinder / DiskGeometry->SectorsPerTrack;
+    (DiskGeometry->TracksPerCylinder * DiskGeometry->SectorsPerTrack);
 
   DWORD temp =
     LBA %
-    DiskGeometry->TracksPerCylinder / DiskGeometry->SectorsPerTrack;
+    (DiskGeometry->TracksPerCylinder * DiskGeometry->SectorsPerTrack);
 
   DWORD head =
     temp /
@@ -2225,7 +2353,7 @@ ImDiskConvertLBAToCHS(IN PDISK_GEOMETRY DiskGeometry,
     head |
     (sector << 8) |
     ((cylinder & 0x0FF) << 16) |
-    ((cylinder & 0x300) << 14);
+    ((cylinder & 0x300) << 6);
 }
 
 VOID

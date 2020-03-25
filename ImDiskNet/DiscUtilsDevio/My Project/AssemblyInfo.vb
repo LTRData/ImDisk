@@ -12,7 +12,7 @@ Imports System.Runtime.InteropServices
 <Assembly: AssemblyDescription("")> 
 <Assembly: AssemblyCompany("Olof Lagerkvist")> 
 <Assembly: AssemblyProduct("ImDisk Virtual Disk Driver")> 
-<Assembly: AssemblyCopyright("Copyright © Olof Lagerkvist 2011")> 
+<Assembly: AssemblyCopyright("Copyright © Olof Lagerkvist 2011-2012")> 
 <Assembly: AssemblyTrademark("")> 
 
 <Assembly: ComVisible(False)>
@@ -31,5 +31,5 @@ Imports System.Runtime.InteropServices
 ' by using the '*' as shown below:
 ' <Assembly: AssemblyVersion("1.0.*")> 
 
-<Assembly: AssemblyVersion("1.0.0.0")> 
-<Assembly: AssemblyFileVersion("1.0.0.0")> 
+<Assembly: AssemblyVersion("1.0.007.0")> 
+<Assembly: AssemblyFileVersion("1.0.007.0")> 

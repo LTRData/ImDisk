@@ -780,8 +780,7 @@ SelectPartitionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				       part_name,
 				       sizeof(part_name)/sizeof(*part_name));
 
-	    if ((part_rec->StartingOffset.QuadPart != 0) &
-		(part_rec->PartitionLength.QuadPart != 0))
+	    if (part_rec->PartitionLength.QuadPart != 0)
 	      {
 		_snwprintf(wcBuffer, sizeof(wcBuffer)/sizeof(*wcBuffer)-1,
 			   L"Primary partition %i - %.4g %s %s",
@@ -883,6 +882,7 @@ AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
   LARGE_INTEGER size = { 0 };
   PARTITION_INFORMATION partition_information[8] = { 0 };
   int found_partitions = 0;
+
   if (ImDiskGetPartitionInformation(lpwszFileName,
 				    0,
 				    &offset,
@@ -890,8 +890,7 @@ AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
     for (PPARTITION_INFORMATION part_rec = partition_information;
 	 part_rec < partition_information + 8;
 	 part_rec++)
-      if ((part_rec->StartingOffset.QuadPart != 0) &
-	  (part_rec->PartitionLength.QuadPart != 0) &
+      if ((part_rec->PartitionLength.QuadPart != 0) &
 	  !IsContainerPartition(part_rec->PartitionType))
 	++found_partitions;
 
@@ -1494,7 +1493,10 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		HKEY hKeyMountPoint;
 		HWND hWndStatus = NULL;
 		bool bCancelFlag = false;
-		for (;;)
+
+		for (DWORD dwStartTime = GetTickCount();
+		     (GetTickCount() - dwStartTime) < 5000;
+		     Sleep(100), DoEvents(NULL))
 		  {
 		    DWORD dwErrCode = RegOpenKey(hKeyMountPoints2,
 						 mount_key_name,
@@ -1521,9 +1523,6 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				       IDC_STATUS_MSG,
 				       L"Waiting for Windows Explorer...");
 		      }
-
-		    Sleep(100);
-		    DoEvents(NULL);
 		  }
 
 		if (hWndStatus != NULL)

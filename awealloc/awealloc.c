@@ -60,7 +60,7 @@
 #define KdPrint(x)  DbgPrint x
 #endif
 
-#define POOL_TAG                'PIOC'
+#define POOL_TAG                'AEWA'
 
 #define FILE_DEVICE_IMDISK      0x8372
 

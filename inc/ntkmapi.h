@@ -3,14 +3,17 @@
 ///
 
 //
-// Ensures that we build a pre Win 2000 compatible
-// sys file (without ExFreePoolWithTag()). // Olof Lagerkvist
+// Ensures that we build a pre Win 2000 compatible x86 sys file
+// (without ExFreePoolWithTag()). // Olof Lagerkvist
 //
 #ifndef _WIN64
-#ifdef POOL_TAGGING
+#ifdef ExFreePool
 #undef ExFreePool
-#undef POOL_TAGGING
 #endif
+#ifdef ExFreePoolWithTag
+#undef ExFreePoolWithTag
+#endif
+#define ExFreePoolWithTag(b, t) ExFreePool(b)
 #endif
 
 #pragma warning(disable: 4996)
@@ -105,6 +108,7 @@ typedef struct _STORAGE_HOTPLUG_INFO {
 // We include some stuff from ntifs.h here so that
 // the driver can be compiled with only the Win2K DDK.
 //
+#ifndef _NTIFS_INCLUDED_
 
 NTSYSAPI
 NTSTATUS
@@ -137,6 +141,24 @@ ZwFreeVirtualMemory(IN HANDLE               ProcessHandle,
 		    IN OUT PSIZE_T          RegionSize,
 		    IN ULONG                FreeType);
 
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwFsControlFile(
+    __in HANDLE FileHandle,
+    __in_opt HANDLE Event,
+    __in_opt PIO_APC_ROUTINE ApcRoutine,
+    __in_opt PVOID ApcContext,
+    __out PIO_STATUS_BLOCK IoStatusBlock,
+    __in ULONG FsControlCode,
+    __in_bcount_opt(InputBufferLength) PVOID InputBuffer,
+    __in ULONG InputBufferLength,
+    __out_bcount_opt(OutputBufferLength) PVOID OutputBuffer,
+    __in ULONG OutputBufferLength
+    );
+
+#define FSCTL_SET_SPARSE                CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 49, METHOD_BUFFERED, FILE_SPECIAL_ACCESS)
+
 typedef enum _TOKEN_TYPE {
   TokenPrimary = 1,
   TokenImpersonation
@@ -168,23 +190,12 @@ typedef struct _SECURITY_CLIENT_CONTEXT
   TOKEN_CONTROL ClientTokenControl;
 } SECURITY_CLIENT_CONTEXT, *PSECURITY_CLIENT_CONTEXT;
 
-#define PsDereferenceImpersonationToken(T)	\
-  ((ARGUMENT_PRESENT((T))) ?			\
-   (ObDereferenceObject((T))) : 0)
-
-#define PsDereferencePrimaryToken(T) (ObDereferenceObject((T)))
-
 NTKERNELAPI
 NTSTATUS
 SeCreateClientSecurity(IN PETHREAD Thread,
 		       IN PSECURITY_QUALITY_OF_SERVICE QualityOfService,
 		       IN BOOLEAN RemoteClient,
 		       OUT PSECURITY_CLIENT_CONTEXT ClientContext);
-
-#define SeDeleteClientSecurity(C)  				\
-  ((SeTokenType((C)->ClientToken) == TokenPrimary) ?		\
-   (PsDereferencePrimaryToken( (C)->ClientToken )) :		\
-   (PsDereferenceImpersonationToken( (C)->ClientToken )))
 
 NTKERNELAPI
 VOID
@@ -196,6 +207,19 @@ TOKEN_TYPE
 SeTokenType(IN PACCESS_TOKEN Token);
 
 // PsRevertToSelf() removed for Windows NT 3.51 compatibility, Olof Lagerkvist.
+
+#define SeDeleteClientSecurity(C)  				\
+  ((SeTokenType((C)->ClientToken) == TokenPrimary) ?		\
+   (PsDereferencePrimaryToken( (C)->ClientToken )) :		\
+   (PsDereferenceImpersonationToken( (C)->ClientToken )))
+
+#endif // _NTIFS_INCLUDED_
+
+#define PsDereferenceImpersonationToken(T)	\
+  ((ARGUMENT_PRESENT((T))) ?			\
+   (ObDereferenceObject((T))) : 0)
+
+#define PsDereferencePrimaryToken(T) (ObDereferenceObject((T)))
 
 //
 // For backward compatibility with <= Windows NT 4.0 by Bruce Engle.

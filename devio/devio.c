@@ -837,7 +837,7 @@ main(int argc, char **argv)
       {
 	fprintf(stderr,
 		"devio with custom DLL support\n"
-		"Copyright (C) 2005-2011 Olof Lagerkvist.\n"
+		"Copyright (C) 2005-2012 Olof Lagerkvist.\n"
 		"\n"
 		"Usage for unmanaged C/C++ DLL files:\n"
 		"devio --dll=dllfile;procedure other_devio_parameters ...\n"
@@ -1274,7 +1274,7 @@ main(int argc, char **argv)
 		(*(u_int*)(mbr + 512 - 66 + ((partition_number-1) << 4) + 12))
 		<< sector_shift;
 
-	      if ((offset == 0) | (devio_info.file_size == 0) |
+	      if ((devio_info.file_size == 0) |
 		  ((current_size != 0) &
 		   (offset + (off_t_64) devio_info.file_size > current_size)))
 		{

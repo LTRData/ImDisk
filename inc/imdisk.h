@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0157
+#define IMDISK_VERSION                 0x0160
 #define IMDISK_DRIVER_VERSION          0x0103
 
 #ifndef ZERO_STRUCT
@@ -108,6 +108,12 @@
 
 /// Check if flags specifies removable
 #define IMDISK_REMOVABLE(x)             ((ULONG)(x) & 0x00000002)
+
+/// Specifies that image files are created with sparse attribute.
+#define IMDISK_OPTION_SPARSE_FILE       0x00000004
+
+/// Check if flags specifies sparse
+#define IMDISK_SPARSE_FILE(x)           ((ULONG)(x) & 0x00000004)
 
 /// Device type is virtual harddisk partition
 #define IMDISK_DEVICE_TYPE_HD           0x00000010
@@ -177,6 +183,46 @@ typedef struct _IMDISK_SET_DEVICE_FLAGS
 
 #define IMDISK_API_NO_BROADCAST_NOTIFY  0x00000001
 #define IMDISK_API_FORCE_DISMOUNT       0x00000002
+
+#pragma pack(push)
+#pragma pack(1)
+typedef struct _FAT_BPB
+{
+  USHORT BytesPerSector;
+  UCHAR  SectorsPerCluster;
+  USHORT ReservedSectors;
+  UCHAR  NumberOfFileAllocationTables;
+  USHORT NumberOfRootEntries;
+  USHORT NumberOfSectors;
+  UCHAR  MediaDescriptor;
+  USHORT SectorsPerFileAllocationTable;
+  USHORT SectorsPerTrack;
+  USHORT NumberOfHeads;
+  union
+  {
+    struct
+    {
+      USHORT NumberOfHiddenSectors;
+      USHORT TotalNumberOfSectors;
+    } DOS_320;
+    struct
+    {
+      ULONG  NumberOfHiddenSectors;
+      ULONG  TotalNumberOfSectors;
+    } DOS_331;
+  };
+} FAT_BPB, *PFAT_BPB;
+
+typedef struct _FAT_VBR
+{
+  UCHAR   JumpInstruction[3];
+  CHAR    OEMName[8];
+  FAT_BPB BPB;
+  UCHAR   FillData[512-3-8-sizeof(FAT_BPB)-1-2];
+  UCHAR   PhysicalDriveNumber;
+  UCHAR   Signature[2];
+} FAT_VBR, *PFAT_VBR;
+#pragma pack(pop)
 
 #ifdef WINAPI
 
@@ -313,7 +359,7 @@ MsgBoxLastError(IN HWND hWndParent OPTIONAL,
 VOID
 WINAPI
 ImDiskGetPartitionTypeName(IN BYTE PartitionType,
-			   OUT LPWSTR Name,
+			   IN OUT LPWSTR Name,
 			   IN DWORD NameSize);
 
 /**
@@ -331,7 +377,7 @@ ImDiskGetPartitionTypeName(IN BYTE PartitionType,
 BOOL
 WINAPI
 ImDiskGetOffsetByFileExt(IN LPCWSTR ImageFile,
-			 OUT PLARGE_INTEGER Offset);
+			 IN OUT PLARGE_INTEGER Offset);
 
 /**
    Attempts to find partition information from a partition table for a raw
@@ -359,12 +405,13 @@ WINAPI
 ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
 			      IN DWORD SectorSize OPTIONAL,
 			      IN PLARGE_INTEGER Offset OPTIONAL,
-			      OUT PPARTITION_INFORMATION PartitionInformation);
+			      IN OUT PPARTITION_INFORMATION
+			      PartitionInformation);
 
 
 /**
-   Prototype for raw disk reader function used with
-   ImDiskGetPartitionInfoIndirect().
+   Prototype for raw disk reader function used with ImDisk***Indirect()
+   functions.
 
    Handle                Value that was passed as first parameter to
                          ImDiskGetPartitionInfoIndirect().
@@ -384,7 +431,7 @@ typedef BOOL (WINAPI *ImDiskReadFileProc)(IN HANDLE Handle,
 					  IN OUT LPVOID Buffer,
 					  IN LARGE_INTEGER Offset,
 					  IN DWORD NumberOfBytesToRead,
-					  OUT LPDWORD NumberOfBytesRead);
+					  IN OUT LPDWORD NumberOfBytesRead);
 
 /**
    A device read function with ImDiskReadFileProc, which means that it can be
@@ -411,7 +458,7 @@ ImDiskReadFileHandle(IN HANDLE Handle,
 		     IN OUT LPVOID Buffer,
 		     IN LARGE_INTEGER Offset,
 		     IN DWORD NumberOfBytesToRead,
-		     OUT LPDWORD NumberOfBytesRead);
+		     IN OUT LPDWORD NumberOfBytesRead);
 
 /**
    Attempts to find partition information from a partition table for a disk
@@ -445,7 +492,40 @@ ImDiskGetPartitionInfoIndirect(IN HANDLE Handle,
 			       IN ImDiskReadFileProc ReadFileProc,
 			       IN DWORD SectorSize OPTIONAL,
 			       IN PLARGE_INTEGER Offset OPTIONAL,
-			       OUT PPARTITION_INFORMATION PartitionInfo);
+			       IN OUT PPARTITION_INFORMATION PartitionInfo);
+
+/**
+   Finds out if image file contains an ISO9660 filesystem.
+
+   ImageFile    Name of disk image file to examine.
+
+   Offset       Optional offset in bytes to where raw disk data begins, for use
+                with "non-raw" image files with headers before the actual disk
+		image data.
+*/
+BOOL
+WINAPI
+ImDiskImageContainsISOFS(IN LPCWSTR ImageFile,
+			 IN PLARGE_INTEGER Offset OPTIONAL);
+
+/**
+   Finds out if image file contains an ISO9660 filesystem, through a supplied
+   device reader function.
+
+   Handle       Value that is passed as first parameter to ReadFileProc.
+
+   ReadFileProc Procedure of type ImDiskReadFileProc that is called to read raw
+                disk image.
+
+   Offset       Optional offset in bytes to where raw disk data begins, for use
+                with "non-raw" image files with headers before the actual disk
+		image data.
+*/
+BOOL
+WINAPI
+ImDiskImageContainsISOFSIndirect(IN HANDLE Handle,
+				 IN ImDiskReadFileProc ReadFileProc,
+				 IN PLARGE_INTEGER Offset OPTIONAL);
 
 /**
    Starts a Win32 service or loads a kernel module or driver.
@@ -537,8 +617,8 @@ ImDiskCheckDriverVersion(IN HANDLE DeviceHandle);
 */
 BOOL
 WINAPI
-ImDiskGetVersion(OUT PULONG LibraryVersion OPTIONAL,
-		 OUT PULONG DriverVersion OPTIONAL);
+ImDiskGetVersion(IN OUT PULONG LibraryVersion OPTIONAL,
+		 IN OUT PULONG DriverVersion OPTIONAL);
 
 /**
    Returns the first free drive letter in the range D-Z.
@@ -575,7 +655,7 @@ ImDiskGetDeviceList();
 BOOL
 WINAPI
 ImDiskQueryDevice(IN DWORD DeviceNumber,
-		  OUT PIMDISK_CREATE_DATA CreateData,
+		  IN OUT PIMDISK_CREATE_DATA CreateData,
 		  IN ULONG CreateDataSize);
 
 /**
@@ -826,7 +906,62 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 BOOL
 WINAPI
 ImDiskGetVolumeSize(IN HANDLE Handle,
-		    OUT PLONGLONG Size);
+		    IN OUT PLONGLONG Size);
+
+/**
+   Reads formatted geometry for a volume by parsing BPB, BIOS Parameter Block,
+   from volume boot record into a DISK_GEOMETRY structure.
+
+   If no boot record signature is found, this function returns FALSE.
+
+   ImageFile    Path to a volume image file or a device path to a disk volume,
+                such as \\.\A: or \\.\C:.
+
+   Offset       Optional offset in bytes to volume boot record within file for
+                use with "non-raw" volume image files. This parameter can be
+		used to for example skip over headers for specific disk image
+		formats, or to skip over master boot record in a disk image
+		file that contains a complete raw disk image and not only a
+		single volume.
+
+   DiskGeometry Pointer to DISK_GEOMETRY structure that receives information
+                about formatted geometry. This function zeroes the Cylinders
+		member.
+*/
+BOOL
+WINAPI
+ImDiskGetFormattedGeometry(IN LPCWSTR ImageFile,
+			   IN PLARGE_INTEGER Offset OPTIONAL,
+			   IN OUT PDISK_GEOMETRY DiskGeometry);
+
+/**
+   Reads formatted geometry for a volume by parsing BPB, BIOS Parameter Block,
+   from volume boot record into a DISK_GEOMETRY structure.
+
+   If no boot record signature is found, this function returns FALSE.
+
+   Handle       Value that is passed as first parameter to ReadFileProc.
+
+   ReadFileProc Procedure of type ImDiskReadFileProc that is called to read
+                disk volume.
+
+   Offset       Optional offset in bytes to volume boot record within file for
+                use with "non-raw" volume image files. This parameter can be
+		used to for example skip over headers for specific disk image
+		formats, or to skip over master boot record in a disk image
+		file that contains a complete raw disk image and not only a
+		single volume.
+
+   DiskGeometry Pointer to DISK_GEOMETRY structure that receives information
+                about formatted geometry. This function zeroes the Cylinders
+		member.
+*/
+BOOL
+WINAPI
+ImDiskGetFormattedGeometryIndirect(IN HANDLE Handle,
+				   IN ImDiskReadFileProc ReadFileProc,
+				   IN PLARGE_INTEGER Offset OPTIONAL,
+				   IN OUT PDISK_GEOMETRY DiskGeometry);
 
 /**
    This function builds a Master Boot Record, MBR, in memory. The MBR will

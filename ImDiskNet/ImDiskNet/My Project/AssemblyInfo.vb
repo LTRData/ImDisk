@@ -12,7 +12,7 @@ Imports System.Runtime.InteropServices
 <Assembly: AssemblyDescription("")> 
 <Assembly: AssemblyCompany("Olof Lagerkvist")> 
 <Assembly: AssemblyProduct("ImDiskNet")> 
-<Assembly: AssemblyCopyright("Copyright © Olof Lagerkvist 2010")> 
+<Assembly: AssemblyCopyright("Copyright © Olof Lagerkvist 2010-2012")> 
 <Assembly: AssemblyTrademark("")> 
 
 <Assembly: ComVisible(True)> 

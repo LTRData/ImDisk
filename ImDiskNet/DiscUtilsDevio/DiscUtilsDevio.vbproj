@@ -72,7 +72,8 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="DiscUtils">
+    <Reference Include="DiscUtils, Version=0.9.0.0, Culture=neutral, PublicKeyToken=60a04f11f1df810d, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
       <HintPath>P:\Utils\DiscUtils.dll</HintPath>
     </Reference>
     <Reference Include="System" />
@@ -87,6 +88,7 @@
     <Import Include="System.Diagnostics" />
     <Import Include="System.IO" />
     <Import Include="System.IO.MemoryMappedFiles" />
+    <Import Include="System.Linq" />
     <Import Include="System.Net" />
     <Import Include="System.Net.Sockets" />
     <Import Include="System.Text" />

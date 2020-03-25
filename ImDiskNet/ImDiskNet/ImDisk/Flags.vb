@@ -19,6 +19,10 @@
     ''' Creates a virtual disk with "removable" properties reported to the operating system.
     ''' </summary>
     Removable = &H2UI
+    ''' <summary>
+    ''' Specifies that image files are created with sparse attribute.
+    ''' </summary>
+    SparseFile = &H4UI
 
     ''' <summary>
     ''' Creates a virtual disk with device type hard disk volume.

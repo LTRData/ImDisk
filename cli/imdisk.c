@@ -227,6 +227,9 @@ ImDiskSyntaxHelp()
      "        default setting. It can be used with the -e parameter to set an\r\n"
      "        existing read-only virtual disk writable.\r\n"
      "\n"
+     "sparse  Sets NTFS sparse attribute on image file. This has no effect on proxy\r\n"
+     "        or vm type virtual disks.\r\n"
+     "\n"
      "rem     Specifies that the device should be created with removable media\r\n"
      "        characteristics. This changes the device properties returned by the\r\n"
      "        driver to the system. For example, this changes how some filesystems\r\n"
@@ -1759,6 +1762,11 @@ wmain(int argc, LPWSTR argv[])
 		    flags_to_change |= IMDISK_OPTION_RO;
 		    flags &= ~IMDISK_OPTION_RO;
 		  }
+		else if (wcscmp(opt, L"sparse") == 0)
+		  {
+		    flags_to_change |= IMDISK_OPTION_SPARSE_FILE;
+		    flags |= IMDISK_OPTION_SPARSE_FILE;
+		  }
 		else if (wcscmp(opt, L"rem") == 0)
 		  {
 		    if (IMDISK_REMOVABLE(flags_to_change))
@@ -2117,11 +2125,10 @@ wmain(int argc, LPWSTR argv[])
 		return IMDISK_CLI_ERROR_PARTITION_NOT_FOUND;
 	      }
 
-	    if ((part_rec->StartingOffset.QuadPart == 0) |
-		(part_rec->PartitionLength.QuadPart == 0))
+	    if (part_rec->PartitionLength.QuadPart == 0)
 	      {
 		fprintf(stderr,
-			"Error: Partition %i is not defined.\n",
+			"Error: Partition %i not defined.\n",
 			(int)auto_find_partition_entry);
 		return IMDISK_CLI_ERROR_PARTITION_NOT_FOUND;
 	      }
@@ -2141,13 +2148,13 @@ wmain(int argc, LPWSTR argv[])
 		for (part_rec = partition_information;
 		     part_rec < partition_information + 8;
 		     part_rec++)
-		  if ((part_rec->StartingOffset.QuadPart != 0) &
-		      (part_rec->PartitionLength.QuadPart != 0) &
+		  if ((part_rec->PartitionLength.QuadPart != 0) &
 		      !IsContainerPartition(part_rec->PartitionType))
 		    {
 		      image_offset.QuadPart +=
 			part_rec->StartingOffset.QuadPart;
 		      disk_geometry.Cylinders = part_rec->PartitionLength;
+
 		      break;
 		    }
 	      }
