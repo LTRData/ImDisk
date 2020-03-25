@@ -261,6 +261,11 @@ ImDiskSyntaxHelp()
      "        file extension or size match the criterias for defaulting to the cd or\r\n"
      "        fd options.\r\n"
      "\n"
+     "raw     Creates a device object with \"unknown\" device type. The system will not\n"
+     "        attempt to do anything by its own with such devices, but it could be\n"
+     "        useful in combination with third-party drivers that can provide further\n"
+     "        device objects using this virtual disk device as a backing store.\n"
+     "\n"
      "ip      Can only be used with proxy-type virtual disks. With this option, the\r\n"
      "        user-mode service component is initialized to connect to an ImDisk\r\n"
      "        storage server using TCP/IP. With this option, the -f switch specifies\r\n"
@@ -1071,31 +1076,82 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 int
 ImDiskCliQueryStatusDriver(BOOL NumericPrint)
 {
-  DWORDLONG device_list = ImDiskGetDeviceList();
+  ULONG current_size = 3;
+  int i;
   DWORD counter;
+  PULONG device_list = NULL;
 
-  if (device_list == 0)
-    switch (GetLastError())
-      {
-      case NO_ERROR:
-	puts("No virtual disks.");
-	return 0;
+  for (i = 0; i < 2; i++)
+    {
+      device_list = (PULONG) _alloca(sizeof(ULONG) * current_size);
 
-      case ERROR_FILE_NOT_FOUND:
-	puts("The ImDisk Virtual Disk Driver is not loaded.");
-	return 0;
+      if (device_list == NULL)
+	{
+	  PrintLastError(L"Memory alloation error:");
+	  return 0;
+	}
 
-      default:
-	PrintLastError(L"Cannot control the ImDisk Virtual Disk Driver:");
-	return -1;
-      }
+      if (ImDiskGetDeviceListEx(current_size, device_list))
+	break;
 
-  for (counter = 0; device_list != 0; device_list >>= 1, counter++)
-    if (device_list & 1)
-      printf("%s%u\n", NumericPrint ? "" : "\\Device\\ImDisk", counter);
+      switch (GetLastError())
+	{
+	case ERROR_FILE_NOT_FOUND:
+	  puts("The ImDisk Virtual Disk Driver is not loaded.");
+	  return 0;
+
+	case ERROR_MORE_DATA:
+	  current_size = *device_list + 1;
+	  continue;
+
+	default:
+	  PrintLastError(L"Cannot control the ImDisk Virtual Disk Driver:");
+	  return -1;
+	}
+    }
+
+  if (*device_list < 1)
+    {
+      puts("No virtual disks.");
+      return 0;
+    }
+
+  for (counter = 1; counter <= *device_list; counter++)
+    printf("%s%u\n",
+	   NumericPrint ? "" : "\\Device\\ImDisk",
+	   device_list[counter]);
 
   return 0;
 }
+
+/* int */
+/* ImDiskCliQueryStatusDriver(BOOL NumericPrint) */
+/* { */
+/*   DWORDLONG device_list = ImDiskGetDeviceList(); */
+/*   DWORD counter; */
+
+/*   if (device_list == 0) */
+/*     switch (GetLastError()) */
+/*       { */
+/*       case NO_ERROR: */
+/* 	puts("No virtual disks."); */
+/* 	return 0; */
+
+/*       case ERROR_FILE_NOT_FOUND: */
+/* 	puts("The ImDisk Virtual Disk Driver is not loaded."); */
+/* 	return 0; */
+
+/*       default: */
+/* 	PrintLastError(L"Cannot control the ImDisk Virtual Disk Driver:"); */
+/* 	return -1; */
+/*       } */
+
+/*   for (counter = 0; device_list != 0; device_list >>= 1, counter++) */
+/*     if (device_list & 1) */
+/*       printf("%s%u\n", NumericPrint ? "" : "\\Device\\ImDisk", counter); */
+
+/*   return 0; */
+/* } */
 
 // Prints information about an existing virtual disk device, identified by
 // either a device number or mount point.
@@ -1240,6 +1296,8 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 	    ", Proxy Virtual Disk" : ", File Type Virtual Disk",
 	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
 	    IMDISK_DEVICE_TYPE_CD ? ", CD-ROM" :
+	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
+	    IMDISK_DEVICE_TYPE_RAW ? ", RAW" :
 	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
 	    IMDISK_DEVICE_TYPE_FD ? ", Floppy" : ", HDD",
 	    create_data->Flags & IMDISK_IMAGE_MODIFIED ? ", Modified" : "");
@@ -1828,6 +1886,8 @@ wmain(int argc, LPWSTR argv[])
 		  flags |= IMDISK_DEVICE_TYPE_FD;
 		else if (wcscmp(opt, L"cd") == 0)
 		  flags |= IMDISK_DEVICE_TYPE_CD;
+		else if (wcscmp(opt, L"raw") == 0)
+		  flags |= IMDISK_DEVICE_TYPE_RAW;
 		else
 		  ImDiskSyntaxHelp();
 	    }

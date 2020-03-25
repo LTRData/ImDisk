@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0160
+#define IMDISK_VERSION                 0x0170
 #define IMDISK_DRIVER_VERSION          0x0103
 
 #ifndef ZERO_STRUCT
@@ -66,6 +66,11 @@
 ///
 #define IMDISK_DRIVER_NAME             _T("ImDisk")
 #define IMDISK_DRIVER_PATH             _T("system32\\drivers\\imdisk.sys")
+
+///
+/// Global refresh event name
+///
+#define IMDISK_REFRESH_EVENT_NAME      _T("ImDiskRefresh")
 
 ///
 /// Registry settings. It is possible to specify devices to be mounted
@@ -121,6 +126,8 @@
 #define IMDISK_DEVICE_TYPE_FD           0x00000020
 /// Device type is virtual CD/DVD-ROM drive
 #define IMDISK_DEVICE_TYPE_CD           0x00000030
+/// Device type is unknown "raw" (for use with third-party client drivers)
+#define IMDISK_DEVICE_TYPE_RAW          0x00000040
 
 /// Extracts the IMDISK_DEVICE_TYPE_xxx from flags
 #define IMDISK_DEVICE_TYPE(x)           ((ULONG)(x) & 0x000000F0)
@@ -631,10 +638,54 @@ ImDiskFindFreeDriveLetter();
    Returns a bit-field representing ImDisk devices. Bit 0 represents device 0,
    bit 1 represents device 1 and so on. A bit is 1 if the device exists or 0 if
    the device number is free.
+
+   Compatibility notice:
+   This function is exported for compatibility with ImDisk versions before
+   1.7.0. Since that version, drives can have device numbers above 63. This
+   function cannot return such device numbers, so in case any drive with device
+   number above 63 exist when this function is called, it returns a value
+   filled with all ones ((ULONGLONG)-1).
+
+   Use ImDiskGetDeviceListEx function with newer versions of ImDisk.
 */
 ULONGLONG
 WINAPI
 ImDiskGetDeviceList();
+
+/**
+   Builds a list of currently existing ImDisk virtual disks.
+
+   ListLength      Set this parameter to number of ULONG element that can be
+                   store at the location pointed to by DeviceList parameter.
+		   This parameter must be at least 3 for this function to work
+		   correctly.
+
+   DeviceList      Pointer to memory location where one ULONG, conatining a
+                   device number, will be stored for each currently existing
+		   ImDisk device. First element in list is used to store number
+		   of devices.
+
+   Upon return, first element in DeviceList will contain number of currently
+   existing ImDisk virtual disks. If DeviceList is too small to contain all
+   items as indicated by ListLength parameter, number of existing devices will
+   be stored at DeviceList location, but no further items will be stored.
+
+   If an error occurs, this function returns FALSE and GetLastError()
+   will return an error code. If successful, the function returns TRUE and
+   first element at location pointed to by DeviceList will contain number of
+   devices currently on the system, i.e. number of elements following the first
+   one in DeviceList.
+
+   If DeviceList buffer is too small, the function returns FALSE and
+   GetLastError() returns ERROR_MORE_DATA. In that case, only number of
+   existing devices will be stored at location pointed to by DeviceList
+   parameter. That value, plus one for the first length element, indicates how
+   large the buffer needs to be to successfully store all items.
+*/
+BOOL
+WINAPI
+ImDiskGetDeviceListEx(IN ULONG ListLength,
+		      IN OUT PULONG DeviceList);
 
 /**
    This function sends an IOCTL_IMDISK_QUERY_DEVICE control code to an existing
@@ -1104,6 +1155,29 @@ ImDiskSaveImageFileInteractive(IN HANDLE DeviceHandle,
 			       IN HWND WindowHandle OPTIONAL,
 			       IN DWORD BufferSize OPTIONAL,
 			       IN BOOL IsCdRomType OPTIONAL);
+
+/*
+   Opens or creates a global synchronization event. This event is shared with
+   ImDisk driver and will be pulsed when an ImDisk device is created, removed
+   or have settings changed in some other way.
+
+   This is particularily useful for user interface components that need to be
+   notified when device lists and similar need to be updated.
+
+   If successful, this function returns a handle to an event that can be used
+   in call to system wait functions, such as WaitForSingleObject. When the
+   handle is not needed, it must be closed by calling CloseHandle.
+
+   If the function fails, it returns NULL and GetLastError will return a
+   system error code that further explains the error.
+
+   InheritHandle   Specifies whether or not the returned handle will be
+                   inherited by child processes.
+
+*/
+HANDLE
+WINAPI
+ImDiskOpenRefreshEvent(BOOL InheritHandle);
 
 #ifdef __cplusplus
 }

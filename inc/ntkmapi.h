@@ -104,6 +104,12 @@ typedef struct _STORAGE_HOTPLUG_INFO {
 
 #endif // (VER_PRODUCTBUILD < 3790)
 
+NTSYSAPI
+NTSTATUS
+NTAPI
+ZwPulseEvent(IN HANDLE EventHandle,
+	     OUT PLONG PreviousState OPTIONAL);
+
 //
 // We include some stuff from ntifs.h here so that
 // the driver can be compiled with only the Win2K DDK.

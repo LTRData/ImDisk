@@ -36,6 +36,7 @@
 
 #include <stdio.h>
 #include <malloc.h>
+#include <process.h>
 
 #include "..\inc\ntumapi.h"
 #include "..\inc\imdisk.h"
@@ -68,6 +69,8 @@
 #define PROP_NAME_HKEY_MOUNTPOINTS2 L"HKEY_MountPoints2"
 #define KEY_NAME_HKEY_MOUNTPOINTS2  \
   L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2"
+#define PROP_NAME_HANDLE_REFRESH_THREAD L"HANDLE_RefreshThread"
+#define PROP_NAME_HANDLE_EXIT_EVENT L"HANDLE_ExitEvent"
 
 extern "C" HINSTANCE hInstance = NULL;
 
@@ -123,6 +126,26 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
     {
       wcMountPoint[0] = create_data->DriveLetter;
       wcMountPoint[1] = L':';
+    }
+
+  WCHAR wcActualTarget[MAX_PATH] = L"";
+
+  if (!QueryDosDevice(wcMountPoint, wcActualTarget,
+		      sizeof(wcActualTarget)/sizeof(*wcActualTarget)))
+    wcMountPoint[0] = 0;
+  else
+    {
+      wcActualTarget[sizeof(wcActualTarget)/sizeof(*wcActualTarget)-1] = 0;
+
+      WCHAR wcExpectedTarget[] = L"\\Device\\ImDiskNNNNNNNNNNN";
+      _snwprintf(wcExpectedTarget,
+		 sizeof(wcExpectedTarget)/sizeof(*wcExpectedTarget),
+		 L"\\Device\\ImDisk%i", iDeviceNumber);
+      wcExpectedTarget[sizeof(wcExpectedTarget)/sizeof(*wcExpectedTarget)-1] =
+	0;
+
+      if (wcscmp(wcActualTarget, wcExpectedTarget) != 0)
+	wcMountPoint[0] = 0;
     }
 
   LVITEM lvi;
@@ -283,28 +306,75 @@ RefreshList(HWND hWnd, DWORD SelectDeviceNumber)
 {
   ListView_DeleteAllItems(hWnd);
 
-  DWORDLONG device_list = ImDiskGetDeviceList();
+  ULONG current_size = 3;
 
-  if (device_list == 0)
-    switch (GetLastError())
-      {
-      case NO_ERROR:
-      case ERROR_FILE_NOT_FOUND:
-	return true;
+  PULONG device_list = NULL;
 
-      default:
-	MsgBoxLastError(hWnd,
-			L"Cannot control the ImDisk Virtual Disk Driver:");
+  for (int i = 0; i < 2; i++)
+    {
+      device_list = (PULONG) _alloca(sizeof(ULONG) * current_size);
 
-	return false;
-      }
+      if (device_list == NULL)
+	{
+	  MsgBoxLastError(hWnd, L"Memory alloation error:");
+	  return false;
+	}
 
-  for (DWORD counter = 0; device_list != 0; device_list >>= 1, counter++)
-    if (device_list & 1)
-      LoadDeviceToList(hWnd, counter, counter == SelectDeviceNumber);
+      if (ImDiskGetDeviceListEx(current_size, device_list))
+	break;
+
+      switch (GetLastError())
+	{
+	case ERROR_FILE_NOT_FOUND:
+	  return true;
+
+	case ERROR_MORE_DATA:
+	  current_size = *device_list + 1;
+	  continue;
+
+	default:
+	  MsgBoxLastError(hWnd,
+			  L"Cannot control the ImDisk Virtual Disk Driver:");
+
+	  return false;
+	}
+    }
+
+  for (DWORD counter = 1; counter <= *device_list; counter++)
+    LoadDeviceToList(hWnd,
+		     device_list[counter],
+		     device_list[counter] == SelectDeviceNumber);
 
   return true;
 }
+
+// bool
+// RefreshList(HWND hWnd, DWORD SelectDeviceNumber)
+// {
+//   ListView_DeleteAllItems(hWnd);
+
+//   DWORDLONG device_list = ImDiskGetDeviceList();
+
+//   if (device_list == 0)
+//     switch (GetLastError())
+//       {
+//       case NO_ERROR:
+//       case ERROR_FILE_NOT_FOUND:
+// 	return true;
+
+//       default:
+// 	MsgBoxLastError(hWnd,
+// 			L"Cannot control the ImDisk Virtual Disk Driver:");
+
+// 	return false;
+//       }
+
+//   for (DWORD counter = 0; device_list != 0; device_list >>= 1, counter++)
+//     if (device_list & 1)
+//       LoadDeviceToList(hWnd, counter, counter == SelectDeviceNumber);
+
+//   return true;
+// }
 
 INT_PTR
 CALLBACK
@@ -1280,6 +1350,42 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
   return FALSE;
 }
 
+UINT
+CALLBACK
+ImDiskCPlRefreshThread(void *handles)
+{
+  HANDLE hExitEvent = ((HANDLE*)handles)[0];
+  HWND hWndCommand = (HWND)((HANDLE*)handles)[1];
+
+  delete handles;
+
+  HANDLE hRefreshEvent = ImDiskOpenRefreshEvent(FALSE);
+  if (hRefreshEvent == NULL)
+    {
+      MsgBoxLastError(hWndCommand, L"Event creation failure");
+      return 1;
+    }
+
+  HANDLE hWaitHandles[] = { hExitEvent, hRefreshEvent };
+  for (;;)
+    {
+      DWORD dwWaitResult =
+	WaitForMultipleObjects(sizeof(hWaitHandles)/sizeof(*hWaitHandles),
+			       hWaitHandles,
+			       FALSE,
+			       INFINITE);
+
+      if (dwWaitResult == WAIT_OBJECT_0)
+	break;
+
+      PostMessage(hWndCommand, WM_COMMAND, CM_CPL_APPLET_WINDOW_REFRESH, NULL);
+    }
+
+  CloseHandle(hRefreshEvent);
+
+  return 0;
+}
+
 INT_PTR
 CALLBACK
 CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -1347,6 +1453,31 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	ListView_SetImageList(hWndListView, hImageList, LVSIL_SMALL);
 
 	RefreshList(hWndListView, IMDISK_AUTO_DEVICE_NUMBER);
+
+	HANDLE hExitEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	if (hExitEvent == NULL)
+	  {
+	    MsgBoxLastError(hWnd, L"Thread event failed");
+	    return TRUE;
+	  }
+
+	SetProp(hWnd, PROP_NAME_HANDLE_EXIT_EVENT, hExitEvent);
+
+	HANDLE *handles = new HANDLE[2];
+	handles[0] = hExitEvent;
+	handles[1] = hWnd;
+
+	UINT dwThreadId;
+	HANDLE hRefreshThread = (HANDLE)
+	  _beginthreadex(NULL, 0, ImDiskCPlRefreshThread, handles, 0,
+			 &dwThreadId);
+	if (hRefreshThread == NULL)
+	  {
+	    MsgBoxLastError(hWnd, L"Thread failed");
+	    return TRUE;
+	  }
+
+	SetProp(hWnd, PROP_NAME_HANDLE_REFRESH_THREAD, hRefreshThread);
 
 	return TRUE;
       }
@@ -1765,6 +1896,28 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	    RegCloseKey(hKeyMountPoints2);
 	    RemoveProp(hWnd, PROP_NAME_HKEY_MOUNTPOINTS2);
 	  }
+
+	HANDLE hExitEvent = (HANDLE)
+	  GetProp(hWnd, PROP_NAME_HANDLE_EXIT_EVENT);
+
+	if (hExitEvent != NULL)
+	  {
+	    SetEvent(hExitEvent);
+	    RemoveProp(hWnd, PROP_NAME_HANDLE_EXIT_EVENT);
+	  }
+
+	HANDLE hRefreshThread = (HANDLE)
+	  GetProp(hWnd, PROP_NAME_HANDLE_REFRESH_THREAD);
+
+	if (hRefreshThread != NULL)
+	  {
+	    RemoveProp(hWnd, PROP_NAME_HANDLE_REFRESH_THREAD);
+	    WaitForSingleObject(hRefreshThread, INFINITE);
+	    CloseHandle(hRefreshThread);
+	  }
+
+	if (hExitEvent != NULL)
+	  CloseHandle(hExitEvent);
 
 	return TRUE;
       }

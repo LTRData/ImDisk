@@ -869,6 +869,46 @@ ImDiskGetDeviceList()
 
 BOOL
 WINAPI
+ImDiskGetDeviceListEx(IN ULONG ListLength,
+		      IN OUT ULONG *DeviceList)
+{
+  UNICODE_STRING file_name;
+  HANDLE driver;
+  ULONG dw;
+
+  RtlInitUnicodeString(&file_name, IMDISK_CTL_DEVICE_NAME);
+
+  driver = ImDiskOpenDeviceByName(&file_name, GENERIC_READ);
+  if (driver == INVALID_HANDLE_VALUE)
+    return 0;
+
+  if (!DeviceIoControl(driver,
+		       IOCTL_IMDISK_QUERY_DRIVER,
+		       NULL, 0,
+		       DeviceList, ListLength << 2,
+		       &dw, NULL))
+    {
+      DWORD dwLastError = GetLastError();
+      NtClose(driver);
+      SetLastError(dwLastError);
+      return FALSE;
+    }
+
+  NtClose(driver);
+
+  if ((dw == sizeof(ULONG)) &
+      (*DeviceList > 0))
+    {
+      SetLastError(ERROR_MORE_DATA);
+      return FALSE;
+    }
+
+  SetLastError(NO_ERROR);
+  return TRUE;
+}
+
+BOOL
+WINAPI
 ImDiskQueryDevice(DWORD DeviceNumber,
 		  PIMDISK_CREATE_DATA CreateData,
 		  ULONG CreateDataSize)
@@ -1522,7 +1562,8 @@ ImDiskRemoveDevice(HWND hWnd,
   // if it should be saved first.
   if (hWnd != NULL)
     {
-      DWORD create_data_size = sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2);
+      DWORD create_data_size = sizeof(IMDISK_CREATE_DATA) +
+	((MAX_PATH + 2) << 2);
       PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
 	_alloca(create_data_size);
 
@@ -1570,7 +1611,11 @@ ImDiskRemoveDevice(HWND hWnd,
 
 	      ofn.hwndOwner = hWnd;
 	      ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
-	      ofn.lpstrFile = create_data->FileName;
+	      if (create_data->FileNameLength > 0)
+		{
+		  ofn.lpstrFile = create_data->FileName;
+		  ImDiskNativePathToWin32(&ofn.lpstrFile);
+		}
 	      ofn.nMaxFile = MAX_PATH;
 	      ofn.lpstrTitle = L"Save to image file";
 	      ofn.Flags = OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT |
@@ -1587,7 +1632,12 @@ ImDiskRemoveDevice(HWND hWnd,
 	      if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
 		{
 		  DWORD last_error = GetLastError();
+
+		  if (last_error != NO_ERROR)
+		    MsgBoxLastError(hWnd, L"Cannot show dialog':");
+
 		  NtClose(device);
+
 		  SetLastError(last_error);
 		  return FALSE;
 		}
@@ -2381,3 +2431,58 @@ ImDiskNativePathToWin32(IN OUT LPWSTR *Path)
     }
 }
 
+HANDLE
+WINAPI
+ImDiskOpenRefreshEvent(BOOL InheritHandle)
+{
+  SECURITY_ATTRIBUTES sec_attrs = { 0 };
+  PSECURITY_DESCRIPTOR sec_descr = NULL;
+  HANDLE hEvent = NULL;
+  WCHAR *objname;
+  HANDLE h = CreateFile(L"\\\\?\\Global", 0, FILE_SHARE_READ, NULL,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if ((h == INVALID_HANDLE_VALUE) & (GetLastError() == ERROR_FILE_NOT_FOUND))
+    objname = IMDISK_REFRESH_EVENT_NAME;
+  else
+    objname = L"Global\\" IMDISK_REFRESH_EVENT_NAME;
+
+  if (h != INVALID_HANDLE_VALUE)
+    CloseHandle(h);
+
+  // Initialize a security descriptor.
+  sec_descr = (PSECURITY_DESCRIPTOR)
+    LocalAlloc(LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH);
+
+  if (sec_descr == NULL)
+    return NULL;
+
+  if (!InitializeSecurityDescriptor(sec_descr, SECURITY_DESCRIPTOR_REVISION))
+    {
+      DWORD dwLastError = GetLastError();
+      LocalFree(sec_descr);
+      SetLastError(dwLastError);
+      return NULL;
+    }
+
+  // Add NULL DACL to the security descriptor.
+  if (!SetSecurityDescriptorDacl(sec_descr,
+				 TRUE,     // bDaclPresent flag  
+				 NULL,
+				 FALSE))   // not a default DACL
+    {
+      DWORD dwLastError = GetLastError();
+      LocalFree(sec_descr);
+      SetLastError(dwLastError);
+      return NULL;
+    }
+
+  sec_attrs.nLength = sizeof(sec_attrs);
+  sec_attrs.lpSecurityDescriptor = sec_descr;
+  sec_attrs.bInheritHandle = InheritHandle;
+
+  hEvent = CreateEvent(&sec_attrs, FALSE, FALSE, objname);
+
+  LocalFree(sec_descr);
+
+  return hEvent;
+}

@@ -85,6 +85,8 @@ typedef struct _OBJECT_CONTEXT
 
   LONGLONG TotalSize;
 
+  LONGLONG VirtualSize;
+
   PBLOCK_DESCRIPTOR FirstBlock;
 
   PMDL CurrentMdl;
@@ -158,6 +160,11 @@ AWEAllocLogError(IN PVOID Object,
 		 IN ULONG IoControlCode,
 		 IN PLARGE_INTEGER DeviceOffset,
 		 IN PWCHAR Message);
+
+NTSTATUS
+AWEAllocSetSize(IN POBJECT_CONTEXT Context,
+		IN OUT PIO_STATUS_BLOCK IoStatus,
+		IN PLARGE_INTEGER EndOfFile);
 
 const PHYSICAL_ADDRESS physical_address_zero = { 0, 0 };
 const PHYSICAL_ADDRESS physical_address_4GB = { 0, 1UL };
@@ -367,42 +374,57 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
   NTSTATUS status;
   PUCHAR system_buffer;
 
-  KdPrint2(("AWEAlloc: Read/write request Offset=%p%p Len=%p Minor=%u.\n",
+  KdPrint2(("AWEAlloc: Read/write request Offset=%p%p Len=%x.\n",
 	    io_stack->Parameters.Read.ByteOffset.HighPart,
 	    io_stack->Parameters.Read.ByteOffset.LowPart,
-	    io_stack->Parameters.Read.Length,
-	    io_stack->MinorFunction));
+	    io_stack->Parameters.Read.Length));
+
+  context->FilePosition = io_stack->Parameters.Read.ByteOffset.QuadPart;
 
   if (context == NULL)
     {
-      Irp->IoStatus.Status = STATUS_END_OF_MEDIA;
+      KdPrint2(("AWEAlloc: Read/write request on not initialized device.\n"));
+
+      Irp->IoStatus.Status = STATUS_SUCCESS;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return STATUS_END_OF_MEDIA;
+      return STATUS_SUCCESS;
     }
 
   if (context->FirstBlock == NULL)
     {
-      Irp->IoStatus.Status = STATUS_END_OF_MEDIA;
+      KdPrint2(("AWEAlloc: Read/write request on not initialized device.\n"));
+
+      Irp->IoStatus.Status = STATUS_SUCCESS;
       Irp->IoStatus.Information = 0;
 
       IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-      return STATUS_END_OF_MEDIA;
+      return STATUS_SUCCESS;
+    }
+
+  if (io_stack->Parameters.Read.ByteOffset.QuadPart > context->VirtualSize)
+    {
+      KdPrint2(("AWEAlloc: Read/write request starting past EOF.\n"));
+
+      Irp->IoStatus.Status = STATUS_SUCCESS;
+      Irp->IoStatus.Information = 0;
+
+      IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+      return STATUS_SUCCESS;
     }
 
   if ((io_stack->Parameters.Read.ByteOffset.QuadPart +
-       io_stack->Parameters.Read.Length) >
-      context->TotalSize)
+       io_stack->Parameters.Read.Length) > context->VirtualSize)
     {
-      Irp->IoStatus.Status = STATUS_END_OF_MEDIA;
-      Irp->IoStatus.Information = 0;
+      io_stack->Parameters.Read.Length = (ULONG)
+	(context->VirtualSize - io_stack->Parameters.Read.ByteOffset.QuadPart);
 
-      IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-      return STATUS_END_OF_MEDIA;
+      KdPrint2(("AWEAlloc: Read/write request towards EOF. Len=%x\n",
+		io_stack->Parameters.Read.Length));
     }
 
   if (io_stack->Parameters.Read.Length == 0)
@@ -455,21 +477,6 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
       if ((page_offset_this_iter + bytes_this_iter) > ALLOC_PAGE_SIZE)
 	bytes_this_iter = ALLOC_PAGE_SIZE - page_offset_this_iter;
 
-      /*
-      if (io_stack->Parameters.Read.Length > ALLOC_PAGE_SIZE)
-	{
-	  KdPrint(("AWEAlloc: Unsupported request length: %u KB.\n",
-		   io_stack->Parameters.Read.Length >> 10));
-
-	  Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-	  Irp->IoStatus.Information = 0;
-
-	  IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-	  return STATUS_INVALID_PARAMETER;
-	}
-      */
-
       status = AWEAllocMapPage(context, abs_offset_this_iter);
 
       if (!NT_SUCCESS(status))
@@ -511,6 +518,8 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 	  }
 	}
 
+      context->FilePosition += bytes_this_iter;
+
       KdPrint2(("AWEAlloc: Copy done.\n"));
 
       length_done += bytes_this_iter;
@@ -522,6 +531,109 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 #pragma code_seg("PAGE")
 
 NTSTATUS
+AWEAllocLoadImageFile(IN POBJECT_CONTEXT Context,
+		      IN OUT PIO_STATUS_BLOCK IoStatus,
+		      IN PUNICODE_STRING FileName)
+{
+  OBJECT_ATTRIBUTES object_attributes;
+  NTSTATUS status;
+  HANDLE file_handle = NULL;
+  FILE_STANDARD_INFORMATION file_standard;
+  LARGE_INTEGER offset;
+
+  InitializeObjectAttributes(&object_attributes,
+			     FileName,
+			     OBJ_CASE_INSENSITIVE |
+			     OBJ_FORCE_ACCESS_CHECK |
+			     OBJ_OPENIF,
+			     NULL,
+			     NULL);
+
+  status = ZwOpenFile(&file_handle,
+		      SYNCHRONIZE | GENERIC_READ,
+		      &object_attributes,
+		      IoStatus,
+		      FILE_SHARE_READ |
+		      FILE_SHARE_DELETE |
+		      FILE_SHARE_WRITE,
+		      FILE_NON_DIRECTORY_FILE |
+		      FILE_SEQUENTIAL_ONLY |
+		      FILE_NO_INTERMEDIATE_BUFFERING |
+		      FILE_SYNCHRONOUS_IO_NONALERT);
+
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint(("AWEAlloc: ZwOpenFile failed: %#x\n", status));
+      return status;
+    }
+
+  status = ZwQueryInformationFile(file_handle,
+				  IoStatus,
+				  &file_standard,
+				  sizeof(FILE_STANDARD_INFORMATION),
+				  FileStandardInformation);
+
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint(("AWEAlloc: ZwQueryInformationFile failed: %#x\n", status));
+      ZwClose(file_handle);
+      return status;
+    }
+
+  status = AWEAllocSetSize(Context, IoStatus, &file_standard.EndOfFile);
+
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint(("AWEAlloc: AWEAllocSetSize failed: %#x\n", status));
+      ZwClose(file_handle);
+      return status;
+    }
+
+  for (offset.QuadPart = 0;
+       offset.QuadPart < file_standard.EndOfFile.QuadPart;
+       offset.QuadPart += ALLOC_PAGE_SIZE)
+    {
+      status = AWEAllocMapPage(Context, offset.QuadPart);
+
+      if (!NT_SUCCESS(status))
+	{
+	  KdPrint(("AWEAlloc: Failed mapping current image page.\n"));
+
+	  IoStatus->Status = status;
+	  IoStatus->Information = 0;
+
+	  break;
+	}
+
+      KdPrint2(("AWEAlloc: Current image page mdl ptr=%p system ptr=%p.\n",
+		Context->CurrentMdl,
+		Context->CurrentPtr));
+
+      status = ZwReadFile(file_handle,
+			  NULL,
+			  NULL,
+			  NULL,
+			  IoStatus,
+			  Context->CurrentPtr,
+			  ALLOC_PAGE_SIZE,
+			  &offset,
+			  NULL);
+
+      if (!NT_SUCCESS(status))
+	{
+	  KdPrint(("AWEAlloc: ZwReadFile failed on image file.\n"));
+	  break;
+	}
+    }
+
+  ZwClose(file_handle);
+
+  IoStatus->Information = 0;
+
+  return status;
+}
+
+NTSTATUS
 AWEAllocCreate(IN PDEVICE_OBJECT DeviceObject,
 	       IN PIRP Irp)
 {
@@ -531,19 +643,13 @@ AWEAllocCreate(IN PDEVICE_OBJECT DeviceObject,
 
   PAGED_CODE();
 
-  if (io_stack->FileObject->FileName.Length != 0)
-    {
-      Irp->IoStatus.Status = STATUS_OBJECT_NAME_NOT_FOUND;
-      Irp->IoStatus.Information = 0;
-      IoCompleteRequest(Irp, IO_NO_INCREMENT); 
-      return STATUS_OBJECT_NAME_NOT_FOUND;
-    }
-
   io_stack->FileObject->FsContext =
     ExAllocatePoolWithTag(NonPagedPool, sizeof(OBJECT_CONTEXT), POOL_TAG);
 
   if (io_stack->FileObject->FsContext == NULL)
     {
+      KdPrint(("AWEAlloc: Pool allocation failed.\n"));
+
       Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
       Irp->IoStatus.Information = 0;
       IoCompleteRequest(Irp, IO_NO_INCREMENT); 
@@ -553,6 +659,43 @@ AWEAllocCreate(IN PDEVICE_OBJECT DeviceObject,
   RtlZeroMemory(io_stack->FileObject->FsContext, sizeof(OBJECT_CONTEXT));
 
   MmResetDriverPaging((PVOID)(ULONG_PTR)DriverEntry);
+
+  if (io_stack->FileObject->FileName.Length != 0)
+    {
+      NTSTATUS status;
+
+      KdPrint(("AWEAlloc: Image file requested: '%.*ws'.\n",
+	       (int)(io_stack->FileObject->FileName.Length /
+		     sizeof(*io_stack->FileObject->FileName.Buffer)),
+	       io_stack->FileObject->FileName.Buffer));
+
+      status =
+	AWEAllocLoadImageFile((POBJECT_CONTEXT)
+			      io_stack->FileObject->FsContext,
+			      &Irp->IoStatus,
+			      &io_stack->FileObject->FileName);
+
+      IoCompleteRequest(Irp, IO_NO_INCREMENT); 
+
+      KdPrint(("AWEAlloc: Image file status: %#x.\n", status));
+
+      if (!NT_SUCCESS(status))
+	AWEAllocLogError(AWEAllocDriverObject,
+			 0,
+			 0,
+			 NULL,
+			 0,
+			 4000,
+			 status,
+			 401,
+			 status,
+			 0,
+			 0,
+			 NULL,
+			 L"Image file failed.");
+
+      return status;
+    }
 
   Irp->IoStatus.Status = STATUS_SUCCESS;
   Irp->IoStatus.Information = 0;
@@ -668,7 +811,7 @@ AWEAllocQueryInformation(IN PDEVICE_OBJECT DeviceObject,
 	  }
 
 	network_open_info->AllocationSize.QuadPart = context->TotalSize;
-	network_open_info->EndOfFile = network_open_info->AllocationSize;
+	network_open_info->EndOfFile.QuadPart = context->VirtualSize;
 
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = sizeof(FILE_NETWORK_OPEN_INFORMATION);
@@ -691,7 +834,7 @@ AWEAllocQueryInformation(IN PDEVICE_OBJECT DeviceObject,
 	  }
 
 	standard_info->AllocationSize.QuadPart = context->TotalSize;
-	standard_info->EndOfFile = standard_info->AllocationSize;
+	standard_info->EndOfFile.QuadPart = context->VirtualSize;
 	standard_info->DeletePending = TRUE;
 
 	Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -762,6 +905,188 @@ AWEAllocAddBlock(IN POBJECT_CONTEXT Context,
 }
 
 NTSTATUS
+AWEAllocSetSize(IN POBJECT_CONTEXT Context,
+		IN OUT PIO_STATUS_BLOCK IoStatus,
+		IN PLARGE_INTEGER EndOfFile)
+{
+  KdPrint(("AWEAlloc: Setting size to %u MB.\n",
+	   (ULONG) (EndOfFile->QuadPart >> 20)));
+
+  if (EndOfFile->QuadPart == 0)
+    {
+      Context->VirtualSize = EndOfFile->QuadPart;
+      IoStatus->Status = STATUS_SUCCESS;
+      IoStatus->Information = 0;
+      return STATUS_SUCCESS;
+    }
+
+  for (;;)
+    {
+      PBLOCK_DESCRIPTOR block;
+      SIZE_T bytes_to_allocate;
+
+      if (Context->TotalSize >= EndOfFile->QuadPart)
+	{
+	  Context->VirtualSize = EndOfFile->QuadPart;
+	  IoStatus->Status = STATUS_SUCCESS;
+	  IoStatus->Information = 0;
+	  return STATUS_SUCCESS;
+	}
+
+      block = ExAllocatePoolWithTag(NonPagedPool,
+				    sizeof(BLOCK_DESCRIPTOR), POOL_TAG);
+      RtlZeroMemory(block, sizeof(BLOCK_DESCRIPTOR));
+
+      if ((EndOfFile->QuadPart - Context->TotalSize) > MAX_BLOCK_SIZE)
+	bytes_to_allocate = MAX_BLOCK_SIZE;
+      else
+	bytes_to_allocate = (SIZE_T)
+	  AWEAllocGetRequiredPagesForSize(EndOfFile->QuadPart -
+					  Context->TotalSize);
+
+      KdPrint(("AWEAlloc: Allocating %u MB.\n",
+	       (ULONG) (bytes_to_allocate >> 20)));
+
+#ifndef _WIN64
+
+      // On 32-bit, first try to allocate as high as possible
+      KdPrint(("AWEAlloc: Allocating above 8 GB.\n"));
+
+      block->Mdl = MmAllocatePagesForMdl(physical_address_8GB,
+					 physical_address_max64,
+					 physical_address_zero,
+					 bytes_to_allocate);
+
+      if (AWEAllocAddBlock(Context, block))
+	continue;
+
+      KdPrint(("AWEAlloc: Not enough memory available above 8 GB.\n"
+	       "AWEAlloc: Allocating above 6 GB.\n"));
+
+      AWEAllocLogError(AWEAllocDriverObject,
+		       0,
+		       0,
+		       NULL,
+		       0,
+		       1000,
+		       STATUS_INSUFFICIENT_RESOURCES,
+		       101,
+		       STATUS_INSUFFICIENT_RESOURCES,
+		       0,
+		       0,
+		       NULL,
+		       L"Error allocating above 8 GB.");
+
+      block->Mdl = MmAllocatePagesForMdl(physical_address_6GB,
+					 physical_address_max64,
+					 physical_address_zero,
+					 bytes_to_allocate);
+
+      if (AWEAllocAddBlock(Context, block))
+	continue;
+
+      KdPrint(("AWEAlloc: Not enough memory available above 6 GB.\n"
+	       "AWEAlloc: Allocating above 5 GB.\n"));
+
+      AWEAllocLogError(AWEAllocDriverObject,
+		       0,
+		       0,
+		       NULL,
+		       0,
+		       1000,
+		       STATUS_INSUFFICIENT_RESOURCES,
+		       101,
+		       STATUS_INSUFFICIENT_RESOURCES,
+		       0,
+		       0,
+		       NULL,
+		       L"Error allocating above 6 GB.");
+
+      block->Mdl = MmAllocatePagesForMdl(physical_address_5GB,
+					 physical_address_max64,
+					 physical_address_zero,
+					 bytes_to_allocate);
+
+      if (AWEAllocAddBlock(Context, block))
+	continue;
+
+      KdPrint(("AWEAlloc: Not enough memory available above 5 GB.\n"
+	       "AWEAlloc: Allocating above 4 GB.\n"));
+
+      AWEAllocLogError(AWEAllocDriverObject,
+		       0,
+		       0,
+		       NULL,
+		       0,
+		       1000,
+		       STATUS_INSUFFICIENT_RESOURCES,
+		       101,
+		       STATUS_INSUFFICIENT_RESOURCES,
+		       0,
+		       0,
+		       NULL,
+		       L"Error allocating above 5 GB.");
+
+      block->Mdl = MmAllocatePagesForMdl(physical_address_4GB,
+					 physical_address_max64,
+					 physical_address_zero,
+					 bytes_to_allocate);
+
+      if (AWEAllocAddBlock(Context, block))
+	continue;
+
+      KdPrint(("AWEAlloc: Not enough memory available above 4 GB.\n"
+	       "AWEAlloc: Allocating at any available location.\n"));
+
+      AWEAllocLogError(AWEAllocDriverObject,
+		       0,
+		       0,
+		       NULL,
+		       0,
+		       1000,
+		       STATUS_INSUFFICIENT_RESOURCES,
+		       101,
+		       STATUS_INSUFFICIENT_RESOURCES,
+		       0,
+		       0,
+		       NULL,
+		       L"Error allocating above 4 GB.");
+
+#endif // !_WIN64
+
+      block->Mdl = MmAllocatePagesForMdl(physical_address_zero,
+					 physical_address_max64,
+					 physical_address_zero,
+					 bytes_to_allocate);
+
+      if (AWEAllocAddBlock(Context, block))
+	continue;
+
+      KdPrint(("AWEAlloc: MmAllocatePagesForMdl failed.\n"));
+
+      AWEAllocLogError(AWEAllocDriverObject,
+		       0,
+		       0,
+		       NULL,
+		       0,
+		       1000,
+		       STATUS_NO_MEMORY,
+		       101,
+		       STATUS_NO_MEMORY,
+		       0,
+		       0,
+		       NULL,
+		       L"Error allocating physical memory.");
+
+      ExFreePoolWithTag(block, POOL_TAG);
+
+      IoStatus->Status = STATUS_NO_MEMORY;
+      IoStatus->Information = 0;
+      return STATUS_NO_MEMORY;
+    }
+}
+
+NTSTATUS
 AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 		       IN PIRP Irp)
 {
@@ -778,6 +1103,7 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
     case FileAllocationInformation:
     case FileEndOfFileInformation:
       {
+	NTSTATUS status;
 	PFILE_END_OF_FILE_INFORMATION feof_info =
 	  (PFILE_END_OF_FILE_INFORMATION) Irp->AssociatedIrp.SystemBuffer;
 
@@ -787,225 +1113,16 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 	    Irp->IoStatus.Status = STATUS_BUFFER_TOO_SMALL;
 	    Irp->IoStatus.Information = 0;
 	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	    return Irp->IoStatus.Status;
+	    return STATUS_BUFFER_TOO_SMALL;
 	  }
 
-#ifndef _WIN64
+	status = AWEAllocSetSize(context,
+				 &Irp->IoStatus,
+				 &feof_info->EndOfFile);
 
-	/*
-	if (feof_info->EndOfFile.HighPart != 0)
-	  {
-	    Irp->IoStatus.Status = STATUS_INVALID_PARAMETER;
-	    Irp->IoStatus.Information = 0;
-	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	    return STATUS_INVALID_PARAMETER;
-	  }
-	*/
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-#endif // ! _WIN64
-
-	KdPrint(("AWEAlloc: Setting size to %u MB.\n",
-		 (ULONG) (feof_info->EndOfFile.QuadPart >> 20)));
-
-	if (feof_info->EndOfFile.QuadPart == 0)
-	  {
-	    Irp->IoStatus.Status = STATUS_SUCCESS;
-	    Irp->IoStatus.Information = 0;
-	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	    return STATUS_SUCCESS;
-	  }
-
-	/*
-	if (context->FirstBlock != NULL)
-	  {
-	    KdPrint(("AWEAlloc: Current size is: %u MB.\n",
-		     (ULONG) (context->TotalSize >> 20)));
-
-	    if (feof_info->EndOfFile.QuadPart <= context->TotalSize)
-	      {
-		KdPrint(("AWEAlloc: Current size is large enough.\n"));
-
-		Irp->IoStatus.Status = STATUS_SUCCESS;
-		Irp->IoStatus.Information = 0;
-		IoCompleteRequest(Irp, IO_NO_INCREMENT);
-		return STATUS_SUCCESS;
-	      }
-
-	    KdPrint(("AWEAlloc: Current size is too small.\n"));
-
-	    Irp->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
-	    Irp->IoStatus.Information = 0;
-	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	    return STATUS_INVALID_DEVICE_REQUEST;
-	  }
-	*/
-
-	for (;;)
-	  {
-	    PBLOCK_DESCRIPTOR block;
-	    SIZE_T bytes_to_allocate;
-
-	    if (context->TotalSize >= feof_info->EndOfFile.QuadPart)
-	      {
-		Irp->IoStatus.Status = STATUS_SUCCESS;
-		Irp->IoStatus.Information = 0;
-		IoCompleteRequest(Irp, IO_NO_INCREMENT);
-		return STATUS_SUCCESS;
-	      }
-
-	    block = ExAllocatePoolWithTag(NonPagedPool,
-					  sizeof(BLOCK_DESCRIPTOR), POOL_TAG);
-	    RtlZeroMemory(block, sizeof(BLOCK_DESCRIPTOR));
-
-	    if ((feof_info->EndOfFile.QuadPart - context->TotalSize) >
-		MAX_BLOCK_SIZE)
-	      bytes_to_allocate = MAX_BLOCK_SIZE;
-	    else
-	      bytes_to_allocate = (SIZE_T)
-		AWEAllocGetRequiredPagesForSize(feof_info->EndOfFile.QuadPart -
-						context->TotalSize);
-
-	    KdPrint(("AWEAlloc: Allocating %u MB.\n",
-		     (ULONG) (bytes_to_allocate >> 20)));
-
-#ifndef _WIN64
-
-	    // On 32-bit, first try to allocate as high as possible
-	    KdPrint(("AWEAlloc: Allocating above 8 GB.\n"));
-
-	    block->Mdl = MmAllocatePagesForMdl(physical_address_8GB,
-					       physical_address_max64,
-					       physical_address_zero,
-					       bytes_to_allocate);
-
-	    if (AWEAllocAddBlock(context, block))
-	      continue;
-
-	    KdPrint(("AWEAlloc: Not enough memory available above 8 GB.\n"
-		     "AWEAlloc: Allocating above 6 GB.\n"));
-
-	    AWEAllocLogError(AWEAllocDriverObject,
-			     0,
-			     0,
-			     NULL,
-			     0,
-			     1000,
-			     STATUS_INSUFFICIENT_RESOURCES,
-			     101,
-			     STATUS_INSUFFICIENT_RESOURCES,
-			     0,
-			     0,
-			     NULL,
-			     L"Error allocating above 8 GB.");
-
-	    block->Mdl = MmAllocatePagesForMdl(physical_address_6GB,
-					       physical_address_max64,
-					       physical_address_zero,
-					       bytes_to_allocate);
-
-	    if (AWEAllocAddBlock(context, block))
-	      continue;
-
-	    KdPrint(("AWEAlloc: Not enough memory available above 6 GB.\n"
-		     "AWEAlloc: Allocating above 5 GB.\n"));
-
-	    AWEAllocLogError(AWEAllocDriverObject,
-			     0,
-			     0,
-			     NULL,
-			     0,
-			     1000,
-			     STATUS_INSUFFICIENT_RESOURCES,
-			     101,
-			     STATUS_INSUFFICIENT_RESOURCES,
-			     0,
-			     0,
-			     NULL,
-			     L"Error allocating above 6 GB.");
-
-	    block->Mdl = MmAllocatePagesForMdl(physical_address_5GB,
-					       physical_address_max64,
-					       physical_address_zero,
-					       bytes_to_allocate);
-
-	    if (AWEAllocAddBlock(context, block))
-	      continue;
-
-	    KdPrint(("AWEAlloc: Not enough memory available above 5 GB.\n"
-		     "AWEAlloc: Allocating above 4 GB.\n"));
-
-	    AWEAllocLogError(AWEAllocDriverObject,
-			     0,
-			     0,
-			     NULL,
-			     0,
-			     1000,
-			     STATUS_INSUFFICIENT_RESOURCES,
-			     101,
-			     STATUS_INSUFFICIENT_RESOURCES,
-			     0,
-			     0,
-			     NULL,
-			     L"Error allocating above 5 GB.");
-
-	    block->Mdl = MmAllocatePagesForMdl(physical_address_4GB,
-					       physical_address_max64,
-					       physical_address_zero,
-					       bytes_to_allocate);
-
-	    if (AWEAllocAddBlock(context, block))
-	      continue;
-
-	    KdPrint(("AWEAlloc: Not enough memory available above 4 GB.\n"
-		     "AWEAlloc: Allocating at any available location.\n"));
-
-	    AWEAllocLogError(AWEAllocDriverObject,
-			     0,
-			     0,
-			     NULL,
-			     0,
-			     1000,
-			     STATUS_INSUFFICIENT_RESOURCES,
-			     101,
-			     STATUS_INSUFFICIENT_RESOURCES,
-			     0,
-			     0,
-			     NULL,
-			     L"Error allocating above 4 GB.");
-
-#endif // !_WIN64
-
-	    block->Mdl = MmAllocatePagesForMdl(physical_address_zero,
-					       physical_address_max64,
-					       physical_address_zero,
-					       bytes_to_allocate);
-
-	    if (AWEAllocAddBlock(context, block))
-	      continue;
-
-	    KdPrint(("AWEAlloc: MmAllocatePagesForMdl failed.\n"));
-
-	    AWEAllocLogError(AWEAllocDriverObject,
-			     0,
-			     0,
-			     NULL,
-			     0,
-			     1000,
-			     STATUS_NO_MEMORY,
-			     101,
-			     STATUS_NO_MEMORY,
-			     0,
-			     0,
-			     NULL,
-			     L"Error allocating physical memory.");
-
-	    ExFreePoolWithTag(block, POOL_TAG);
-
-	    Irp->IoStatus.Status = STATUS_NO_MEMORY;
-	    Irp->IoStatus.Information = 0;
-	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	    return STATUS_NO_MEMORY;
-	  }
+	return status;
       }
 
     case FilePositionInformation:

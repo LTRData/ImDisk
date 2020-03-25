@@ -1,4 +1,6 @@
-﻿Namespace ImDisk
+﻿Imports System.Threading
+
+Namespace ImDisk
 
     ''' <summary>
     ''' ImDisk API for sending commands to ImDisk Virtual Disk Driver from .NET applications.
@@ -9,6 +11,60 @@
         Private Sub New()
 
         End Sub
+
+        Private Shared ReadOnly _RefreshListeners As New List(Of EventHandler)
+
+        Private Shared ReadOnly _EventListenerThread As New Thread(AddressOf RefreshEventThread)
+
+        Private Shared ReadOnly _ThreadStopEvent As New EventWaitHandle(initialState:=False, mode:=EventResetMode.ManualReset)
+
+        Private Shared Sub RefreshEventThread()
+            Using RefreshEvent = OpenRefreshEvent()
+                Do
+                    Dim wait_handles As WaitHandle() = {_ThreadStopEvent, RefreshEvent}
+                    Dim wait_result = WaitHandle.WaitAny(wait_handles)
+                    If wait_handles(wait_result) Is _ThreadStopEvent Then
+                        Exit Do
+                    End If
+                    RaiseEvent DriveListChanged(Nothing, EventArgs.Empty)
+                Loop
+            End Using
+        End Sub
+
+        ''' <summary>
+        ''' This event is fired when drives are added or removed, or when parameters and options
+        ''' are changed for a drive.
+        ''' </summary>
+        Public Shared Custom Event DriveListChanged As EventHandler
+            AddHandler(value As EventHandler)
+                SyncLock _RefreshListeners
+                    If Not _EventListenerThread.IsAlive Then
+                        _ThreadStopEvent.Reset()
+                        _EventListenerThread.Start()
+                    End If
+                    _RefreshListeners.Add(value)
+                End SyncLock
+            End AddHandler
+
+            RemoveHandler(value As EventHandler)
+                SyncLock _RefreshListeners
+                    _RefreshListeners.Remove(value)
+
+                    If _RefreshListeners.Count = 0 AndAlso
+                        _EventListenerThread.IsAlive Then
+
+                        _ThreadStopEvent.Set()
+                        _EventListenerThread.Join()
+                    End If
+                End SyncLock
+            End RemoveHandler
+
+            RaiseEvent(sender As Object, e As EventArgs)
+                SyncLock _RefreshListeners
+                    _RefreshListeners.ForEach(Sub(eh) eh(sender, e))
+                End SyncLock
+            End RaiseEvent
+        End Event
 
         ''' <summary>
         ''' ImDisk API behaviour flags.
@@ -21,6 +77,30 @@
                 DLL.ImDiskSetAPIFlags(value)
             End Set
         End Property
+
+        ''' <summary>
+        ''' Opens a synchronization event that can be used with wait functions to
+        ''' synchronize with change events in ImDisk driver. Event is fired when
+        ''' for example a drive is added or removed, or when some options or
+        ''' settings are changed for an existing drive.
+        ''' </summary>
+        Public Shared Function OpenRefreshEvent() As ImDiskRefreshEvent
+
+            Return New ImDiskRefreshEvent(InheritHandle:=False)
+
+        End Function
+
+        ''' <summary>
+        ''' Opens a synchronization event that can be used with wait functions to
+        ''' synchronize with change events in ImDisk driver. Event is fired when
+        ''' for example a drive is added or removed, or when some options or
+        ''' settings are changed for an existing drive.
+        ''' </summary>
+        Public Shared Function OpenRefreshEvent(InheritHandle As Boolean) As ImDiskRefreshEvent
+
+            Return New ImDiskRefreshEvent(InheritHandle)
+
+        End Function
 
         ''' <summary>
         ''' Checks if filename contains a known extension for which ImDisk knows of a constant offset value. That value can be
@@ -391,14 +471,34 @@
         ''' </summary>
         Public Shared Function GetDeviceList() As List(Of Integer)
 
-            Dim List As New List(Of Integer)
-            Dim NativeDeviceList = DLL.ImDiskGetDeviceList()
+            Dim NativeList(0 To 2) As Integer
 
-            For Number = 0 To 63
-                If (NativeDeviceList And (1UL << Number)) <> 0 Then
-                    List.Add(Number)
+            For i = 0 To 1
+
+                If DLL.ImDiskGetDeviceListEx(NativeList.Length, NativeList) Then
+                    Exit For
                 End If
+
+                Dim errorcode = Marshal.GetLastWin32Error()
+
+                Select Case errorcode
+
+                    Case NativeFileIO.Win32API.ERROR_MORE_DATA
+                        Array.Resize(NativeList, NativeList(0) + 1)
+                        Continue For
+
+                    Case Else
+                        Throw New Win32Exception(errorcode)
+
+                End Select
+
             Next
+
+            Array.Resize(NativeList, NativeList(0) + 1)
+
+            Dim List As New List(Of Integer)(NativeList)
+
+            List.RemoveAt(0)
 
             Return List
 

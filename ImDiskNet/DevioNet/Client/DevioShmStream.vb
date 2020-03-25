@@ -2,159 +2,159 @@
 
 Namespace Client
 
-  ''' <summary>
-  ''' Derives DevioStream and implements client side of Devio shared memory communication
-  ''' proxy.
-  ''' </summary>
-  Public Class DevioShmStream
-    Inherits DevioStream
-
-    Private ReadOnly RequestEvent As EventWaitHandle
-
-    Private ReadOnly ResponseEvent As EventWaitHandle
-
-    Private ReadOnly ServerMutex As Mutex
-
-    Private ReadOnly MapView As SafeBuffer
-
     ''' <summary>
-    ''' Creates a new instance by opening an existing Devio shared memory object and starts
-    ''' communication with a Devio service using this shared memory object.
+    ''' Derives DevioStream and implements client side of Devio shared memory communication
+    ''' proxy.
     ''' </summary>
-    ''' <param name="name">Name of shared memory object to use for communication.</param>
-    ''' <param name="read_only">Specifies if communication should be read-only.</param>
-    ''' <returns>Returns new instance of DevioShmStream.</returns>
-    Public Shared Function Open(name As String, read_only As Boolean) As DevioShmStream
+    Public Class DevioShmStream
+        Inherits DevioStream
 
-      Return New DevioShmStream(name, read_only)
+        Private ReadOnly RequestEvent As EventWaitHandle
 
-    End Function
+        Private ReadOnly ResponseEvent As EventWaitHandle
 
-    ''' <summary>
-    ''' Creates a new instance by opening an existing Devio shared memory object and starts
-    ''' communication with a Devio service using this shared memory object.
-    ''' </summary>
-    ''' <param name="name">Name of shared memory object to use for communication.</param>
-    ''' <param name="read_only">Specifies if communication should be read-only.</param>
-    Public Sub New(name As String, read_only As Boolean)
-      MyBase.New(name, read_only)
+        Private ReadOnly ServerMutex As Mutex
 
-      Try
-        Using Mapping = MemoryMappedFile.OpenExisting(ObjectName,
-                                                      MemoryMappedFileRights.ReadWrite)
+        Private ReadOnly MapView As SafeBuffer
 
-          MapView = Mapping.CreateViewAccessor().SafeMemoryMappedViewHandle
+        ''' <summary>
+        ''' Creates a new instance by opening an existing Devio shared memory object and starts
+        ''' communication with a Devio service using this shared memory object.
+        ''' </summary>
+        ''' <param name="name">Name of shared memory object to use for communication.</param>
+        ''' <param name="read_only">Specifies if communication should be read-only.</param>
+        ''' <returns>Returns new instance of DevioShmStream.</returns>
+        Public Shared Function Open(name As String, read_only As Boolean) As DevioShmStream
 
-        End Using
+            Return New DevioShmStream(name, read_only)
 
-        RequestEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & ObjectName & "_Request")
+        End Function
 
-        ResponseEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & ObjectName & "_Response")
+        ''' <summary>
+        ''' Creates a new instance by opening an existing Devio shared memory object and starts
+        ''' communication with a Devio service using this shared memory object.
+        ''' </summary>
+        ''' <param name="name">Name of shared memory object to use for communication.</param>
+        ''' <param name="read_only">Specifies if communication should be read-only.</param>
+        Public Sub New(name As String, read_only As Boolean)
+            MyBase.New(name, read_only)
 
-        ServerMutex = New Mutex(initiallyOwned:=False, name:="Global\" & ObjectName & "_Server")
+            Try
+                Using Mapping = MemoryMappedFile.OpenExisting(ObjectName,
+                                                              MemoryMappedFileRights.ReadWrite)
 
-        MapView.Write(&H0, IMDPROXY_REQ.IMDPROXY_REQ_INFO)
+                    MapView = Mapping.CreateViewAccessor().SafeMemoryMappedViewHandle
 
-        RequestEvent.Set()
-        If WaitHandle.WaitAny({ResponseEvent, ServerMutex}) <> 0 Then
-          Throw New EndOfStreamException("Server exit.")
-        End If
+                End Using
 
-        Dim Response = MapView.Read(Of IMDPROXY_INFO_RESP)(&H0)
-        Size = CLng(Response.file_size)
-        Alignment = CLng(Response.req_alignment)
-        Flags = Flags Or Response.flags
+                RequestEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & ObjectName & "_Request")
 
-      Catch
-        Dispose()
-        Throw
+                ResponseEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & ObjectName & "_Response")
 
-      End Try
+                ServerMutex = New Mutex(initiallyOwned:=False, name:="Global\" & ObjectName & "_Server")
 
-    End Sub
+                MapView.Write(&H0, IMDPROXY_REQ.IMDPROXY_REQ_INFO)
 
-    Public Overrides Sub Close()
+                RequestEvent.Set()
+                If WaitHandle.WaitAny({ResponseEvent, ServerMutex}) <> 0 Then
+                    Throw New EndOfStreamException("Server exit.")
+                End If
 
-      If MapView IsNot Nothing AndAlso RequestEvent IsNot Nothing Then
-        Try
-          MapView.Write(&H0, IMDPROXY_REQ.IMDPROXY_REQ_CLOSE)
-          RequestEvent.Set()
+                Dim Response = MapView.Read(Of IMDPROXY_INFO_RESP)(&H0)
+                Size = CLng(Response.file_size)
+                Alignment = CLng(Response.req_alignment)
+                Flags = Flags Or Response.flags
 
-        Catch
+            Catch
+                Dispose()
+                Throw
 
-        End Try
-      End If
+            End Try
 
-      MyBase.Close()
+        End Sub
 
-      For Each obj In New IDisposable() {ServerMutex, MapView, RequestEvent, ResponseEvent}
-        Try
-          If obj IsNot Nothing Then
-            obj.Dispose()
-          End If
+        Public Overrides Sub Close()
 
-        Catch
+            If MapView IsNot Nothing AndAlso RequestEvent IsNot Nothing Then
+                Try
+                    MapView.Write(&H0, IMDPROXY_REQ.IMDPROXY_REQ_CLOSE)
+                    RequestEvent.Set()
 
-        End Try
-      Next
+                Catch
 
-    End Sub
+                End Try
+            End If
 
-    Public Overrides Function Read(buffer As Byte(), offset As Integer, count As Integer) As Integer
+            MyBase.Close()
 
-      Dim Request As IMDPROXY_READ_REQ
-      Request.request_code = IMDPROXY_REQ.IMDPROXY_REQ_READ
-      Request.offset = CULng(Position)
-      Request.length = CULng(count)
+            For Each obj In New IDisposable() {ServerMutex, MapView, RequestEvent, ResponseEvent}
+                Try
+                    If obj IsNot Nothing Then
+                        obj.Dispose()
+                    End If
 
-      MapView.Write(&H0, Request)
+                Catch
 
-      RequestEvent.Set()
-      If WaitHandle.WaitAny({ResponseEvent, ServerMutex}) <> 0 Then
-        Throw New EndOfStreamException("Server exit.")
-      End If
+                End Try
+            Next
 
-      Dim Response = MapView.Read(Of IMDPROXY_READ_RESP)(&H0)
-      If Response.errorno <> 0 Then
-        Throw New EndOfStreamException("Read error: " & Response.errorno)
-      End If
-      Dim Length = CInt(Response.length)
+        End Sub
 
-      MapView.ReadArray(CULng(IMDPROXY_HEADER_SIZE), buffer, offset, Length)
-      Position += Length
-      Return Length
+        Public Overrides Function Read(buffer As Byte(), offset As Integer, count As Integer) As Integer
 
-    End Function
+            Dim Request As IMDPROXY_READ_REQ
+            Request.request_code = IMDPROXY_REQ.IMDPROXY_REQ_READ
+            Request.offset = CULng(Position)
+            Request.length = CULng(count)
 
-    Public Overrides Sub Write(buffer As Byte(), offset As Integer, count As Integer)
+            MapView.Write(&H0, Request)
 
-      Dim Request As IMDPROXY_WRITE_REQ
-      Request.request_code = IMDPROXY_REQ.IMDPROXY_REQ_WRITE
-      Request.offset = CULng(Position)
-      Request.length = CULng(count)
+            RequestEvent.Set()
+            If WaitHandle.WaitAny({ResponseEvent, ServerMutex}) <> 0 Then
+                Throw New EndOfStreamException("Server exit.")
+            End If
 
-      MapView.Write(&H0, Request)
+            Dim Response = MapView.Read(Of IMDPROXY_READ_RESP)(&H0)
+            If Response.errorno <> 0 Then
+                Throw New EndOfStreamException("Read error: " & Response.errorno)
+            End If
+            Dim Length = CInt(Response.length)
 
-      MapView.WriteArray(CULng(IMDPROXY_HEADER_SIZE), buffer, offset, count)
+            MapView.ReadArray(CULng(IMDPROXY_HEADER_SIZE), buffer, offset, Length)
+            Position += Length
+            Return Length
 
-      RequestEvent.Set()
-      If WaitHandle.WaitAny({ResponseEvent, ServerMutex}) <> 0 Then
-        Throw New EndOfStreamException("Server exit.")
-      End If
+        End Function
 
-      Dim Response = MapView.Read(Of IMDPROXY_WRITE_RESP)(&H0)
-      If Response.errorno <> 0 Then
-        Throw New EndOfStreamException("Write error: " & Response.errorno)
-      End If
-      Dim Length = CInt(Response.length)
-      Position += Length
+        Public Overrides Sub Write(buffer As Byte(), offset As Integer, count As Integer)
 
-      If Length <> count Then
-        Throw New EndOfStreamException("Write length mismatch. Wrote " & Length & " of " & count & " bytes.")
-      End If
+            Dim Request As IMDPROXY_WRITE_REQ
+            Request.request_code = IMDPROXY_REQ.IMDPROXY_REQ_WRITE
+            Request.offset = CULng(Position)
+            Request.length = CULng(count)
 
-    End Sub
+            MapView.Write(&H0, Request)
 
-  End Class
+            MapView.WriteArray(CULng(IMDPROXY_HEADER_SIZE), buffer, offset, count)
+
+            RequestEvent.Set()
+            If WaitHandle.WaitAny({ResponseEvent, ServerMutex}) <> 0 Then
+                Throw New EndOfStreamException("Server exit.")
+            End If
+
+            Dim Response = MapView.Read(Of IMDPROXY_WRITE_RESP)(&H0)
+            If Response.errorno <> 0 Then
+                Throw New EndOfStreamException("Write error: " & Response.errorno)
+            End If
+            Dim Length = CInt(Response.length)
+            Position += Length
+
+            If Length <> count Then
+                Throw New EndOfStreamException("Write length mismatch. Wrote " & Length & " of " & count & " bytes.")
+            End If
+
+        End Sub
+
+    End Class
 
 End Namespace

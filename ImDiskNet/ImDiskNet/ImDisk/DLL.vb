@@ -323,9 +323,16 @@
           Lib "imdisk.cpl" (
           ) As Char
 
+        <Obsolete()>
         Public Declare Unicode Function ImDiskGetDeviceList _
           Lib "imdisk.cpl" (
           ) As UInt64
+
+        Public Declare Unicode Function ImDiskGetDeviceListEx _
+          Lib "imdisk.cpl" (
+            ListLength As Int32,
+            <MarshalAs(UnmanagedType.LPArray)> DeviceList As Int32()
+          ) As Boolean
 
         Public Declare Unicode Function ImDiskBuildMBR _
           Lib "imdisk.cpl" (
@@ -355,6 +362,11 @@
             BufferSize As UInt32,
             <MarshalAs(UnmanagedType.Bool)> IsCdRomType As Boolean
           )
+
+        Public Declare Unicode Function ImDiskOpenRefreshEvent _
+          Lib "imdisk.cpl" (
+            <MarshalAs(UnmanagedType.Bool)> InheritHandle As Boolean
+          ) As SafeWaitHandle
 
     End Class
 

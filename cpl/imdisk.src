@@ -7,6 +7,7 @@ EXPORTS
 	CPlApplet=_CPlApplet@16
 
 	RunDLL_MountFile=_RunDLL_MountFile@16
+	RunDLL_MountFileW=_RunDLL_MountFileW@16
 	RunDLL_RemoveDevice=_RunDLL_RemoveDevice@16
 	RunDLL_SaveImageFile=_RunDLL_SaveImageFile@16
 
@@ -32,6 +33,7 @@ EXPORTS
 	_ImDiskGetVersion@8
 	_ImDiskFindFreeDriveLetter@0
 	_ImDiskGetDeviceList@0
+	_ImDiskGetDeviceListEx@8
 	_ImDiskQueryDevice@12
 	_ImDiskCreateDevice@28
 	_ImDiskCreateDeviceEx@32
@@ -49,6 +51,7 @@ EXPORTS
 	_ImDiskAdjustImageFileSize@8
 	_ImDiskNativePathToWin32@4
 	_ImDiskSaveImageFileInteractive@16
+	_ImDiskOpenRefreshEvent@4
 
 	MsgBoxLastError=_MsgBoxLastError@8
 	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
@@ -70,6 +73,7 @@ EXPORTS
 	ImDiskGetVersion=_ImDiskGetVersion@8
 	ImDiskFindFreeDriveLetter=_ImDiskFindFreeDriveLetter@0
 	ImDiskGetDeviceList=_ImDiskGetDeviceList@0
+	ImDiskGetDeviceListEx=_ImDiskGetDeviceListEx@8
 	ImDiskQueryDevice=_ImDiskQueryDevice@12
 	ImDiskCreateDevice=_ImDiskCreateDevice@28
 	ImDiskCreateDeviceEx=_ImDiskCreateDeviceEx@32
@@ -87,12 +91,14 @@ EXPORTS
 	ImDiskAdjustImageFileSize=_ImDiskAdjustImageFileSize@8
 	ImDiskNativePathToWin32=_ImDiskNativePathToWin32@4
 	ImDiskSaveImageFileInteractive=_ImDiskSaveImageFileInteractive@16
+	ImDiskOpenRefreshEvent=_ImDiskOpenRefreshEvent@4
 
 #else
 
 	CPlApplet
 
 	RunDLL_MountFile
+	RunDLL_MountFileW
 	RunDLL_RemoveDevice
 	RunDLL_SaveImageFile
 
@@ -118,6 +124,7 @@ EXPORTS
 	ImDiskGetVersion
 	ImDiskFindFreeDriveLetter
 	ImDiskGetDeviceList
+	ImDiskGetDeviceListEx
 	ImDiskQueryDevice
 	ImDiskCreateDevice
 	ImDiskCreateDeviceEx
@@ -135,5 +142,6 @@ EXPORTS
 	ImDiskAdjustImageFileSize
 	ImDiskNativePathToWin32
 	ImDiskSaveImageFileInteractive
+	ImDiskOpenRefreshEvent
 
 #endif

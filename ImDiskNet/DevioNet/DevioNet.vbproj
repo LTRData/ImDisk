@@ -100,6 +100,7 @@
     <Import Include="System.Threading" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Client\DevioProviderStream.vb" />
     <Compile Include="Client\DevioShmStream.vb" />
     <Compile Include="Client\DevioStream.vb" />
     <Compile Include="Client\DevioTcpStream.vb" />

@@ -5,7 +5,7 @@
     requests somewhere else, possibly to another machine, through a
     co-operating user-mode service, ImDskSvc.
 
-    Copyright (C) 2005-2012 Olof Lagerkvist.
+    Copyright (C) 2005-2013 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -79,7 +79,7 @@
 #define POOL_TAG                         'iDmI'
 
 #define IMDISK_DEFAULT_LOAD_DEVICES      0
-#define IMDISK_DEFAULT_MAX_DEVICES       64
+#define IMDISK_DEFAULT_MAX_DEVICES       64000
 
 ///
 /// Constants for synthetical geometry of the virtual disks
@@ -160,6 +160,9 @@ DISK_GEOMETRY media_table[] = {
   { {  40 }, F5_180_512,   1,  9, 512 },
   { {  40 }, F5_160_512,   1,  8, 512 }
 };
+
+#define SET_MEDIA_TYPE(geometry, media_index) \
+  (geometry.MediaType = media_table[media_index].MediaType)
 
 //
 //	TOC Data Track returned for virtual CD/DVD
@@ -360,8 +363,10 @@ PDEVICE_OBJECT ImDiskCtlDevice;
 
 //
 // Allocation bitmap with currently cnfigured device numbers.
+// (No device list bit field is maintained anymore. Device list is always
+// enumerated "live" directly from current device objects.)
 //
-volatile ULONGLONG DeviceList = 0;
+//volatile ULONGLONG DeviceList = 0;
 
 //
 // Max number of devices that can be dynamically created by IOCTL calls
@@ -376,6 +381,16 @@ ULONG MaxDevices;
 //
 BOOLEAN DisallowedDriveLetters[L'Z'-L'A'+1] = { FALSE };
 
+//
+// Device list lock
+//
+KSPIN_LOCK DeviceListLock;
+
+//
+// Handle to global refresh event
+//
+HANDLE RefreshEvent = NULL;
+
 #pragma code_seg("INIT")
 
 //
@@ -388,6 +403,8 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
   UNICODE_STRING parameter_path;
   UNICODE_STRING ctl_device_name;
   UNICODE_STRING sym_link;
+  UNICODE_STRING refresh_event_name;
+  PSECURITY_DESCRIPTOR event_security_descriptor;
   HANDLE key_handle;
   ULONG n_devices;
   NTSTATUS status;
@@ -395,6 +412,8 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
   ULONG n;
 
   MmPageEntireDriver((PVOID)(ULONG_PTR) DriverEntry);
+
+  KeInitializeSpinLock(&DeviceListLock);
 
   // First open and read registry settings to find out if we should load and
   // mount anything automatically.
@@ -597,7 +616,63 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
   DriverObject->DriverUnload = ImDiskUnload;
 
-  KdPrint(("ImDisk: Initialization done. Leaving DriverEntry().\n", status));
+  KdPrint(("ImDisk: Creating refresh event.\n"));
+
+  RtlInitUnicodeString(&refresh_event_name, L"\\BaseNamedObjects\\Global\\"
+		       IMDISK_REFRESH_EVENT_NAME);
+
+  event_security_descriptor =
+    ExAllocatePoolWithTag(PagedPool, SECURITY_DESCRIPTOR_MIN_LENGTH, POOL_TAG);
+
+  if (event_security_descriptor == NULL)
+    KdPrint(("ImDisk: Memory allocation error for security descriptor.\n"));
+  else
+    {
+      RtlCreateSecurityDescriptor(event_security_descriptor,
+				  SECURITY_DESCRIPTOR_REVISION);
+
+      RtlSetDaclSecurityDescriptor(event_security_descriptor,
+				   TRUE,
+				   NULL,
+				   FALSE);
+    }
+
+  InitializeObjectAttributes(&object_attributes,
+			     &refresh_event_name,
+			     OBJ_CASE_INSENSITIVE | OBJ_OPENIF,
+			     NULL,
+			     event_security_descriptor);
+
+  status = ZwCreateEvent(&RefreshEvent,
+			 EVENT_ALL_ACCESS,
+			 &object_attributes,
+			 SynchronizationEvent,
+			 FALSE);
+
+  if (status == STATUS_OBJECT_PATH_NOT_FOUND)
+    {
+      KdPrint(("ImDisk: Error creating global refresh event (%#X)\n", status));
+
+      RtlInitUnicodeString(&refresh_event_name, L"\\BaseNamedObjects\\"
+			   IMDISK_REFRESH_EVENT_NAME);
+
+      status = ZwCreateEvent(&RefreshEvent,
+			     EVENT_ALL_ACCESS,
+			     &object_attributes,
+			     SynchronizationEvent,
+			     FALSE);
+    }
+
+  if (event_security_descriptor != NULL)
+    ExFreePoolWithTag(event_security_descriptor, POOL_TAG);
+
+  if (!NT_SUCCESS(status))
+    {
+      RefreshEvent = NULL;
+      KdPrint(("ImDisk: Error creating refresh event (%#X)\n", status));
+    }
+
+  KdPrint(("ImDisk: Initialization done. Leaving DriverEntry.\n"));
 
   return STATUS_SUCCESS;
 }
@@ -1190,10 +1265,33 @@ ImDiskCreateDriveLetter(IN WCHAR DriveLetter,
 
 // Parses BPB formatted geometry to a DISK_GEOMETRY structure.
 VOID
-ImDiskReadFormattedGeometry(IN OUT PDISK_GEOMETRY DiskGeometry,
+ImDiskReadFormattedGeometry(IN OUT PIMDISK_CREATE_DATA CreateData,
 			    IN PFAT_BPB BPB)
 {
   USHORT tmp;
+
+  KdPrint
+    (("ImDisk: Detected BPB values:\n"
+      "Bytes per sect: %u\n"
+      "Sectors per cl: %u\n"
+      "Reserved sect : %u\n"
+      "FAT count     : %u\n"
+      "FAT root entr : %u\n"
+      "Total sectors : %u\n"
+      "Media descript: 0x%.2X\n"
+      "Sectors pr FAT: %u\n"
+      "Sect per track: %u\n"
+      "Number of head: %u\n",
+      (ULONG)BPB->BytesPerSector,
+      (ULONG)BPB->SectorsPerCluster,
+      (ULONG)BPB->ReservedSectors,
+      (ULONG)BPB->NumberOfFileAllocationTables,
+      (ULONG)BPB->NumberOfRootEntries,
+      (ULONG)BPB->NumberOfSectors,
+      (LONG) BPB->MediaDescriptor,
+      (ULONG)BPB->SectorsPerFileAllocationTable,
+      (ULONG)BPB->SectorsPerTrack,
+      (ULONG)BPB->NumberOfHeads));
 
   // Some sanity checks. Could this really be valid BPB values? Bytes per
   // sector is multiple of 2 etc?
@@ -1212,14 +1310,121 @@ ImDiskReadFormattedGeometry(IN OUT PDISK_GEOMETRY DiskGeometry,
   if ((tmp ^ 0x0001) != 0)
     return;
 
-  if (DiskGeometry->SectorsPerTrack == 0)
-    DiskGeometry->SectorsPerTrack = BPB->SectorsPerTrack;
+  if (CreateData->DiskGeometry.SectorsPerTrack == 0)
+    CreateData->DiskGeometry.SectorsPerTrack = BPB->SectorsPerTrack;
 
-  if (DiskGeometry->TracksPerCylinder == 0)
-    DiskGeometry->TracksPerCylinder = BPB->NumberOfHeads;
+  if (CreateData->DiskGeometry.TracksPerCylinder == 0)
+    CreateData->DiskGeometry.TracksPerCylinder = BPB->NumberOfHeads;
 
-  if (DiskGeometry->BytesPerSector == 0)
-    DiskGeometry->BytesPerSector = BPB->BytesPerSector;
+  if (CreateData->DiskGeometry.BytesPerSector == 0)
+    CreateData->DiskGeometry.BytesPerSector = BPB->BytesPerSector;
+
+  if (((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) |
+       (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)) &
+      (CreateData->DiskGeometry.MediaType == Unknown))
+    switch (CreateData->DiskGeometry.Cylinders.QuadPart)
+      {
+	// 3.5" formats
+      case MEDIA_SIZE_240MB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_240M);
+	break;
+
+      case MEDIA_SIZE_120MB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_120M);
+	break;
+
+      case MEDIA_SIZE_2800KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_2880K);
+	break;
+
+      case MEDIA_SIZE_1722KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_1722K);
+	break;
+
+      case MEDIA_SIZE_1680KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_1680K);
+	break;
+
+      case MEDIA_SIZE_1440KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_1440K);
+	break;
+
+      case MEDIA_SIZE_820KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_820K);
+	break;
+
+      case MEDIA_SIZE_720KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_720K);
+	break;
+
+	// 5.25" formats
+      case MEDIA_SIZE_1200KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_1200K);
+	break;
+
+      case MEDIA_SIZE_640KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_640K);
+	break;
+
+      case MEDIA_SIZE_360KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_360K);
+	break;
+
+      case MEDIA_SIZE_320KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_320K);
+	break;
+
+      case MEDIA_SIZE_180KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_180K);
+	break;
+
+      case MEDIA_SIZE_160KB:
+	CreateData->Flags |= IMDISK_DEVICE_TYPE_FD;
+	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_160K);
+	break;
+      }
+
+  KdPrint
+    (("ImDisk: Values after BPB geometry detection:\n"
+      "DeviceNumber   = %#x\n"
+      "DiskGeometry\n"
+      "  .Cylinders   = 0x%.8x%.8x\n"
+      "  .MediaType   = %i\n"
+      "  .T/C         = %u\n"
+      "  .S/T         = %u\n"
+      "  .B/S         = %u\n"
+      "Offset         = 0x%.8x%.8x\n"
+      "Flags          = %#x\n"
+      "FileNameLength = %u\n"
+      "FileName       = '%.*ws'\n"
+      "DriveLetter    = %wc\n",
+      CreateData->DeviceNumber,
+      CreateData->DiskGeometry.Cylinders.HighPart,
+      CreateData->DiskGeometry.Cylinders.LowPart,
+      CreateData->DiskGeometry.MediaType,
+      CreateData->DiskGeometry.TracksPerCylinder,
+      CreateData->DiskGeometry.SectorsPerTrack,
+      CreateData->DiskGeometry.BytesPerSector,
+      CreateData->ImageOffset.HighPart,
+      CreateData->ImageOffset.LowPart,
+      CreateData->Flags,
+      CreateData->FileNameLength,
+      (int)(CreateData->FileNameLength / sizeof(*CreateData->FileName)),
+      CreateData->FileName,
+      CreateData->DriveLetter ? CreateData->DriveLetter : L' '));
 }
 
 NTSTATUS
@@ -1271,7 +1476,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       CreateData->FileNameLength,
       (int)(CreateData->FileNameLength / sizeof(*CreateData->FileName)),
       CreateData->FileName,
-      CreateData->DriveLetter));
+      CreateData->DriveLetter ? CreateData->DriveLetter : L' '));
 
   // Auto-select type if not specified.
   if (IMDISK_TYPE(CreateData->Flags) == 0)
@@ -1322,11 +1527,42 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   // Auto-find first free device number
   if (CreateData->DeviceNumber == IMDISK_AUTO_DEVICE_NUMBER)
-    for (CreateData->DeviceNumber = 0;
-	 CreateData->DeviceNumber < MaxDevices;
-	 CreateData->DeviceNumber++)
-      if ((~DeviceList) & (1ULL << CreateData->DeviceNumber))
-	break;
+    {
+      KIRQL old_irql;
+      PDEVICE_OBJECT device_object;
+
+      KeAcquireSpinLock(&DeviceListLock, &old_irql);
+
+      CreateData->DeviceNumber = 0;
+      for (device_object = DriverObject->DeviceObject;
+	   device_object != NULL;
+	   device_object = device_object->NextDevice)
+	{
+	  PDEVICE_EXTENSION device_extension = (PDEVICE_EXTENSION)
+	    device_object->DeviceExtension;
+
+	  // Skip over control device
+	  if (device_extension->device_number == -1)
+	    continue;
+
+	  KdPrint2(("ImDisk: Found device %i.\n",
+		    device_extension->device_number));
+
+	  // Result will be one number above highest existing
+	  if (device_extension->device_number >= CreateData->DeviceNumber)
+	    CreateData->DeviceNumber = device_extension->device_number + 1;
+	}
+
+      KeReleaseSpinLock(&DeviceListLock, old_irql);
+
+      KdPrint(("ImDisk: Free device number %i.\n", CreateData->DeviceNumber));
+    }
+
+/*     for (CreateData->DeviceNumber = 0; */
+/* 	 CreateData->DeviceNumber < MaxDevices; */
+/* 	 CreateData->DeviceNumber++) */
+/*       if ((~DeviceList) & (1ULL << CreateData->DeviceNumber)) */
+/* 	break; */
 
   if (CreateData->DeviceNumber >= MaxDevices)
     {
@@ -1855,81 +2091,6 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	      return status;
 	    }
 
-	  if ((CreateData->DiskGeometry.TracksPerCylinder == 0) |
-	      (CreateData->DiskGeometry.SectorsPerTrack == 0) |
-	      (CreateData->DiskGeometry.BytesPerSector == 0))
-	    {
-	      PFAT_VBR fat_vbr = ExAllocatePoolWithTag(PagedPool,
-						       sizeof(FAT_VBR),
-						       POOL_TAG);
-
-	      if (fat_vbr == NULL)
-		{
-		  ZwClose(file_handle);
-		  ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
-
-		  ImDiskLogError((DriverObject,
-				  0,
-				  0,
-				  NULL,
-				  0,
-				  1000,
-				  status,
-				  102,
-				  status,
-				  0,
-				  0,
-				  NULL,
-				  L"Insufficient memory."));
-
-		  KdPrint(("ImDisk: Error allocating memory.\n"));
-
-		  return STATUS_INSUFFICIENT_RESOURCES;
-		}
-
-	      status =
-		ZwReadFile(file_handle,
-			   NULL,
-			   NULL,
-			   NULL,
-			   &io_status,
-			   fat_vbr,
-			   sizeof(FAT_VBR),
-			   &CreateData->ImageOffset,
-			   NULL);
-	      
-	      if (!NT_SUCCESS(status))
-		{
-		  ZwClose(file_handle);
-		  ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
-		  ExFreePoolWithTag(fat_vbr, POOL_TAG);
-
-		  ImDiskLogError((DriverObject,
-				  0,
-				  0,
-				  NULL,
-				  0,
-				  1000,
-				  status,
-				  102,
-				  status,
-				  0,
-				  0,
-				  NULL,
-				  L"Error reading first sector."));
-
-		  KdPrint(("ImDisk: Error reading first sector (%#x).\n",
-			   status));
-
-		  return status;
-		}
-
-	      ImDiskReadFormattedGeometry(&CreateData->DiskGeometry,
-					  &fat_vbr->BPB);
-
-	      ExFreePoolWithTag(fat_vbr, POOL_TAG);
-	    }
-
 	  // Allocate virtual memory for 'vm' type.
 	  if (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM)
 	    {
@@ -2046,6 +2207,93 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
 	      alignment_requirement = file_alignment.AlignmentRequirement;
             }
+
+	  if ((CreateData->DiskGeometry.TracksPerCylinder == 0) |
+	      (CreateData->DiskGeometry.SectorsPerTrack == 0) |
+	      (CreateData->DiskGeometry.BytesPerSector == 0))
+	    {
+	      SIZE_T free_size = 0;
+      	      PFAT_VBR fat_vbr = ExAllocatePoolWithTag(PagedPool,
+						       sizeof(FAT_VBR),
+						       POOL_TAG);
+
+	      if (fat_vbr == NULL)
+		{
+		  if (file_handle != NULL)
+		    ZwClose(file_handle);
+		  if (file_name.Buffer != NULL)
+		    ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
+		  if (image_buffer != NULL)
+		    ZwFreeVirtualMemory(NtCurrentProcess(),
+					&image_buffer,
+					&free_size, MEM_RELEASE);
+
+		  ImDiskLogError((DriverObject,
+				  0,
+				  0,
+				  NULL,
+				  0,
+				  1000,
+				  status,
+				  102,
+				  status,
+				  0,
+				  0,
+				  NULL,
+				  L"Insufficient memory."));
+
+		  KdPrint(("ImDisk: Error allocating memory.\n"));
+
+		  return STATUS_INSUFFICIENT_RESOURCES;
+		}
+
+	      status =
+		ZwReadFile(file_handle,
+			   NULL,
+			   NULL,
+			   NULL,
+			   &io_status,
+			   fat_vbr,
+			   sizeof(FAT_VBR),
+			   &CreateData->ImageOffset,
+			   NULL);
+	      
+	      if (!NT_SUCCESS(status))
+		{
+		  if (file_handle != NULL)
+		    ZwClose(file_handle);
+		  if (file_name.Buffer != NULL)
+		    ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
+		  if (image_buffer != NULL)
+		    ZwFreeVirtualMemory(NtCurrentProcess(),
+					&image_buffer,
+					&free_size, MEM_RELEASE);
+		  ExFreePoolWithTag(fat_vbr, POOL_TAG);
+
+		  ImDiskLogError((DriverObject,
+				  0,
+				  0,
+				  NULL,
+				  0,
+				  1000,
+				  status,
+				  102,
+				  status,
+				  0,
+				  0,
+				  NULL,
+				  L"Error reading first sector."));
+
+		  KdPrint(("ImDisk: Error reading first sector (%#x).\n",
+			   status));
+
+		  return status;
+		}
+
+	      ImDiskReadFormattedGeometry(CreateData, &fat_vbr->BPB);
+
+	      ExFreePoolWithTag(fat_vbr, POOL_TAG);
+	    }
 	}
       else
 	// If proxy is used, get the image file size from the proxy instead.
@@ -2153,8 +2401,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		  return status;
 		}
 
-	      ImDiskReadFormattedGeometry(&CreateData->DiskGeometry,
-					  &fat_vbr->BPB);
+	      ImDiskReadFormattedGeometry(CreateData, &fat_vbr->BPB);
 
 	      ExFreePoolWithTag(fat_vbr, POOL_TAG);
 	    }
@@ -2181,7 +2428,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			      L"Unsupported sizes."));
 
 	      KdPrint(("ImDisk: Unsupported sizes. "
-		       "Got %p%p size and %p%p alignment.\n",
+		       "Got 0x%.8x%.8x size and 0x%.8x%.8x alignment.\n",
 		       proxy_info.file_size,
 		       proxy_info.req_alignment));
 
@@ -2193,7 +2440,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 	  if (proxy_info.flags & IMDPROXY_FLAG_RO)
 	    CreateData->Flags |= IMDISK_OPTION_RO;
 
-	  KdPrint(("ImDisk: Got from proxy: Siz=%p%p Flg=%#x Alg=%#x.\n",
+	  KdPrint(("ImDisk: Got from proxy: Siz=0x%.8x%.8x Flg=%#x Alg=%#x.\n",
 		   CreateData->DiskGeometry.Cylinders.HighPart,
 		   CreateData->DiskGeometry.Cylinders.LowPart,
 		   (ULONG) proxy_info.flags,
@@ -2531,6 +2778,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       device_type = FILE_DEVICE_CD_ROM;
       device_characteristics = FILE_READ_ONLY_DEVICE | FILE_REMOVABLE_MEDIA;
     }
+  else if (IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_RAW)
+    {
+      device_type = FILE_DEVICE_UNKNOWN;
+      device_characteristics = 0;
+    }
   else
     {
       device_type = FILE_DEVICE_DISK;
@@ -2574,7 +2826,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       CreateData->FileNameLength,
       (int)(CreateData->FileNameLength / sizeof(*CreateData->FileName)),
       CreateData->FileName,
-      CreateData->DriveLetter));
+      CreateData->DriveLetter ? CreateData->DriveLetter : L' '));
 
   // Buffer for device name
   device_name_buffer = ExAllocatePoolWithTag(PagedPool,
@@ -2695,7 +2947,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   device_extension->device_number = CreateData->DeviceNumber;
 
-  DeviceList |= 1ULL << CreateData->DeviceNumber;
+  //DeviceList |= 1ULL << CreateData->DeviceNumber;
 
   device_extension->file_name = file_name;
 
@@ -2762,6 +3014,15 @@ ImDiskUnload(IN PDRIVER_OBJECT DriverObject)
   KdPrint(("ImDisk: Entering ImDiskUnload for driver %#x. "
 	   "Current device objects chain dump for this driver:\n",
 	   DriverObject));
+
+  if (RefreshEvent != NULL)
+    {
+      KdPrint(("ImDisk: Pulsing and closing refresh event.\n"));
+
+      ZwPulseEvent(RefreshEvent, NULL);
+      ZwClose(RefreshEvent);
+      RefreshEvent = NULL;
+    }
 
   while (device_object != NULL)
     {
@@ -3125,7 +3386,7 @@ ImDiskReadWrite(IN PDEVICE_OBJECT DeviceObject,
       return status;
     }
 
-  KdPrint2(("ImDisk: Device %i got read/write request Offset=%p%p Len=%p.\n",
+  KdPrint2(("ImDisk: Device %i got r/w request Offset=0x%.8x%.8x Len=%#x.\n",
 	    device_extension->device_number,
 	    io_stack->Parameters.Read.ByteOffset.HighPart,
 	    io_stack->Parameters.Read.ByteOffset.LowPart,
@@ -3295,30 +3556,40 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	  }
 
 	if (KeGetCurrentIrql() == PASSIVE_LEVEL)
-	  if (IMDISK_SPARSE_FILE(device_flags->FlagsToChange) &&
-	      IMDISK_SPARSE_FILE(device_flags->FlagValues) &&
-	      (!device_extension->use_proxy) &&
-	      (!device_extension->vm_disk))
-	    {
-	      IO_STATUS_BLOCK io_status;
-	      status = ZwFsControlFile(device_extension->file_handle,
-				       NULL,
-				       NULL,
-				       NULL,
-				       &io_status,
-				       FSCTL_SET_SPARSE,
-				       NULL,
-				       0,
-				       NULL,
-				       0
-				       );
+	  {
+	    if (IMDISK_SPARSE_FILE(device_flags->FlagsToChange) &&
+		IMDISK_SPARSE_FILE(device_flags->FlagValues) &&
+		(!device_extension->use_proxy) &&
+		(!device_extension->vm_disk))
+	      {
+		IO_STATUS_BLOCK io_status;
+		status = ZwFsControlFile(device_extension->file_handle,
+					 NULL,
+					 NULL,
+					 NULL,
+					 &io_status,
+					 FSCTL_SET_SPARSE,
+					 NULL,
+					 0,
+					 NULL,
+					 0
+					 );
 
-	      if (NT_SUCCESS(status))
-		{
-		  device_extension->use_set_zero_data = TRUE;
-		  device_flags->FlagsToChange &= ~IMDISK_OPTION_SPARSE_FILE;
-		}
-	    }
+		if (NT_SUCCESS(status))
+		  {
+		    device_extension->use_set_zero_data = TRUE;
+		    device_flags->FlagsToChange &= ~IMDISK_OPTION_SPARSE_FILE;
+		  }
+	      }
+
+	    // Fire refresh event
+	    if (RefreshEvent != NULL)
+	      ZwPulseEvent(RefreshEvent, NULL);
+	  }
+	else
+	  KdPrint
+	    (("ImDisk: Some flags cannot be changed at this IRQL (%#x).\n",
+	      KeGetCurrentIrql()));
 
 	if (device_flags->FlagsToChange == 0)
 	  status = STATUS_SUCCESS;
@@ -3540,22 +3811,124 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	KdPrint(("ImDisk: IOCTL_IMDISK_QUERY_DRIVER for device %i.\n",
 		 device_extension->device_number));
 
-	if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+	if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >
 	    sizeof(ULONGLONG))
 	  {
-	    *(PULONGLONG) Irp->AssociatedIrp.SystemBuffer = DeviceList;
-	    Irp->IoStatus.Information = sizeof(ULONGLONG);
-	  }
-	else if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
-		 sizeof(ULONG))
-	  {
-	    *(PULONG) Irp->AssociatedIrp.SystemBuffer = (ULONG) DeviceList;
-	    Irp->IoStatus.Information = sizeof(ULONG);
+	    KIRQL old_irql;
+	    ULONG max_items =
+	      io_stack->Parameters.DeviceIoControl.OutputBufferLength >> 2;
+	    ULONG current_item = 0;
+	    PULONG device_list = (PULONG) Irp->AssociatedIrp.SystemBuffer;
+	    PDEVICE_OBJECT device_object;
+
+	    KdPrint2(("ImDisk: Max number of items %i.\n", max_items));
+
+	    KeAcquireSpinLock(&DeviceListLock, &old_irql);
+
+	    for (device_object = DeviceObject->DriverObject->DeviceObject;
+		 device_object != NULL;
+		 device_object = device_object->NextDevice)
+	      {
+		PDEVICE_EXTENSION this_device_extension = (PDEVICE_EXTENSION)
+		  device_object->DeviceExtension;
+
+		// Skip over control device
+		if (this_device_extension->device_number == -1)
+		  continue;
+
+		current_item++;
+
+		KdPrint2(("ImDisk: Found device %i.\n",
+			 this_device_extension->device_number));
+
+		if (current_item < max_items)
+		  device_list[current_item] =
+		    this_device_extension->device_number;
+	      }
+
+	    KeReleaseSpinLock(&DeviceListLock, old_irql);
+
+	    device_list[0] = current_item;
+
+	    KdPrint(("ImDisk: Found %i devices.\n", device_list[0]));
+
+	    if (current_item >= max_items)
+	      {
+		Irp->IoStatus.Information = 1 << 2;
+		status = STATUS_SUCCESS;
+	      }
+	    else
+	      {
+		Irp->IoStatus.Information = (current_item + 1) << 2;
+		status = STATUS_SUCCESS;
+	      }
 	  }
 	else
-	  Irp->IoStatus.Information = 0;
+	  {
+	    ULARGE_INTEGER DeviceList = { 0 };
+	    KIRQL old_irql;
+	    PDEVICE_OBJECT device_object;
+	    ULONG HighestDeviceNumber = 0;
 
-	status = STATUS_SUCCESS;
+	    KeAcquireSpinLock(&DeviceListLock, &old_irql);
+
+	    for (device_object = DeviceObject->DriverObject->DeviceObject;
+		 device_object != NULL;
+		 device_object = device_object->NextDevice)
+	      {
+		PDEVICE_EXTENSION this_device_extension = (PDEVICE_EXTENSION)
+		  device_object->DeviceExtension;
+
+		// Skip over control device
+		if (this_device_extension->device_number == -1)
+		  continue;
+
+		KdPrint2(("ImDisk: Found device %i.\n",
+			 this_device_extension->device_number));
+
+		if (this_device_extension->device_number > HighestDeviceNumber)
+		  HighestDeviceNumber = this_device_extension->device_number;
+
+		if (this_device_extension->device_number < 64)
+		  DeviceList.QuadPart |=
+		    1ULL << this_device_extension->device_number;
+	      }
+
+	    KeReleaseSpinLock(&DeviceListLock, old_irql);
+
+	    KdPrint(("ImDisk: 64 bit device list = 0x%.8x%.8x.\n",
+		     DeviceList.HighPart, DeviceList.LowPart));
+
+	    if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+		sizeof(ULONGLONG))
+	      {
+		*(PULONGLONG) Irp->AssociatedIrp.SystemBuffer =
+		  DeviceList.QuadPart;
+		Irp->IoStatus.Information = sizeof(ULONGLONG);
+
+		if (HighestDeviceNumber > 63)
+		  status = STATUS_INVALID_PARAMETER;
+		else
+		  status = STATUS_SUCCESS;
+	      }
+	    else if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
+		     sizeof(ULONG))
+	      {
+		*(PULONG) Irp->AssociatedIrp.SystemBuffer = DeviceList.LowPart;
+		Irp->IoStatus.Information = sizeof(ULONG);
+
+		if (HighestDeviceNumber > 31)
+		  status = STATUS_INVALID_PARAMETER;
+		else
+		  status = STATUS_SUCCESS;
+	      }
+	    else
+	      {
+		Irp->IoStatus.Information = 0;
+		status = STATUS_INVALID_PARAMETER;
+	      }
+	  }
+
 	break;
       }
 
@@ -3588,7 +3961,9 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	if (DeviceObject->Characteristics & FILE_REMOVABLE_MEDIA)
 	  create_data->Flags |= IMDISK_OPTION_REMOVABLE;
 
-	if (DeviceObject->DeviceType == FILE_DEVICE_CD_ROM)
+	if (DeviceObject->DeviceType == FILE_DEVICE_UNKNOWN)
+	  create_data->Flags |= IMDISK_DEVICE_TYPE_RAW;
+	else if (DeviceObject->DeviceType == FILE_DEVICE_CD_ROM)
 	  create_data->Flags |= IMDISK_DEVICE_TYPE_CD | IMDISK_OPTION_RO;
 	else if (DeviceObject->Characteristics & FILE_FLOPPY_DISKETTE)
 	  create_data->Flags |= IMDISK_DEVICE_TYPE_FD;
@@ -4539,6 +4914,10 @@ ImDiskDeviceThread(IN PVOID Context)
       ExFreePoolWithTag(device_thread_data, POOL_TAG);
     }
 
+  // Fire refresh event
+  if (RefreshEvent != NULL)
+    ZwPulseEvent(RefreshEvent, NULL);
+
   KdPrint(("ImDisk: Device thread initialized. (flags=%#x)\n",
 	   device_object->Flags));
 
@@ -4640,6 +5019,10 @@ ImDiskDeviceThread(IN PVOID Context)
 	  KdPrint(("ImDisk: Device %i thread is shutting down.\n",
 		   device_extension->device_number));
 
+	  // Fire refresh event
+	  if (RefreshEvent != NULL)
+	    ZwPulseEvent(RefreshEvent, NULL);
+
 	  if (device_extension->drive_letter != 0)
 	    if (system_drive_letter)
 	      ImDiskRemoveDriveLetter(device_extension->drive_letter);
@@ -4696,9 +5079,13 @@ ImDiskDeviceThread(IN PVOID Context)
 	  KdPrint(("ImDisk: Deleting device object %i.\n",
 		   device_extension->device_number));
 
-	  DeviceList &= ~(1ULL << device_extension->device_number);
+	  //DeviceList &= ~(1ULL << device_extension->device_number);
 
 	  IoDeleteDevice(device_object);
+
+	  // Fire refresh event
+	  if (RefreshEvent != NULL)
+	    ZwPulseEvent(RefreshEvent, NULL);
 
 	  PsTerminateSystemThread(STATUS_SUCCESS);
 	}
@@ -4801,8 +5188,9 @@ ImDiskDeviceThread(IN PVOID Context)
 
 		if (!NT_SUCCESS(irp->IoStatus.Status))
 		  {
-		    KdPrint(("ImDisk: Read failed on device %i.\n",
-			     device_extension->device_number));
+		    KdPrint(("ImDisk: Read failed on device %i: %#x.\n",
+			     device_extension->device_number,
+			     irp->IoStatus.Status));
 
 		    // If indicating that proxy connection died we can do
 		    // nothing else but remove this device.
@@ -4858,7 +5246,14 @@ ImDiskDeviceThread(IN PVOID Context)
 		break;
 	      }
 
-	    device_extension->image_modified = TRUE;
+	    if (!device_extension->image_modified)
+	      {
+		device_extension->image_modified = TRUE;
+
+		// Fire refresh event
+		if (RefreshEvent != NULL)
+		  ZwPulseEvent(RefreshEvent, NULL);
+	      }
 
 	    if (device_extension->vm_disk)
 	      {
@@ -4923,8 +5318,9 @@ ImDiskDeviceThread(IN PVOID Context)
 
 		if (!NT_SUCCESS(irp->IoStatus.Status))
 		  {
-		    KdPrint(("ImDisk: Write failed on device %i.\n",
-			     device_extension->device_number));
+		    KdPrint(("ImDisk: Write failed on device %i: %#x.\n",
+			     device_extension->device_number,
+			     irp->IoStatus.Status));
 
 		    // If indicating that proxy connection died we can do
 		    // nothing else but remove this device.
@@ -5180,6 +5576,10 @@ ImDiskDeviceThread(IN PVOID Context)
 		    device_extension->disk_geometry.Cylinders =
 		      new_size.EndOfFile;
 
+		    // Fire refresh event
+		    if (RefreshEvent != NULL)
+		      ZwPulseEvent(RefreshEvent, NULL);
+
 		    irp->IoStatus.Information = 0;
 		    irp->IoStatus.Status = STATUS_SUCCESS;
 		    break;
@@ -5192,6 +5592,10 @@ ImDiskDeviceThread(IN PVOID Context)
 		    device_extension->disk_geometry.Cylinders =
 		      new_size.EndOfFile;
 	    
+		    // Fire refresh event
+		    if (RefreshEvent != NULL)
+		      ZwPulseEvent(RefreshEvent, NULL);
+
 		    irp->IoStatus.Information = 0;
 		    irp->IoStatus.Status = STATUS_SUCCESS;
 		    break;
@@ -5229,6 +5633,10 @@ ImDiskDeviceThread(IN PVOID Context)
 		    device_extension->disk_geometry.Cylinders =
 		      new_size.EndOfFile;
 	    
+		    // Fire refresh event
+		    if (RefreshEvent != NULL)
+		      ZwPulseEvent(RefreshEvent, NULL);
+
 		    irp->IoStatus.Information = 0;
 		    irp->IoStatus.Status = STATUS_SUCCESS;
 		    break;
@@ -5244,8 +5652,14 @@ ImDiskDeviceThread(IN PVOID Context)
 					      FileEndOfFileInformation);
 
 		if (NT_SUCCESS(status))
-		  device_extension->disk_geometry.Cylinders =
-		    new_size.EndOfFile;
+		  {
+		    device_extension->disk_geometry.Cylinders =
+		      new_size.EndOfFile;
+
+		    // Fire refresh event
+		    if (RefreshEvent != NULL)
+		      ZwPulseEvent(RefreshEvent, NULL);
+		  }
 
 		irp->IoStatus.Information = 0;
 		irp->IoStatus.Status = status;
@@ -6068,7 +6482,7 @@ ImDiskQueryInformationProxy(IN PPROXY_CONNECTION Proxy,
   if (ProxyInfoResponse->req_alignment - 1 > FILE_512_BYTE_ALIGNMENT)
     {
       KdPrint(("ImDisk IMDPROXY_INFO_RESP: Unsupported sizes. "
-	       "Got %p-%p size and %p-%p alignment.\n",
+	       "Got 0x%.8x%.8x size and 0x%.8x%.8x alignment.\n",
 	       ProxyInfoResponse->file_size,
 	       ProxyInfoResponse->req_alignment));
 
@@ -6130,12 +6544,16 @@ ImDiskReadProxy(IN PPROXY_CONNECTION Proxy,
 
   if (read_resp.errorno != 0)
     {
-      KdPrint(("ImDisk Proxy Client: Server returned error %p-%p.\n",
+      KdPrint(("ImDisk Proxy Client: Server returned error 0x%.8x%.8x.\n",
 	       read_resp.errorno));
       IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
       IoStatusBlock->Information = 0;
       return IoStatusBlock->Status;
     }
+
+  KdPrint2(("ImDisk Proxy Client: Server sent 0x%.8x%.8x bytes.\n",
+	    ((PLARGE_INTEGER)&read_resp.length)->HighPart,
+	    ((PLARGE_INTEGER)&read_resp.length)->LowPart));
 
   return status;
 }
@@ -6188,7 +6606,7 @@ ImDiskWriteProxy(IN PPROXY_CONNECTION Proxy,
 
   if (write_resp.errorno != 0)
     {
-      KdPrint(("ImDisk Proxy Client: Server returned error %p-%p.\n",
+      KdPrint(("ImDisk Proxy Client: Server returned error 0x%.8x%.8x.\n",
 	       write_resp.errorno));
       IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
       IoStatusBlock->Information = 0;
