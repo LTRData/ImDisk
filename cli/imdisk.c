@@ -457,18 +457,25 @@ BOOL
 ImDiskCliValidateDriveLetterTarget(LPCWSTR DriveLetter,
 LPCWSTR ValidTargetPath)
 {
-    DWORD len = (DWORD)wcslen(ValidTargetPath) + 2;
-    LPWSTR target = (LPWSTR)ImDiskCliAssertNotNull(_alloca(len << 1));
+    WCHAR target[MAX_PATH];
 
-    if (QueryDosDevice(DriveLetter, target, len) &&
-        (wcscmp(target, ValidTargetPath) == 0))
+    if (QueryDosDevice(DriveLetter, target, _countof(target)))
     {
-        return TRUE;
+        if (wcscmp(target, ValidTargetPath) == 0)
+        {
+            return TRUE;
+        }
+
+        fprintf(stderr,
+            "Temporary drive letter %ws points to '%ws' instead of expected '%ws'.\n",
+            DriveLetter, target, ValidTargetPath);
     }
     else
     {
-        return FALSE;
+        PrintLastError(L"Error verifying temporary drive letter:");
     }
+    
+    return FALSE;
 }
 
 // Formats a new virtual disk device by calling system supplied format.com
@@ -548,10 +555,6 @@ LPCWSTR FormatOptions)
     if (!ImDiskCliValidateDriveLetterTarget(temporary_mount_point,
         DevicePath))
     {
-        fprintf
-            (stderr,
-            "Format failed. Temporary drive letter points to another device.\r\n");
-
         if (!DefineDosDevice(DDD_REMOVE_DEFINITION |
             DDD_EXACT_MATCH_ON_REMOVE |
             DDD_RAW_TARGET_PATH,

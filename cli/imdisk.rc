@@ -8,8 +8,8 @@
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION IMDISK_RC_VERSION_FLD, 23
-PRODUCTVERSION IMDISK_RC_VERSION_FLD, 23
+FILEVERSION IMDISK_RC_VERSION_FLD, 49
+PRODUCTVERSION IMDISK_RC_VERSION_FLD, 49
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
 FILEFLAGS    0
@@ -26,12 +26,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Olof Lagerkvist"
             VALUE "FileDescription", "Control program for the ImDisk Virtual Disk Driver"
-            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".48"
+            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".49"
             VALUE "InternalName", "imdisk"
             VALUE "LegalCopyright", "Copyright © 2004-2015 Olof Lagerkvist."
             VALUE "OriginalFilename", "imdisk.exe"
             VALUE "ProductName", "imdisk"
-            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".48"
+            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".49"
         END
     END
     BLOCK "VarFileInfo"
