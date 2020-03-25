@@ -55,6 +55,8 @@ EXPORTS
 	_ImDiskSaveRegistrySettings@4
 	_ImDiskRemoveRegistrySettings@4
 	_ImDiskGetRegistryAutoLoadDevices@4
+	_ImDiskNotifyShellDriveLetter@8
+    _ImDiskNotifyRemovePending@8
 
 	MsgBoxLastError=_MsgBoxLastError@8
 	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
@@ -98,6 +100,8 @@ EXPORTS
 	ImDiskSaveRegistrySettings=_ImDiskSaveRegistrySettings@4
 	ImDiskRemoveRegistrySettings=_ImDiskRemoveRegistrySettings@4
 	ImDiskGetRegistryAutoLoadDevices=_ImDiskGetRegistryAutoLoadDevices@4
+	ImDiskNotifyShellDriveLetter=_ImDiskNotifyShellDriveLetter@8
+    ImDiskNotifyRemovePending=_ImDiskNotifyRemovePending@8
 
 #else
 
@@ -152,5 +156,7 @@ EXPORTS
 	ImDiskSaveRegistrySettings
 	ImDiskRemoveRegistrySettings
 	ImDiskGetRegistryAutoLoadDevices
+	ImDiskNotifyShellDriveLetter
+    ImDiskNotifyRemovePending
 
 #endif

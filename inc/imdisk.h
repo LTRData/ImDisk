@@ -608,7 +608,9 @@ extern "C" {
 
 	/**
 	Restores a reparsepoint to be an ordinary empty directory, or removes a
-	drive letter mount point.
+	drive letter mount point. When removing a drive letter mount point, this
+	function notifies shell components that drive letter is gone unless API
+	flags are set to turn off shell notifications.
 
 	MountPoint   Path to a reparse point on an NTFS volume, or a drive letter
 	followed by a colon to remove a drive letter mount point.
@@ -1267,6 +1269,48 @@ extern "C" {
 	IMDISK_API BOOL
 		WINAPI
 		ImDiskGetRegistryAutoLoadDevices(LPDWORD LoadDevicesValue);
+
+	/*
+	Notify Explorer and other shell components that a new drive letter has
+	been created. Called automatically by device creation after creating a
+	drive letter. If no drive letter was created by a device creation routine
+	or if API flags was set to turn off shell notification during device
+	creation, this function can be called manually later.
+
+	Note that calling this function has no effect if API flags are set to
+	turn off shell notifications, or if supplied drive letter path does not
+	specify an A-Z drive letter.
+
+	This function returns TRUE if successful, FALSE otherwise. If FALSE is
+	returned, GetLastError could be used to get actual error code.
+
+	hWnd
+	Window handle to use as parent handle for any message boxes. If this
+	parameter is NULL, no message boxes are displayed.
+
+	DriveLetterPath
+	Drive letter path in one of formats A:\ or A:.
+	*/
+	IMDISK_API BOOL
+	    WINAPI
+	    ImDiskNotifyShellDriveLetter(HWND hWnd,
+	    LPWSTR DriveLetterPath);
+
+	/*
+	Notify Explorer and other shell components that a drive is about to be
+	removed.
+
+	hWnd
+	Window handle to use as parent handle for any message boxes. If this
+	parameter is NULL, no message boxes are displayed.
+
+	DriveLetter
+	Drive letter.
+	*/
+	IMDISK_API BOOL
+	    WINAPI
+	    ImDiskNotifyRemovePending(HWND hWnd,
+	    WCHAR DriveLetter);
 
 #ifdef __cplusplus
 }

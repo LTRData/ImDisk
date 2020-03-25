@@ -228,7 +228,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
   DriverObject->DriverUnload = AWEAllocUnload;
 
-  KdPrint(("AWEAlloc: Initialization done. Leaving DriverEntry().\n", status));
+  KdPrint(("AWEAlloc: Initialization done. Leaving DriverEntry().\n"));
 
   return STATUS_SUCCESS;
 }
@@ -429,8 +429,6 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
 
 	  KdPrint2(("AWEAlloc: MapPage success BaseAddress=%#I64x.\n",
 		    page_base));
-
-	  return STATUS_SUCCESS;
 	}
       finally
 	{
@@ -457,6 +455,8 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
 
       return STATUS_INSUFFICIENT_RESOURCES;
     }
+
+  return STATUS_SUCCESS;
 }
 
 NTSTATUS
@@ -688,6 +688,80 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
 }
 
+VOID
+AWEAllocLogError(IN PVOID Object,
+IN UCHAR MajorFunctionCode,
+IN UCHAR RetryCount,
+IN PULONG DumpData,
+IN USHORT DumpDataSize,
+IN USHORT EventCategory,
+IN NTSTATUS ErrorCode,
+IN ULONG UniqueErrorValue,
+IN NTSTATUS FinalStatus,
+IN ULONG SequenceNumber,
+IN ULONG IoControlCode,
+IN PLARGE_INTEGER DeviceOffset,
+IN PWCHAR Message)
+{
+    ULONG_PTR string_byte_size;
+    ULONG_PTR packet_size;
+    PIO_ERROR_LOG_PACKET error_log_packet;
+
+    if (KeGetCurrentIrql() > DISPATCH_LEVEL)
+	return;
+
+    string_byte_size = (wcslen(Message) + 1) << 1;
+
+    packet_size =
+	sizeof(IO_ERROR_LOG_PACKET) + DumpDataSize + string_byte_size;
+
+    if (packet_size > ERROR_LOG_MAXIMUM_SIZE)
+    {
+	DbgPrint("AWEAlloc: Warning: Too large error log packet.\n");
+	return;
+    }
+
+    error_log_packet =
+	(PIO_ERROR_LOG_PACKET)IoAllocateErrorLogEntry(Object,
+	(UCHAR)packet_size);
+
+    if (error_log_packet == NULL)
+    {
+	DbgPrint
+	    ("AWEAlloc: Warning: IoAllocateErrorLogEntry() returned NULL.\n");
+
+	return;
+    }
+
+    error_log_packet->MajorFunctionCode = MajorFunctionCode;
+    error_log_packet->RetryCount = RetryCount;
+    error_log_packet->StringOffset = sizeof(IO_ERROR_LOG_PACKET) + DumpDataSize;
+    error_log_packet->EventCategory = EventCategory;
+    error_log_packet->ErrorCode = ErrorCode;
+    error_log_packet->UniqueErrorValue = UniqueErrorValue;
+    error_log_packet->FinalStatus = FinalStatus;
+    error_log_packet->SequenceNumber = SequenceNumber;
+    error_log_packet->IoControlCode = IoControlCode;
+    if (DeviceOffset != NULL)
+	error_log_packet->DeviceOffset = *DeviceOffset;
+    error_log_packet->DumpDataSize = DumpDataSize;
+
+    if (DumpDataSize != 0)
+	memcpy(error_log_packet->DumpData, DumpData, DumpDataSize);
+
+    if (Message == NULL)
+	error_log_packet->NumberOfStrings = 0;
+    else
+    {
+	error_log_packet->NumberOfStrings = 1;
+	memcpy((PUCHAR)error_log_packet + error_log_packet->StringOffset,
+	    Message,
+	    string_byte_size);
+    }
+
+    IoWriteErrorLogEntry(error_log_packet);
+}
+
 #pragma code_seg("PAGE")
 
 NTSTATUS
@@ -700,6 +774,8 @@ AWEAllocLoadImageFile(IN POBJECT_CONTEXT Context,
   HANDLE file_handle = NULL;
   FILE_STANDARD_INFORMATION file_standard;
   LARGE_INTEGER offset;
+
+  PAGED_CODE();
 
   InitializeObjectAttributes(&object_attributes,
 			     FileName,
@@ -1054,6 +1130,8 @@ AWEAllocAddBlock(IN POBJECT_CONTEXT Context,
 {
   ULONG block_size;
 
+  PAGED_CODE();
+
   if (Block->Mdl == NULL)
     return FALSE;
 
@@ -1078,183 +1156,193 @@ AWEAllocAddBlock(IN POBJECT_CONTEXT Context,
 
 NTSTATUS
 AWEAllocSetSize(IN POBJECT_CONTEXT Context,
-		IN OUT PIO_STATUS_BLOCK IoStatus,
-		IN PLARGE_INTEGER EndOfFile)
+IN OUT PIO_STATUS_BLOCK IoStatus,
+IN PLARGE_INTEGER EndOfFile)
 {
-  KdPrint(("AWEAlloc: Setting size to %u MB.\n",
-	   (ULONG) (EndOfFile->QuadPart >> 20)));
+    PAGED_CODE();
 
-  if (EndOfFile->QuadPart == 0)
+    KdPrint(("AWEAlloc: Setting size to %u MB.\n",
+	(ULONG)(EndOfFile->QuadPart >> 20)));
+
+    if (EndOfFile->QuadPart == 0)
     {
-      Context->VirtualSize = EndOfFile->QuadPart;
-      IoStatus->Status = STATUS_SUCCESS;
-      IoStatus->Information = 0;
-      return STATUS_SUCCESS;
+	Context->VirtualSize = EndOfFile->QuadPart;
+	IoStatus->Status = STATUS_SUCCESS;
+	IoStatus->Information = 0;
+	return STATUS_SUCCESS;
     }
 
-  for (;;)
+    for (;;)
     {
-      PBLOCK_DESCRIPTOR block;
-      SIZE_T bytes_to_allocate;
+	PBLOCK_DESCRIPTOR block;
+	SIZE_T bytes_to_allocate;
 
-      if (Context->TotalSize >= EndOfFile->QuadPart)
+	if (Context->TotalSize >= EndOfFile->QuadPart)
 	{
-	  Context->VirtualSize = EndOfFile->QuadPart;
-	  IoStatus->Status = STATUS_SUCCESS;
-	  IoStatus->Information = 0;
-	  return STATUS_SUCCESS;
+	    Context->VirtualSize = EndOfFile->QuadPart;
+	    IoStatus->Status = STATUS_SUCCESS;
+	    IoStatus->Information = 0;
+	    return STATUS_SUCCESS;
 	}
 
-      block = ExAllocatePoolWithTag(NonPagedPool,
-				    sizeof(BLOCK_DESCRIPTOR), POOL_TAG);
-      RtlZeroMemory(block, sizeof(BLOCK_DESCRIPTOR));
+	block = ExAllocatePoolWithTag(NonPagedPool,
+	    sizeof(BLOCK_DESCRIPTOR), POOL_TAG);
 
-      if ((EndOfFile->QuadPart - Context->TotalSize) > MAX_BLOCK_SIZE)
-	bytes_to_allocate = MAX_BLOCK_SIZE;
-      else
-	bytes_to_allocate = (SIZE_T)
-	  AWEAllocGetRequiredPagesForSize(EndOfFile->QuadPart -
-					  Context->TotalSize);
+	if (block == NULL)
+	{
+	    IoStatus->Status = STATUS_NO_MEMORY;
+	    IoStatus->Information = 0;
+	    return STATUS_NO_MEMORY;
+	}
 
-      KdPrint(("AWEAlloc: Allocating %u MB.\n",
-	       (ULONG) (bytes_to_allocate >> 20)));
+	RtlZeroMemory(block, sizeof(BLOCK_DESCRIPTOR));
+
+	if ((EndOfFile->QuadPart - Context->TotalSize) > MAX_BLOCK_SIZE)
+	    bytes_to_allocate = MAX_BLOCK_SIZE;
+	else
+	    bytes_to_allocate = (SIZE_T)
+	    AWEAllocGetRequiredPagesForSize(EndOfFile->QuadPart -
+	    Context->TotalSize);
+
+	KdPrint(("AWEAlloc: Allocating %u MB.\n",
+	    (ULONG)(bytes_to_allocate >> 20)));
 
 #ifndef _WIN64
 
-      // On 32-bit, first try to allocate as high as possible
-      KdPrint(("AWEAlloc: Allocating above 8 GB.\n"));
+	// On 32-bit, first try to allocate as high as possible
+	KdPrint(("AWEAlloc: Allocating above 8 GB.\n"));
 
-      block->Mdl = MmAllocatePagesForMdl(physical_address_8GB,
-					 physical_address_max64,
-					 physical_address_zero,
-					 bytes_to_allocate);
+	block->Mdl = MmAllocatePagesForMdl(physical_address_8GB,
+	    physical_address_max64,
+	    physical_address_zero,
+	    bytes_to_allocate);
 
-      if (AWEAllocAddBlock(Context, block))
-	continue;
+	if (AWEAllocAddBlock(Context, block))
+	    continue;
 
-      KdPrint(("AWEAlloc: Not enough memory available above 8 GB.\n"
-	       "AWEAlloc: Allocating above 6 GB.\n"));
+	KdPrint(("AWEAlloc: Not enough memory available above 8 GB.\n"
+	    "AWEAlloc: Allocating above 6 GB.\n"));
 
-      AWEAllocLogError(AWEAllocDriverObject,
-		       0,
-		       0,
-		       NULL,
-		       0,
-		       1000,
-		       AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
-		       101,
-		       STATUS_INSUFFICIENT_RESOURCES,
-		       0,
-		       0,
-		       NULL,
-		       L"Error allocating above 8 GB.");
+	AWEAllocLogError(AWEAllocDriverObject,
+	    0,
+	    0,
+	    NULL,
+	    0,
+	    1000,
+	    AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
+	    101,
+	    STATUS_INSUFFICIENT_RESOURCES,
+	    0,
+	    0,
+	    NULL,
+	    L"Error allocating above 8 GB.");
 
-      block->Mdl = MmAllocatePagesForMdl(physical_address_6GB,
-					 physical_address_max64,
-					 physical_address_zero,
-					 bytes_to_allocate);
+	block->Mdl = MmAllocatePagesForMdl(physical_address_6GB,
+	    physical_address_max64,
+	    physical_address_zero,
+	    bytes_to_allocate);
 
-      if (AWEAllocAddBlock(Context, block))
-	continue;
+	if (AWEAllocAddBlock(Context, block))
+	    continue;
 
-      KdPrint(("AWEAlloc: Not enough memory available above 6 GB.\n"
-	       "AWEAlloc: Allocating above 5 GB.\n"));
+	KdPrint(("AWEAlloc: Not enough memory available above 6 GB.\n"
+	    "AWEAlloc: Allocating above 5 GB.\n"));
 
-      AWEAllocLogError(AWEAllocDriverObject,
-		       0,
-		       0,
-		       NULL,
-		       0,
-		       1000,
-		       AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
-		       101,
-		       STATUS_INSUFFICIENT_RESOURCES,
-		       0,
-		       0,
-		       NULL,
-		       L"Error allocating above 6 GB.");
+	AWEAllocLogError(AWEAllocDriverObject,
+	    0,
+	    0,
+	    NULL,
+	    0,
+	    1000,
+	    AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
+	    101,
+	    STATUS_INSUFFICIENT_RESOURCES,
+	    0,
+	    0,
+	    NULL,
+	    L"Error allocating above 6 GB.");
 
-      block->Mdl = MmAllocatePagesForMdl(physical_address_5GB,
-					 physical_address_max64,
-					 physical_address_zero,
-					 bytes_to_allocate);
+	block->Mdl = MmAllocatePagesForMdl(physical_address_5GB,
+	    physical_address_max64,
+	    physical_address_zero,
+	    bytes_to_allocate);
 
-      if (AWEAllocAddBlock(Context, block))
-	continue;
+	if (AWEAllocAddBlock(Context, block))
+	    continue;
 
-      KdPrint(("AWEAlloc: Not enough memory available above 5 GB.\n"
-	       "AWEAlloc: Allocating above 4 GB.\n"));
+	KdPrint(("AWEAlloc: Not enough memory available above 5 GB.\n"
+	    "AWEAlloc: Allocating above 4 GB.\n"));
 
-      AWEAllocLogError(AWEAllocDriverObject,
-		       0,
-		       0,
-		       NULL,
-		       0,
-		       1000,
-		       AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
-		       101,
-		       STATUS_INSUFFICIENT_RESOURCES,
-		       0,
-		       0,
-		       NULL,
-		       L"Error allocating above 5 GB.");
+	AWEAllocLogError(AWEAllocDriverObject,
+	    0,
+	    0,
+	    NULL,
+	    0,
+	    1000,
+	    AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
+	    101,
+	    STATUS_INSUFFICIENT_RESOURCES,
+	    0,
+	    0,
+	    NULL,
+	    L"Error allocating above 5 GB.");
 
-      block->Mdl = MmAllocatePagesForMdl(physical_address_4GB,
-					 physical_address_max64,
-					 physical_address_zero,
-					 bytes_to_allocate);
+	block->Mdl = MmAllocatePagesForMdl(physical_address_4GB,
+	    physical_address_max64,
+	    physical_address_zero,
+	    bytes_to_allocate);
 
-      if (AWEAllocAddBlock(Context, block))
-	continue;
+	if (AWEAllocAddBlock(Context, block))
+	    continue;
 
-      KdPrint(("AWEAlloc: Not enough memory available above 4 GB.\n"
-	       "AWEAlloc: Allocating at any available location.\n"));
+	KdPrint(("AWEAlloc: Not enough memory available above 4 GB.\n"
+	    "AWEAlloc: Allocating at any available location.\n"));
 
-      AWEAllocLogError(AWEAllocDriverObject,
-		       0,
-		       0,
-		       NULL,
-		       0,
-		       1000,
-		       AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
-		       101,
-		       STATUS_INSUFFICIENT_RESOURCES,
-		       0,
-		       0,
-		       NULL,
-		       L"Error allocating above 4 GB.");
+	AWEAllocLogError(AWEAllocDriverObject,
+	    0,
+	    0,
+	    NULL,
+	    0,
+	    1000,
+	    AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY,
+	    101,
+	    STATUS_INSUFFICIENT_RESOURCES,
+	    0,
+	    0,
+	    NULL,
+	    L"Error allocating above 4 GB.");
 
 #endif // !_WIN64
 
-      block->Mdl = MmAllocatePagesForMdl(physical_address_zero,
-					 physical_address_max64,
-					 physical_address_zero,
-					 bytes_to_allocate);
+	block->Mdl = MmAllocatePagesForMdl(physical_address_zero,
+	    physical_address_max64,
+	    physical_address_zero,
+	    bytes_to_allocate);
 
-      if (AWEAllocAddBlock(Context, block))
-	continue;
+	if (AWEAllocAddBlock(Context, block))
+	    continue;
 
-      KdPrint(("AWEAlloc: MmAllocatePagesForMdl failed.\n"));
+	KdPrint(("AWEAlloc: MmAllocatePagesForMdl failed.\n"));
 
-      AWEAllocLogError(AWEAllocDriverObject,
-		       0,
-		       0,
-		       NULL,
-		       0,
-		       1000,
-		       STATUS_NO_MEMORY,
-		       101,
-		       STATUS_NO_MEMORY,
-		       0,
-		       0,
-		       NULL,
-		       L"Error allocating physical memory.");
+	AWEAllocLogError(AWEAllocDriverObject,
+	    0,
+	    0,
+	    NULL,
+	    0,
+	    1000,
+	    STATUS_NO_MEMORY,
+	    101,
+	    STATUS_NO_MEMORY,
+	    0,
+	    0,
+	    NULL,
+	    L"Error allocating physical memory.");
 
-      ExFreePoolWithTag(block, POOL_TAG);
-
-      IoStatus->Status = STATUS_NO_MEMORY;
-      IoStatus->Information = 0;
-      return STATUS_NO_MEMORY;
+	ExFreePoolWithTag(block, POOL_TAG);
+	
+	IoStatus->Status = STATUS_NO_MEMORY;
+	IoStatus->Information = 0;
+	return STATUS_NO_MEMORY;
     }
 }
 
@@ -1370,78 +1458,4 @@ AWEAllocUnload(IN PDRIVER_OBJECT DriverObject)
       IoDeleteDevice(device_object);
       device_object = next_device;
     }
-}
-
-VOID
-AWEAllocLogError(IN PVOID Object,
-		 IN UCHAR MajorFunctionCode,
-		 IN UCHAR RetryCount,
-		 IN PULONG DumpData,
-		 IN USHORT DumpDataSize,
-		 IN USHORT EventCategory,
-		 IN NTSTATUS ErrorCode,
-		 IN ULONG UniqueErrorValue,
-		 IN NTSTATUS FinalStatus,
-		 IN ULONG SequenceNumber,
-		 IN ULONG IoControlCode,
-		 IN PLARGE_INTEGER DeviceOffset,
-		 IN PWCHAR Message)
-{
-  ULONG_PTR string_byte_size;
-  ULONG_PTR packet_size;
-  PIO_ERROR_LOG_PACKET error_log_packet;
-
-  if (KeGetCurrentIrql() > DISPATCH_LEVEL)
-    return;
-
-  string_byte_size = (wcslen(Message) + 1) << 1;
-
-  packet_size =
-    sizeof(IO_ERROR_LOG_PACKET) + DumpDataSize + string_byte_size;
-
-  if (packet_size > ERROR_LOG_MAXIMUM_SIZE)
-    {
-      DbgPrint("AWEAlloc: Warning: Too large error log packet.\n");
-      return;
-    }
-
-  error_log_packet =
-    (PIO_ERROR_LOG_PACKET) IoAllocateErrorLogEntry(Object,
-						   (UCHAR) packet_size);
-
-  if (error_log_packet == NULL)
-    {
-      DbgPrint
-	("AWEAlloc: Warning: IoAllocateErrorLogEntry() returned NULL.\n");
-
-      return;
-    }
-
-  error_log_packet->MajorFunctionCode = MajorFunctionCode;
-  error_log_packet->RetryCount = RetryCount;
-  error_log_packet->StringOffset = sizeof(IO_ERROR_LOG_PACKET) + DumpDataSize;
-  error_log_packet->EventCategory = EventCategory;
-  error_log_packet->ErrorCode = ErrorCode;
-  error_log_packet->UniqueErrorValue = UniqueErrorValue;
-  error_log_packet->FinalStatus = FinalStatus;
-  error_log_packet->SequenceNumber = SequenceNumber;
-  error_log_packet->IoControlCode = IoControlCode;
-  if (DeviceOffset != NULL)
-    error_log_packet->DeviceOffset = *DeviceOffset;
-  error_log_packet->DumpDataSize = DumpDataSize;
-
-  if (DumpDataSize != 0)
-    memcpy(error_log_packet->DumpData, DumpData, DumpDataSize);
-
-  if (Message == NULL)
-    error_log_packet->NumberOfStrings = 0;
-  else
-    {
-      error_log_packet->NumberOfStrings = 1;
-      memcpy((PUCHAR)error_log_packet + error_log_packet->StringOffset,
-	     Message,
-	     string_byte_size);
-    }
-
-  IoWriteErrorLogEntry(error_log_packet);
 }

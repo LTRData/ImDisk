@@ -1169,6 +1169,50 @@ Namespace ImDisk
 
         End Function
 
+        ''' <summary>
+        '''   	Notify Explorer and other shell components that a new drive letter has
+        ''' 	been created. Called automatically by device creation after creating a
+        ''' 	drive letter. If no drive letter was created by a device creation routine
+        ''' 	or if API flags was set to turn off shell notification during device
+        ''' 	creation, this function can be called manually later.
+        ''' 
+        '''	    Note that calling this function has no effect if API flags are set to
+        ''' 	turn off shell notifications, or if supplied drive letter path does not
+        ''' 	specify an A-Z drive letter.
+        ''' 
+        ''' 	This function returns TRUE if successful, FALSE otherwise. If FALSE is
+        ''' 	returned, GetLastError could be used to get actual error code.
+        ''' </summary>
+        ''' <param name="WindowHandle">
+        ''' 	Window handle to use as parent handle for any message boxes. If this
+        ''' 	parameter is NULL, no message boxes are displayed.
+        ''' </param>
+        ''' <param name="DriveLetterPath">
+        ''' 	Drive letter path in one of formats A:\ or A:.
+        ''' </param>
+        Public Shared Sub NotifyShellDriveLetter(WindowHandle As IntPtr, DriveLetterPath As String)
+
+            NativeFileIO.Win32Try(DLL.ImDiskNotifyShellDriveLetter(WindowHandle, DriveLetterPath))
+
+        End Sub
+
+        ''' <summary>
+        '''   	Notify Explorer and other shell components that a drive is about to be
+        ''' 	removed.
+        ''' </summary>
+        ''' <param name="WindowHandle">
+        ''' 	Window handle to use as parent handle for any message boxes. If this
+        ''' 	parameter is NULL, no message boxes are displayed.
+        ''' </param>
+        ''' <param name="DriveLetter">
+        ''' 	Drive letter.
+        ''' </param>
+        Public Shared Sub NotifyRemovePending(WindowHandle As IntPtr, DriveLetter As Char)
+
+            NativeFileIO.Win32Try(DLL.ImDiskNotifyRemovePending(WindowHandle, DriveLetter))
+
+        End Sub
+
     End Class
 
 End Namespace

@@ -45,7 +45,7 @@
 #include "..\inc\imdproxy.h"
 #include "..\inc\wio.hpp"
 
-#pragma comment(linker, "-subsystem:windows,3.51")
+#pragma comment(linker, "-subsystem:windows,3.51 -entry:Entry")
 
 SERVICE_STATUS ImDiskSvcStatus;  
 SERVICE_STATUS_HANDLE ImDiskSvcStatusHandle; 

@@ -383,6 +383,18 @@
             (<Out> ByRef LoadDevicesValue As UInt32
              ) As Boolean
 
+        Public Declare Unicode Function ImDiskNotifyShellDriveLetter _
+            Lib "imdisk.cpl" _
+            (WindowHandle As IntPtr,
+             <MarshalAs(UnmanagedType.LPWStr), [In]()> DriveLetterPath As String
+             ) As Boolean
+
+        Public Declare Unicode Function ImDiskNotifyRemovePending _
+            Lib "imdisk.cpl" _
+            (WindowHandle As IntPtr,
+             DriveLetter As Char
+             ) As Boolean
+
     End Class
 
 End Namespace

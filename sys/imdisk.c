@@ -658,46 +658,60 @@ IN PUNICODE_STRING RegistryPath)
 	ExAllocatePoolWithTag(PagedPool, SECURITY_DESCRIPTOR_MIN_LENGTH, POOL_TAG);
 
     if (event_security_descriptor == NULL)
-	KdPrint(("ImDisk: Memory allocation error for security descriptor.\n"));
-    else
     {
-	RtlCreateSecurityDescriptor(event_security_descriptor,
-	    SECURITY_DESCRIPTOR_REVISION);
+	status = STATUS_INSUFFICIENT_RESOURCES;
+	KdPrint(("ImDisk: Memory allocation error for security descriptor.\n"));
+    }
 
-	RtlSetDaclSecurityDescriptor(event_security_descriptor,
+    if (NT_SUCCESS(status))
+    {
+	status = RtlCreateSecurityDescriptor(
+	    event_security_descriptor,
+	    SECURITY_DESCRIPTOR_REVISION);
+    }
+
+    if (NT_SUCCESS(status))
+    {
+	status = RtlSetDaclSecurityDescriptor(
+	    event_security_descriptor,
 	    TRUE,
 	    NULL,
 	    FALSE);
     }
 
-    InitializeObjectAttributes(&object_attributes,
-	&refresh_event_name,
-	OBJ_CASE_INSENSITIVE | OBJ_OPENIF,
-	NULL,
-	event_security_descriptor);
-
-    status = ZwCreateEvent(&RefreshEvent,
-	EVENT_ALL_ACCESS,
-	&object_attributes,
-	SynchronizationEvent,
-	FALSE);
-
-    if (status == STATUS_OBJECT_PATH_NOT_FOUND)
+    if (NT_SUCCESS(status))
     {
-	KdPrint(("ImDisk: Error creating global refresh event (%#X)\n", status));
-
-	RtlInitUnicodeString(&refresh_event_name, L"\\BaseNamedObjects\\"
-	    IMDISK_REFRESH_EVENT_NAME);
+	InitializeObjectAttributes(&object_attributes,
+	    &refresh_event_name,
+	    OBJ_CASE_INSENSITIVE | OBJ_OPENIF,
+	    NULL,
+	    event_security_descriptor);
 
 	status = ZwCreateEvent(&RefreshEvent,
 	    EVENT_ALL_ACCESS,
 	    &object_attributes,
 	    SynchronizationEvent,
 	    FALSE);
+
+	if (status == STATUS_OBJECT_PATH_NOT_FOUND)
+	{
+	    KdPrint(("ImDisk: Error creating global refresh event (%#X)\n", status));
+
+	    RtlInitUnicodeString(&refresh_event_name, L"\\BaseNamedObjects\\"
+		IMDISK_REFRESH_EVENT_NAME);
+
+	    status = ZwCreateEvent(&RefreshEvent,
+		EVENT_ALL_ACCESS,
+		&object_attributes,
+		SynchronizationEvent,
+		FALSE);
+	}
     }
 
     if (event_security_descriptor != NULL)
+    {
 	ExFreePoolWithTag(event_security_descriptor, POOL_TAG);
+    }
 
     if (!NT_SUCCESS(status))
     {
@@ -944,7 +958,7 @@ IN ULONG DeviceNumber)
 	(MAXIMUM_FILENAME_LENGTH * sizeof(WCHAR)),
 	&required_size);
 
-    if ((!NT_SUCCESS(status)) |
+    if ((!NT_SUCCESS(status)) ||
 	(value_info_image_file->Type != REG_SZ))
     {
 	KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
@@ -984,7 +998,7 @@ IN ULONG DeviceNumber)
 	sizeof(LARGE_INTEGER),
 	&required_size);
 
-    if ((!NT_SUCCESS(status)) |
+    if ((!NT_SUCCESS(status)) ||
 	((value_info_size->Type != REG_BINARY) &
 	(value_info_size->Type != REG_QWORD)) |
 	(value_info_size->DataLength != sizeof(LARGE_INTEGER)))
@@ -1009,7 +1023,7 @@ IN ULONG DeviceNumber)
 	sizeof(ULONG),
 	&required_size);
 
-    if ((!NT_SUCCESS(status)) |
+    if ((!NT_SUCCESS(status)) ||
 	(value_info_flags->Type != REG_DWORD))
     {
 	KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
@@ -1086,9 +1100,9 @@ IN ULONG DeviceNumber)
 	sizeof(LARGE_INTEGER),
 	&required_size);
 
-    if ((!NT_SUCCESS(status)) |
+    if ((!NT_SUCCESS(status)) ||
 	((value_info_image_offset->Type != REG_BINARY) &
-	(value_info_image_offset->Type != REG_QWORD)) |
+	(value_info_image_offset->Type != REG_QWORD)) ||
 	(value_info_image_offset->DataLength != sizeof(LARGE_INTEGER)))
     {
 	KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
@@ -1325,6 +1339,8 @@ IN ULONG DeviceNumber)
     UNICODE_STRING device_name;
     NTSTATUS status;
 
+    PAGED_CODE();
+
     // Buffer for device name
     device_name_buffer = ExAllocatePoolWithTag(PagedPool,
 	MAXIMUM_FILENAME_LENGTH *
@@ -1384,6 +1400,8 @@ ImDiskReadFormattedGeometry(IN OUT PIMDISK_CREATE_DATA CreateData,
 IN PFAT_BPB BPB)
 {
     USHORT tmp;
+
+    PAGED_CODE();
 
     KdPrint
 	(("ImDisk: Detected BPB values:\n"
@@ -1553,6 +1571,8 @@ IN OUT PLARGE_INTEGER DiskSize)
 {
     NTSTATUS status;
 
+    PAGED_CODE();
+
     {
 	FILE_STANDARD_INFORMATION file_standard;
 
@@ -1604,7 +1624,7 @@ IN OUT PLARGE_INTEGER DiskSize)
 	  "for target device. %#x\n", status));
   }
 
-    // Retry with IOCTL_DISK_GET_PARTITION_INFO instead
+  // Retry with IOCTL_DISK_GET_PARTITION_INFO instead
   {
       PARTITION_INFORMATION part_info = { 0 };
 
@@ -1636,7 +1656,7 @@ IN OUT PLARGE_INTEGER DiskSize)
 	  "for target device. %#x\n", status));
   }
 
-    return status;
+  return status;
 }
 
 NTSTATUS
@@ -1955,11 +1975,11 @@ OUT PDEVICE_OBJECT *DeviceObject)
 	    status =
 		ZwCreateFile(&file_handle,
 		GENERIC_READ |
-		((IMDISK_TYPE(CreateData->Flags) ==
+		(((IMDISK_TYPE(CreateData->Flags) ==
 		IMDISK_TYPE_PROXY) |
 		(((IMDISK_TYPE(CreateData->Flags) !=
 		IMDISK_TYPE_VM) &
-		!IMDISK_READONLY(CreateData->Flags))) ?
+		!IMDISK_READONLY(CreateData->Flags)))) ?
 	    GENERIC_WRITE : 0),
 			    &object_attributes,
 			    &io_status,
@@ -1967,8 +1987,8 @@ OUT PDEVICE_OBJECT *DeviceObject)
 			    FILE_ATTRIBUTE_NORMAL,
 			    FILE_SHARE_READ |
 			    FILE_SHARE_DELETE |
-			    (IMDISK_READONLY(CreateData->Flags) |
-			    (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) ?
+			    ((IMDISK_READONLY(CreateData->Flags) |
+			    (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM)) ?
 			FILE_SHARE_WRITE : 0),
 					   FILE_OPEN,
 					   (IMDISK_SPARSE_FILE(CreateData->Flags) ?
@@ -2014,11 +2034,11 @@ OUT PDEVICE_OBJECT *DeviceObject)
 		status =
 		    ZwCreateFile(&file_handle,
 		    GENERIC_READ |
-		    ((IMDISK_TYPE(CreateData->Flags) ==
+		    (((IMDISK_TYPE(CreateData->Flags) ==
 		    IMDISK_TYPE_PROXY) |
 		    (((IMDISK_TYPE(CreateData->Flags) !=
 		    IMDISK_TYPE_VM) &
-		    !IMDISK_READONLY(CreateData->Flags))) ?
+		    !IMDISK_READONLY(CreateData->Flags)))) ?
 		GENERIC_WRITE : 0),
 				&object_attributes,
 				&io_status,
@@ -2026,9 +2046,9 @@ OUT PDEVICE_OBJECT *DeviceObject)
 				FILE_ATTRIBUTE_NORMAL,
 				FILE_SHARE_READ |
 				FILE_SHARE_DELETE |
-				(IMDISK_READONLY(CreateData->Flags) |
+				((IMDISK_READONLY(CreateData->Flags) |
 				(IMDISK_TYPE(CreateData->Flags) ==
-				IMDISK_TYPE_VM) ?
+				IMDISK_TYPE_VM)) ?
 			    FILE_SHARE_WRITE : 0),
 					       FILE_OPEN,
 					       IMDISK_TYPE(CreateData->Flags) ==
@@ -2280,7 +2300,7 @@ OUT PDEVICE_OBJECT *DeviceObject)
 		return status;
 	    }
 
-	    KdPrint(("ImDisk: Got reference to proxy object %#x.\n",
+	    KdPrint(("ImDisk: Got reference to proxy object %p.\n",
 		proxy.connection_type == PROXY_CONNECTION_DEVICE ?
 		(PVOID)proxy.device :
 		(PVOID)proxy.shared_memory));
@@ -2522,18 +2542,12 @@ OUT PDEVICE_OBJECT *DeviceObject)
 		    &CreateData->ImageOffset,
 		    NULL);
 
-		if (!NT_SUCCESS(status))
+		if (NT_SUCCESS(status))
 		{
-		    if (file_handle != NULL)
-			ZwClose(file_handle);
-		    if (file_name.Buffer != NULL)
-			ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
-		    if (image_buffer != NULL)
-			ZwFreeVirtualMemory(NtCurrentProcess(),
-			&image_buffer,
-			&free_size, MEM_RELEASE);
-		    ExFreePoolWithTag(fat_vbr, POOL_TAG);
-
+		    ImDiskReadFormattedGeometry(CreateData, &fat_vbr->BPB);
+		}
+		else
+		{
 		    ImDiskLogError((DriverObject,
 			0,
 			0,
@@ -2550,11 +2564,7 @@ OUT PDEVICE_OBJECT *DeviceObject)
 
 		    KdPrint(("ImDisk: Error reading first sector (%#x).\n",
 			status));
-
-		    return status;
 		}
-
-		ImDiskReadFormattedGeometry(CreateData, &fat_vbr->BPB);
 
 		ExFreePoolWithTag(fat_vbr, POOL_TAG);
 	    }
@@ -3298,7 +3308,7 @@ ImDiskUnload(IN PDRIVER_OBJECT DriverObject)
 
     device_object = DriverObject->DeviceObject;
 
-    KdPrint(("ImDisk: Entering ImDiskUnload for driver %#x. "
+    KdPrint(("ImDisk: Entering ImDiskUnload for driver %p. "
 	"Current device objects chain dump for this driver:\n",
 	DriverObject));
 
@@ -3313,7 +3323,7 @@ ImDiskUnload(IN PDRIVER_OBJECT DriverObject)
 
     while (device_object != NULL)
     {
-	KdPrint(("%#x -> ", device_object));
+	KdPrint(("%p -> ", device_object));
 	device_object = device_object->NextDevice;
     }
 
@@ -3502,6 +3512,8 @@ VOID
 ImDiskRemoveVirtualDisk(IN PDEVICE_OBJECT DeviceObject)
 {
     PDEVICE_EXTENSION device_extension;
+
+    PAGED_CODE();
 
     ASSERT(DeviceObject != NULL);
 
@@ -3811,7 +3823,7 @@ IN PIRP Irp)
 
     io_stack = IoGetCurrentIrpStackLocation(Irp);
 
-    KdPrint(("ImDisk: Device %i received IOCTL %#x IRP %#x.\n",
+    KdPrint(("ImDisk: Device %i received IOCTL %#x IRP %p.\n",
 	device_extension->device_number,
 	io_stack->Parameters.DeviceIoControl.IoControlCode,
 	Irp));
@@ -4039,7 +4051,7 @@ IN PIRP Irp)
 	    break;
 	}
 
-	KdPrint(("ImDisk: Referencing handle %#x.\n",
+	KdPrint(("ImDisk: Referencing handle %p.\n",
 	    *(PHANDLE)Irp->AssociatedIrp.SystemBuffer));
 
 	status =
@@ -4053,7 +4065,7 @@ IN PIRP Irp)
 	    Irp->AssociatedIrp.SystemBuffer,
 	    NULL);
 
-	KdPrint(("ImDisk: Status=%#x, FILE_OBJECT %#x.\n",
+	KdPrint(("ImDisk: Status=%#x, FILE_OBJECT %p.\n",
 	    status,
 	    (PFILE_OBJECT)Irp->AssociatedIrp.SystemBuffer));
 
@@ -4452,6 +4464,9 @@ IN PIRP Irp)
     case IOCTL_IMDISK_IOCTL_PASS_THROUGH:
     case IOCTL_IMDISK_FSCTL_PASS_THROUGH:
     {
+	KdPrint(("ImDisk: IOCTL_IMDISK_IOCTL/FSCTL_PASS_THROUGH for device %i.\n",
+	    device_extension->device_number));
+
 	if (device_extension->file_handle == NULL)
 	{
 	    Irp->IoStatus.Information = 0;
@@ -5166,7 +5181,7 @@ IN PIRP Irp)
 	return status;
     }
 
-    KdPrint(("ImDisk: Device %i received flush function %#x IRP %#x.\n",
+    KdPrint(("ImDisk: Device %i received flush function %#x IRP %p.\n",
 	device_extension->device_number,
 	io_stack->MinorFunction,
 	Irp));
@@ -5231,12 +5246,12 @@ IN PIRP Irp)
     ASSERT(DeviceObject != NULL);
     ASSERT(Irp != NULL);
 
-    KdPrint2(("ImDisk: QueryInformation: %u.\n",
-	io_stack->Parameters.QueryFile.FileInformationClass));
-
     device_extension = (PDEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     io_stack = IoGetCurrentIrpStackLocation(Irp);
+
+    KdPrint2(("ImDisk: QueryInformation: %u.\n",
+	io_stack->Parameters.QueryFile.FileInformationClass));
 
     // The control device cannot receive PnP dispatch.
     if (DeviceObject == ImDiskCtlDevice)
@@ -5252,7 +5267,7 @@ IN PIRP Irp)
 	return status;
     }
 
-    KdPrint(("ImDisk: Device %i received QueryInformation function %#x IRP %#x.\n",
+    KdPrint(("ImDisk: Device %i received QueryInformation function %#x IRP %p.\n",
 	device_extension->device_number,
 	io_stack->Parameters.QueryFile.FileInformationClass,
 	Irp));
@@ -5360,12 +5375,12 @@ IN PIRP Irp)
     ASSERT(DeviceObject != NULL);
     ASSERT(Irp != NULL);
 
-    KdPrint2(("ImDisk: SetInformation: %u.\n",
-	io_stack->Parameters.SetFile.FileInformationClass));
-
     device_extension = (PDEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
     io_stack = IoGetCurrentIrpStackLocation(Irp);
+
+    KdPrint2(("ImDisk: SetInformation: %u.\n",
+	io_stack->Parameters.SetFile.FileInformationClass));
 
     // The control device cannot receive PnP dispatch.
     if (DeviceObject == ImDiskCtlDevice)
@@ -5381,7 +5396,7 @@ IN PIRP Irp)
 	return status;
     }
 
-    KdPrint(("ImDisk: Device %i received SetInformation function %#x IRP %#x.\n",
+    KdPrint(("ImDisk: Device %i received SetInformation function %#x IRP %p.\n",
 	device_extension->device_number,
 	io_stack->Parameters.SetFile.FileInformationClass,
 	Irp));
@@ -5480,7 +5495,7 @@ IN PIRP Irp)
 	return status;
     }
 
-    KdPrint(("ImDisk: Device %i received PnP function %#x IRP %#x.\n",
+    KdPrint(("ImDisk: Device %i received PnP function %#x IRP %p.\n",
 	device_extension->device_number,
 	io_stack->MinorFunction,
 	Irp));
@@ -5504,9 +5519,7 @@ IN PIRP Irp)
     {
     case IRP_MN_DEVICE_USAGE_NOTIFICATION:
 	KdPrint(("ImDisk: Device %i got IRP_MN_DEVICE_USAGE_NOTIFICATION.\n",
-	    device_extension->device_number,
-	    io_stack->MinorFunction,
-	    Irp));
+	    device_extension->device_number));
 
 	switch (io_stack->Parameters.UsageNotification.Type)
 	{
@@ -5516,7 +5529,9 @@ IN PIRP Irp)
 		status = STATUS_MEDIA_WRITE_PROTECTED;
 	    else
 		if (io_stack->Parameters.UsageNotification.InPath == TRUE)
-		    MmLockPagableCodeSection((PVOID)(ULONG_PTR)ImDiskDeviceThread);
+		{
+		    (VOID)MmLockPagableCodeSection((PVOID)(ULONG_PTR)ImDiskDeviceThread);
+		}
 
 	    IoAdjustPagingPathCount
 		(&device_extension->special_file_count,
@@ -5583,8 +5598,6 @@ ImDiskDeviceThread(IN PVOID Context)
     PDEVICE_EXTENSION device_extension;
     LARGE_INTEGER time_out;
     BOOLEAN system_drive_letter;
-
-    PAGED_CODE();
 
     ASSERT(Context != NULL);
 
@@ -6346,10 +6359,16 @@ ImDiskDeviceThread(IN PVOID Context)
 
 		if (io_stack->MajorFunction == IOCTL_IMDISK_FSCTL_PASS_THROUGH)
 		{
+		    KdPrint(("ImDisk: IOCTL_IMDISK_FSCTL_PASS_THROUGH for device %i control code %#x.\n",
+			device_extension->device_number, ctl_code));
+
 		    func = ZwFsControlFile;
 		}
 		else
 		{
+		    KdPrint(("ImDisk: IOCTL_IMDISK_IOCTL_PASS_THROUGH for device %i control code %#x.\n",
+			device_extension->device_number, ctl_code));
+
 		    func = ZwDeviceIoControlFile;
 		}
 
@@ -6366,6 +6385,10 @@ ImDiskDeviceThread(IN PVOID Context)
 		    out_size);
 
 		irp->IoStatus.Status = status;
+
+		KdPrint(("ImDisk: IOCTL_IMDISK_IOCTL/FSCTL_PASS_THROUGH for device %i control code %#x result status %#x.\n",
+		    device_extension->device_number, ctl_code, status));
+
 		break;
 	    }
 
@@ -6576,8 +6599,6 @@ IN PLARGE_INTEGER Offset)
     NTSTATUS status;
     SIZE_T LengthDone = 0;
 
-    PAGED_CODE();
-
     ASSERT(FileHandle != NULL);
     ASSERT(IoStatusBlock != NULL);
     ASSERT(Buffer != NULL);
@@ -6670,7 +6691,7 @@ ImDiskSafeIOStream(IN PFILE_OBJECT FileObject,
 IN UCHAR MajorFunction,
 IN OUT PIO_STATUS_BLOCK IoStatusBlock,
 IN PKEVENT CancelEvent,
-OUT PVOID Buffer,
+IN OUT PVOID Buffer,
 IN ULONG Length)
 {
     NTSTATUS status;
@@ -6683,8 +6704,6 @@ IN ULONG Length)
 	CancelEvent
     };
     ULONG number_of_wait_objects = CancelEvent != NULL ? 2 : 1;
-
-    PAGED_CODE();
 
     KdPrint2(("ImDiskSafeIOStream: FileObject=%#x, MajorFunction=%#x, "
 	"IoStatusBlock=%#x, Buffer=%#x, Length=%#x.\n",
@@ -6804,8 +6823,6 @@ IN ULONG Length)
 VOID
 ImDiskCloseProxy(IN PPROXY_CONNECTION Proxy)
 {
-    PAGED_CODE();
-
     ASSERT(Proxy != NULL);
 
     switch (Proxy->connection_type)
@@ -6875,8 +6892,6 @@ IN ULONG ResponseDataBufferSize,
 IN ULONG *ResponseDataSize)
 {
     NTSTATUS status;
-
-    PAGED_CODE();
 
     ASSERT(Proxy != NULL);
 
@@ -7395,8 +7410,6 @@ IN PLARGE_INTEGER ByteOffset)
     ULONG_PTR max_transfer_size;
     ULONG length_done;
 
-    PAGED_CODE();
-
     ASSERT(Proxy != NULL);
     ASSERT(IoStatusBlock != NULL);
     ASSERT(Buffer != NULL);
@@ -7489,8 +7502,6 @@ IN PLARGE_INTEGER ByteOffset)
     NTSTATUS status;
     ULONG_PTR max_transfer_size;
     ULONG length_done;
-
-    PAGED_CODE();
 
     ASSERT(Proxy != NULL);
     ASSERT(IoStatusBlock != NULL);
