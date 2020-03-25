@@ -99,12 +99,14 @@
         ''' </summary>
         Modified = &H10000UI
 
+        '' &H20000UI is reserved. Corresponds to SharedImage flag in Arsenal Image Mounter.
+
         ''' <summary>
         ''' This flag causes the driver to open image files in shared write mode even
         ''' if the image Is opened for writing. This could be useful in some cases,
         ''' but could easily corrupt filesystems on image files if used incorrectly.
         ''' </summary>
-        SharedImage = &H20000UI
+        SharedImage = &H40000UI
 
     End Enum
 

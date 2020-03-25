@@ -1,0 +1,58 @@
+
+LIBRARY imdisk.cpl
+
+EXPORTS
+
+
+
+	ImDiskFlushWindowMessages=_ImDiskFlushWindowMessages@4
+	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
+	ImDiskSetAPIFlags=_ImDiskSetAPIFlags@8
+	ImDiskGetPartitionTypeName=_ImDiskGetPartitionTypeName@12
+	ImDiskGetOffsetByFileExt=_ImDiskGetOffsetByFileExt@8
+	ImDiskGetPartitionInformation=_ImDiskGetPartitionInformation@16
+	ImDiskGetPartitionInformationEx=_ImDiskGetPartitionInformationEx@20
+	ImDiskGetSinglePartitionInformation=_ImDiskGetSinglePartitionInformation@20
+	ImDiskReadFileHandle=_ImDiskReadFileHandle@24
+	ImDiskGetPartitionInfoIndirect=_ImDiskGetPartitionInfoIndirect@20
+	ImDiskGetPartitionInfoIndirectEx=_ImDiskGetPartitionInfoIndirectEx@24
+	ImDiskGetSinglePartitionInfoIndirect=_ImDiskGetSinglePartitionInfoIndirect@24
+	ImDiskImageContainsISOFS=_ImDiskImageContainsISOFS@8
+	ImDiskImageContainsISOFSIndirect=_ImDiskImageContainsISOFSIndirect@12
+	ImDiskStartService=_ImDiskStartService@4
+	ImDiskCreateMountPoint=_ImDiskCreateMountPoint@8
+	ImDiskRemoveMountPoint=_ImDiskRemoveMountPoint@4
+	ImDiskOpenDeviceByName=_ImDiskOpenDeviceByName@8
+	ImDiskOpenDeviceByNumber=_ImDiskOpenDeviceByNumber@8
+	ImDiskOpenDeviceByMountPoint=_ImDiskOpenDeviceByMountPoint@8
+	ImDiskCheckDriverVersion=_ImDiskCheckDriverVersion@4
+	ImDiskGetVersion=_ImDiskGetVersion@8
+	ImDiskFindFreeDriveLetter=_ImDiskFindFreeDriveLetter@0
+	ImDiskGetDeviceList=_ImDiskGetDeviceList@0
+	ImDiskGetDeviceListEx=_ImDiskGetDeviceListEx@8
+	ImDiskQueryDevice=_ImDiskQueryDevice@12
+	ImDiskCreateDevice=_ImDiskCreateDevice@28
+	ImDiskCreateDeviceEx=_ImDiskCreateDeviceEx@32
+	ImDiskForceRemoveDevice=_ImDiskForceRemoveDevice@8
+	ImDiskRemoveDevice=_ImDiskRemoveDevice@12
+	ImDiskChangeFlags=_ImDiskChangeFlags@20
+	ImDiskExtendDevice=_ImDiskExtendDevice@12
+	ImDiskSaveImageFile=_ImDiskSaveImageFile@16
+	ImDiskGetVolumeSize=_ImDiskGetVolumeSize@8
+	ImDiskGetFormattedGeometry=_ImDiskGetFormattedGeometry@12
+	ImDiskGetFormattedGeometryIndirect=_ImDiskGetFormattedGeometryIndirect@16
+	ImDiskBuildMBR=_ImDiskBuildMBR@20
+	ImDiskConvertCHSToLBA=_ImDiskConvertCHSToLBA@8
+	ImDiskConvertLBAToCHS=_ImDiskConvertLBAToCHS@8
+	ImDiskAdjustImageFileSize=_ImDiskAdjustImageFileSize@8
+	ImDiskNativePathToWin32=_ImDiskNativePathToWin32@4
+	ImDiskOpenRefreshEvent=_ImDiskOpenRefreshEvent@4
+	ImDiskSaveRegistrySettings=_ImDiskSaveRegistrySettings@4
+	ImDiskRemoveRegistrySettings=_ImDiskRemoveRegistrySettings@4
+	ImDiskGetRegistryAutoLoadDevices=_ImDiskGetRegistryAutoLoadDevices@4
+	ImDiskNotifyShellDriveLetter=_ImDiskNotifyShellDriveLetter@8
+	ImDiskNotifyRemovePending=_ImDiskNotifyRemovePending@8
+        ImDiskConsoleMessageA=_ImDiskConsoleMessageA@16
+        ImDiskConsoleMessageW=_ImDiskConsoleMessageW@16
+
+

@@ -287,7 +287,7 @@ public:
         return ptr = pBlk;
     }
 
-    (WHeapMem<T> &) operator =(WHeapMem<T> &o)
+    WHeapMem<T> & operator =(WHeapMem<T> &o)
     {
         Free();
         ptr = o.ptr;
@@ -336,6 +336,7 @@ public:
         else if (HeapFree(GetProcessHeap(), dwFlags, ptr))
             return ptr = NULL;
         else
+#pragma warning(suppress: 6001)
             return ptr;
     }
 

@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2015 Olof Lagerkvist.
+Copyright (C) 2005-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -141,7 +141,7 @@ ImDiskDeviceThreadRead(IN PIRP Irp,
             // if (Irp->IoStatus.Status == STATUS_CONNECTION_RESET)
             ImDiskRemoveVirtualDisk(DeviceObject);
 
-            Irp->IoStatus.Status = STATUS_DEVICE_REMOVED;
+            Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
             Irp->IoStatus.Information = 0;
         }
     }
@@ -250,7 +250,7 @@ ImDiskDeviceThreadWrite(IN PIRP Irp,
 
     ImDiskAcquireLock(&DeviceExtension->last_io_lock, &lock_handle);
 
-    if ((DeviceExtension->last_io_data != NULL) &
+    if ((DeviceExtension->last_io_data != NULL) &&
         (DeviceExtension->last_io_length <
             io_stack->Parameters.Write.Length))
     {
@@ -340,7 +340,7 @@ ImDiskDeviceThreadWrite(IN PIRP Irp,
             if (Irp->IoStatus.Status == STATUS_CONNECTION_RESET)
                 ImDiskRemoveVirtualDisk(DeviceObject);
 
-            Irp->IoStatus.Status = STATUS_DEVICE_REMOVED;
+            Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
             Irp->IoStatus.Information = 0;
         }
     }
@@ -566,7 +566,7 @@ ImDiskDeviceThreadDeviceControl(IN PIRP Irp,
             if (Irp->IoStatus.Status == STATUS_CONNECTION_RESET)
                 ImDiskRemoveVirtualDisk(DeviceObject);
 
-            Irp->IoStatus.Status = STATUS_DEVICE_REMOVED;
+            Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
             Irp->IoStatus.Information = 0;
             break;
         }
@@ -710,7 +710,7 @@ ImDiskDeviceThreadDeviceControl(IN PIRP Irp,
             if (status == STATUS_CONNECTION_RESET)
                 ImDiskRemoveVirtualDisk(DeviceObject);
 
-            Irp->IoStatus.Status = STATUS_DEVICE_REMOVED;
+            Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
             Irp->IoStatus.Information = 0;
             break;
         }
@@ -969,6 +969,9 @@ ImDiskDeviceThread(IN PVOID Context)
     KeSetPriorityThread(KeGetCurrentThread(), LOW_REALTIME_PRIORITY);
 
     device_thread_data = (PDEVICE_THREAD_DATA)Context;
+
+    KdPrint(("ImDisk: Worker thread %p created for device %u\n",
+        KeGetCurrentThread(), device_thread_data->create_data->DeviceNumber));
 
     system_drive_letter = !device_thread_data->caller_waiting;
 

@@ -422,3 +422,6 @@ KSTART_ROUTINE(IN PVOID StartContext);
 #ifndef _Dispatch_type_
 #define _Dispatch_type_ __drv_dispatchType
 #endif
+#ifndef _Inout_
+#define _Inout_
+#endif

@@ -2,7 +2,7 @@
 Control Panel Applet for the ImDisk Virtual Disk Driver for
 Windows NT/2000/XP.
 
-Copyright (C) 2007-2015 Olof Lagerkvist.
+Copyright (C) 2007-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -49,6 +49,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "imdisk.rc.h"
 #include "resource.h"
 
+#pragma comment(lib, "comdlg32.lib")
 #pragma comment(lib, "comctl32.lib")
 
 /// Macros for "human readable" file sizes.
@@ -77,7 +78,16 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma warning(disable: 28719)
 
+typedef struct IMDISK_FIND_OFFSET_AND_SIZE_DATA
+{
+    LARGE_INTEGER Offset;
+    LARGE_INTEGER Size;
+    LPCWSTR FileName;
+} *PIMDISK_FIND_OFFSET_AND_SIZE_DATA;
+
 extern "C" HINSTANCE hInstance = NULL;
+
+#ifndef CORE_BUILD
 
 // Define DEBUG if you want debug output.
 //#define DEBUG
@@ -882,6 +892,47 @@ IN BOOL IsCdRomType)
         ofn.lpstrFile);
 }
 
+BOOL
+CALLBACK
+GetPartitionInfoProc(LPVOID hWnd, PPARTITION_INFORMATION part_rec)
+{
+    WCHAR part_name[128];
+    ImDiskGetPartitionTypeName(part_rec->PartitionType,
+        part_name,
+        _countof(part_name));
+
+    WCHAR wcBuffer[128];
+
+    if (part_rec->PartitionLength.QuadPart != 0)
+    {
+        _snwprintf(wcBuffer, _countof(wcBuffer) - 1,
+            L"Partition %i - %.4g %s %s",
+            part_rec->PartitionNumber,
+            _h(part_rec->PartitionLength.QuadPart),
+            _p(part_rec->PartitionLength.QuadPart),
+            part_name);
+
+        wcBuffer[_countof(wcBuffer) - 1] = 0;
+
+        SendDlgItemMessage((HWND)hWnd, IDC_SELECT_PARTITION_LIST,
+            LB_ADDSTRING, 0, (LPARAM)wcBuffer);
+    }
+    else
+    {
+        _snwprintf(wcBuffer, _countof(wcBuffer) - 1,
+            L"Partition %i - %s",
+            part_rec->PartitionNumber,
+            part_name);
+
+        wcBuffer[_countof(wcBuffer) - 1] = 0;
+
+        SendDlgItemMessage((HWND)hWnd, IDC_SELECT_PARTITION_LIST,
+            LB_ADDSTRING, 0, (LPARAM)wcBuffer);
+    }
+
+    return TRUE;
+}
+
 INT_PTR
 CALLBACK
 SelectPartitionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -890,84 +941,43 @@ SelectPartitionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
     case WM_INITDIALOG:
     {
+        PIMDISK_FIND_OFFSET_AND_SIZE_DATA offset_and_size =
+            (PIMDISK_FIND_OFFSET_AND_SIZE_DATA)lParam;
+
+        SetProp(hWnd, L"offset_and_size", offset_and_size);
+
         SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
             LB_ADDSTRING, 0, (LPARAM)L"Use entire image file");
 
-        WCHAR wcBuffer[128];
-        bool has_extended_partition = false;
-
-        for (int i = 0; i < 4; i++)
+        if (!ImDiskGetPartitionInformationEx(offset_and_size->FileName, 0,
+            &offset_and_size->Offset, GetPartitionInfoProc, hWnd))
         {
-            PPARTITION_INFORMATION part_rec =
-                ((PPARTITION_INFORMATION)lParam) + i;
-
-            WCHAR part_name[128];
-            ImDiskGetPartitionTypeName(part_rec->PartitionType,
-                part_name,
-                _countof(part_name));
-
-            if (part_rec->PartitionLength.QuadPart != 0)
-            {
-                _snwprintf(wcBuffer, _countof(wcBuffer) - 1,
-                    L"Primary partition %i - %.4g %s %s",
-                    i + 1,
-                    _h(part_rec->PartitionLength.QuadPart),
-                    _p(part_rec->PartitionLength.QuadPart),
-                    part_name);
-                wcBuffer[_countof(wcBuffer) - 1] = 0;
-                SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
-                    LB_ADDSTRING, 0, (LPARAM)wcBuffer);
-            }
-            else
-            {
-                _snwprintf(wcBuffer, _countof(wcBuffer) - 1,
-                    L"Primary partition %i - %s",
-                    i + 1,
-                    part_name);
-                wcBuffer[_countof(wcBuffer) - 1] = 0;
-                SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
-                    LB_ADDSTRING, 0, (LPARAM)wcBuffer);
-            }
-
-            if (IsContainerPartition(part_rec->PartitionType))
-                has_extended_partition = true;
+            EndDialog(hWnd, LB_ERR);
+            return FALSE;
         }
 
-        if (has_extended_partition)
-            for (int i = 4; i < 8; i++)
+        INT item = (INT)SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+            LB_GETCOUNT, TRUE, 0);
+
+        if (item < 1)
+        {
+            EndDialog(hWnd, item);
+            return FALSE;
+        }
+
+        if (item == 1)
+        {
+            PARTITION_INFORMATION part_info;
+            if (ImDiskGetSinglePartitionInformation(offset_and_size->FileName, 0,
+                &offset_and_size->Offset, &part_info, item))
             {
-                PPARTITION_INFORMATION part_rec =
-                    ((PPARTITION_INFORMATION)lParam) + i;
-
-                WCHAR part_name[128];
-                ImDiskGetPartitionTypeName(part_rec->PartitionType,
-                    part_name,
-                    _countof(part_name));
-
-                if ((part_rec->StartingOffset.QuadPart != 0) &
-                    (part_rec->PartitionLength.QuadPart != 0))
-                {
-                    _snwprintf(wcBuffer, _countof(wcBuffer) - 1,
-                        L"Logical partition %i - %.4g %s %s",
-                        i - 3,
-                        _h(part_rec->PartitionLength.QuadPart),
-                        _p(part_rec->PartitionLength.QuadPart),
-                        part_name);
-                    wcBuffer[_countof(wcBuffer) - 1] = 0;
-                    SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
-                        LB_ADDSTRING, 0, (LPARAM)wcBuffer);
-                }
-                else
-                {
-                    _snwprintf(wcBuffer, _countof(wcBuffer) - 1,
-                        L"Logical partition %i - %s",
-                        i - 3,
-                        part_name);
-                    wcBuffer[_countof(wcBuffer) - 1] = 0;
-                    SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
-                        LB_ADDSTRING, 0, (LPARAM)wcBuffer);
-                }
+                offset_and_size->Offset = part_info.StartingOffset;
+                offset_and_size->Size = part_info.PartitionLength;
             }
+
+            EndDialog(hWnd, item);
+            return FALSE;
+        }
 
         SetFocus(GetDlgItem(hWnd, IDC_SELECT_PARTITION_LIST));
 
@@ -983,12 +993,32 @@ SelectPartitionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case IDCANCEL:
         case IDOK:
         {
-            EndDialog(hWnd, SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
-                LB_GETCURSEL, 0, 0));
+            INT item = (INT)SendDlgItemMessage(hWnd, IDC_SELECT_PARTITION_LIST,
+                LB_GETCURSEL, 0, 0);
+
+            if (item >= 1)
+            {
+                PIMDISK_FIND_OFFSET_AND_SIZE_DATA offset_and_size =
+                    (PIMDISK_FIND_OFFSET_AND_SIZE_DATA)GetProp(hWnd, L"offset_and_size");
+
+                PARTITION_INFORMATION part_info;
+                if (ImDiskGetSinglePartitionInformation(offset_and_size->FileName, 0,
+                    NULL, &part_info, item))
+                {
+                    offset_and_size->Offset = part_info.StartingOffset;
+                    offset_and_size->Size = part_info.PartitionLength;
+                }
+            }
+
+            EndDialog(hWnd, item);
             return TRUE;
         }
         }
 
+        return TRUE;
+
+    case WM_NCDESTROY:
+        RemoveProp(hWnd, L"offset_and_size");
         return TRUE;
 
     case WM_CLOSE:
@@ -1002,71 +1032,38 @@ SelectPartitionDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 void
 AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
 {
-    LARGE_INTEGER offset = { 0 };
-    ImDiskGetOffsetByFileExt(lpwszFileName, &offset);
+    IMDISK_FIND_OFFSET_AND_SIZE_DATA offset_and_size = { 0 };
+    offset_and_size.FileName = lpwszFileName;
 
-    LARGE_INTEGER size = { 0 };
-    PARTITION_INFORMATION partition_information[8] = { 0 };
-    int found_partitions = 0;
+    ImDiskGetOffsetByFileExt(lpwszFileName, &offset_and_size.Offset);
 
-    if (ImDiskGetPartitionInformation(lpwszFileName,
-        0,
-        &offset,
-        partition_information))
-        for (PPARTITION_INFORMATION part_rec = partition_information;
-            part_rec < partition_information + 8;
-            part_rec++)
-            if ((part_rec->PartitionLength.QuadPart != 0) &
-                !IsContainerPartition(part_rec->PartitionType))
-                ++found_partitions;
-
-    if (found_partitions > 1)
-    {
-        INT_PTR i = DialogBoxParam(hInstance,
-            MAKEINTRESOURCE(IDD_SELECT_PARTITION_DLG),
-            hWnd, SelectPartitionDlgProc,
-            (LPARAM)partition_information);
-        if ((i >= 1) & (i <= 8))
-        {
-            PPARTITION_INFORMATION part_rec = partition_information + i - 1;
-
-            if ((part_rec->StartingOffset.QuadPart != 0) &
-                (part_rec->PartitionLength.QuadPart != 0) &
-                !IsContainerPartition(part_rec->PartitionType))
-            {
-                offset.QuadPart += part_rec->StartingOffset.QuadPart;
-                size = part_rec->PartitionLength;
-            }
-        }
-    }
-    else if (found_partitions == 1)
-        for (PPARTITION_INFORMATION part_rec = partition_information;
-            part_rec < partition_information + 8;
-            part_rec++)
-            if ((part_rec->StartingOffset.QuadPart != 0) &
-                (part_rec->PartitionLength.QuadPart != 0) &
-                !IsContainerPartition(part_rec->PartitionType))
-            {
-                offset.QuadPart += part_rec->StartingOffset.QuadPart;
-                size = part_rec->PartitionLength;
-                break;
-            }
+    DialogBoxParam(hInstance,
+        MAKEINTRESOURCE(IDD_SELECT_PARTITION_DLG),
+        hWnd, SelectPartitionDlgProc,
+        (LPARAM)&offset_and_size);
 
     CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_UNCHECKED);
     CheckDlgButton(hWnd, IDC_OFFSET_UNIT_BLOCKS, BST_UNCHECKED);
     CheckDlgButton(hWnd, IDC_OFFSET_UNIT_KB, BST_UNCHECKED);
     CheckDlgButton(hWnd, IDC_OFFSET_UNIT_MB, BST_UNCHECKED);
     CheckDlgButton(hWnd, IDC_OFFSET_UNIT_GB, BST_UNCHECKED);
-    offset.QuadPart >>= 9;
-    if ((offset.QuadPart > 0) & (offset.HighPart == 0))
+
+    if (offset_and_size.Offset.QuadPart > 0)
     {
-        SetDlgItemInt(hWnd, IDC_EDT_IMAGE_OFFSET, offset.LowPart, FALSE);
-        CheckDlgButton(hWnd, IDC_OFFSET_UNIT_BLOCKS, BST_CHECKED);
-    }
-    else
-    {
-        SetDlgItemText(hWnd, IDC_EDT_IMAGE_OFFSET, L"0");
-        CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_CHECKED);
+        offset_and_size.Offset.QuadPart >>= 9;
+        if ((offset_and_size.Offset.QuadPart > 0) &&
+            (offset_and_size.Offset.HighPart == 0))
+        {
+            SetDlgItemInt(hWnd, IDC_EDT_IMAGE_OFFSET,
+                offset_and_size.Offset.LowPart, FALSE);
+
+            CheckDlgButton(hWnd, IDC_OFFSET_UNIT_BLOCKS, BST_CHECKED);
+        }
+        else
+        {
+            SetDlgItemText(hWnd, IDC_EDT_IMAGE_OFFSET, L"0");
+            CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_CHECKED);
+        }
     }
 
     CheckDlgButton(hWnd, IDC_UNIT_B, BST_UNCHECKED);
@@ -1074,10 +1071,15 @@ AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
     CheckDlgButton(hWnd, IDC_UNIT_KB, BST_UNCHECKED);
     CheckDlgButton(hWnd, IDC_UNIT_MB, BST_UNCHECKED);
     CheckDlgButton(hWnd, IDC_UNIT_GB, BST_UNCHECKED);
-    size.QuadPart >>= 9;
-    if ((size.QuadPart > 0) & (size.HighPart == 0))
+
+    offset_and_size.Size.QuadPart >>= 9;
+    
+    if ((offset_and_size.Size.QuadPart > 0) &&
+        (offset_and_size.Size.HighPart == 0))
     {
-        SetDlgItemInt(hWnd, IDC_EDT_SIZE, size.LowPart, FALSE);
+        SetDlgItemInt(hWnd, IDC_EDT_SIZE,
+            offset_and_size.Size.LowPart, FALSE);
+
         CheckDlgButton(hWnd, IDC_UNIT_BLOCKS, BST_CHECKED);
     }
     else
@@ -1682,7 +1684,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         handles[0] = hExitEvent;
         handles[1] = hWnd;
 
-        UINT dwThreadId;
+        UINT dwThreadId = 0;
         HANDLE hRefreshThread = (HANDLE)
             _beginthreadex(NULL, 0, ImDiskCPlRefreshThread, handles, 0,
             &dwThreadId);
@@ -2122,7 +2124,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
                 L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
                 L"\r\n"
-                L"Copyright (C) 2004-2015 Olof Lagerkvist.\r\n"
+                L"Copyright (C) 2004-2018 Olof Lagerkvist.\r\n"
                 L"http://www.ltr-data.se     olof@ltr-data.se\r\n"
                 L"\r\n"
                 L"Permission is hereby granted, free of charge, to any person\r\n"
@@ -2398,3 +2400,5 @@ DllMain(HINSTANCE hinstDLL, DWORD, LPVOID)
     hInstance = hinstDLL;
     return TRUE;
 }
+
+#endif

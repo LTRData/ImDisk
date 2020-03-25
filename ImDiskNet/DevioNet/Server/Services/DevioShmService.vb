@@ -14,12 +14,12 @@ Namespace Server.Services
         ''' <summary>
         ''' Object name of shared memory file mapping object created by this instance.
         ''' </summary>
-        Public ReadOnly ObjectName As String
+        Public ReadOnly Property ObjectName As String
 
         ''' <summary>
         ''' Buffer size used by this instance.
         ''' </summary>
-        Public ReadOnly BufferSize As Long
+        Public ReadOnly Property BufferSize As Long
 
         ''' <summary>
         ''' Buffer size that will be automatically selected on this platform when
@@ -54,8 +54,8 @@ Namespace Server.Services
         Public Sub New(ObjectName As String, DevioProvider As IDevioProvider, OwnsProvider As Boolean, BufferSize As Long)
             MyBase.New(DevioProvider, OwnsProvider)
 
-            Me.ObjectName = ObjectName
-            Me.BufferSize = BufferSize
+            _ObjectName = ObjectName
+            _BufferSize = BufferSize
 
         End Sub
 
@@ -115,15 +115,15 @@ Namespace Server.Services
                 Dim ServerMutex As Mutex
 
                 Try
-                    Trace.WriteLine("Creating objects for shared memory communication '" & ObjectName & "'.")
+                    Trace.WriteLine("Creating objects for shared memory communication '" & _ObjectName & "'.")
 
-                    RequestEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & ObjectName & "_Request")
+                    RequestEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & _ObjectName & "_Request")
                     DisposableObjects.Add(RequestEvent)
 
-                    ResponseEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & ObjectName & "_Response")
+                    ResponseEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & _ObjectName & "_Response")
                     DisposableObjects.Add(ResponseEvent)
 
-                    ServerMutex = New Mutex(initiallyOwned:=False, name:="Global\" & ObjectName & "_Server")
+                    ServerMutex = New Mutex(initiallyOwned:=False, name:="Global\" & _ObjectName & "_Server")
                     DisposableObjects.Add(ServerMutex)
 
                     If ServerMutex.WaitOne(0) = False Then
@@ -132,8 +132,8 @@ Namespace Server.Services
                         Return
                     End If
 
-                    Mapping = MemoryMappedFile.CreateNew("Global\" & ObjectName,
-                                                         BufferSize,
+                    Mapping = MemoryMappedFile.CreateNew("Global\" & _ObjectName,
+                                                         _BufferSize,
                                                          MemoryMappedFileAccess.ReadWrite,
                                                          MemoryMappedFileOptions.None,
                                                          Nothing,
@@ -255,7 +255,7 @@ Namespace Server.Services
             Static largest_request As Integer
             If ReadLength > largest_request Then
                 largest_request = ReadLength
-                Trace.WriteLine("Largest requested read size is now: " & largest_request & " bytes")
+                'Trace.WriteLine("Largest requested read size is now: " & largest_request & " bytes")
             End If
 
             Dim Response As IMDPROXY_READ_RESP
@@ -290,7 +290,7 @@ Namespace Server.Services
             Static largest_request As Integer
             If Length > largest_request Then
                 largest_request = Length
-                Trace.WriteLine("Largest requested write size is now: " & largest_request & " bytes")
+                'Trace.WriteLine("Largest requested write size is now: " & largest_request & " bytes")
             End If
 
             Dim Response As IMDPROXY_WRITE_RESP
@@ -317,7 +317,7 @@ Namespace Server.Services
 
         Protected Overrides ReadOnly Property ImDiskProxyObjectName As String
             Get
-                Return ObjectName
+                Return _ObjectName
             End Get
         End Property
 
@@ -345,16 +345,16 @@ Namespace Server.Services
                 If Not Me.disposedValue Then
                     If disposing Then
                         ' TODO: free managed resources when explicitly called
+                        For Each obj In Me
+                            obj.Dispose()
+                        Next
                     End If
                 End If
                 Me.disposedValue = True
 
                 ' TODO: free shared unmanaged resources
-                For Each obj In Me
-                    obj.Dispose()
-                Next
-
                 Clear()
+
             End Sub
 
             ' This code added by Visual Basic to correctly implement the disposable pattern.

@@ -36,28 +36,28 @@ Module ServerModule
         Dim ShowHelp As Boolean = False
 
         For Each arg In args
-            If arg.StartsWith("/name=", StringComparison.InvariantCultureIgnoreCase) Then
+            If arg.StartsWith("/name=", StringComparison.OrdinalIgnoreCase) Then
                 ObjectName = arg.Substring("/name=".Length)
-            ElseIf arg.StartsWith("/ipaddress=", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/ipaddress=", StringComparison.OrdinalIgnoreCase) Then
                 ListenAddress = IPAddress.Parse(arg.Substring("/ipaddress=".Length))
-            ElseIf arg.StartsWith("/port=", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/port=", StringComparison.OrdinalIgnoreCase) Then
                 ListenPort = Integer.Parse(arg.Substring("/port=".Length))
-            ElseIf arg.StartsWith("/buffersize=", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/buffersize=", StringComparison.OrdinalIgnoreCase) Then
                 BufferSize = Long.Parse(arg.Substring("/buffersize=".Length))
-            ElseIf arg.StartsWith("/partition=", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/partition=", StringComparison.OrdinalIgnoreCase) Then
                 PartitionNumber = Integer.Parse(arg.Substring("/partition=".Length))
-            ElseIf arg.StartsWith("/filename=", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/filename=", StringComparison.OrdinalIgnoreCase) Then
                 DeviceName = arg.Substring("/filename=".Length)
-            ElseIf arg.Equals("/readonly", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.Equals("/readonly", StringComparison.OrdinalIgnoreCase) Then
                 DiskAccess = FileAccess.Read
-            ElseIf arg.Equals("/mount", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.Equals("/mount", StringComparison.OrdinalIgnoreCase) Then
                 Mount = True
-            ElseIf arg.Equals("/trace", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.Equals("/trace", StringComparison.OrdinalIgnoreCase) Then
                 Trace.Listeners.Add(New ConsoleTraceListener)
-            ElseIf arg.StartsWith("/mount=", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg.StartsWith("/mount=", StringComparison.OrdinalIgnoreCase) Then
                 Mount = True
                 MountPoint = arg.Substring("/mount=".Length)
-            ElseIf arg = "/?" OrElse arg.Equals("/help", StringComparison.InvariantCultureIgnoreCase) Then
+            ElseIf arg = "/?" OrElse arg.Equals("/help", StringComparison.OrdinalIgnoreCase) Then
                 ShowHelp = True
                 Exit For
             Else
@@ -189,6 +189,15 @@ Module ServerModule
         End If
 
         If Mount Then
+            If "#:".Equals(MountPoint, StringComparison.Ordinal) Then
+                Dim drive_letter = ImDiskAPI.FindFreeDriveLetter()
+                If drive_letter = Nothing Then
+                    Console.Error.WriteLine("No drive letter available")
+                    Return
+                End If
+                MountPoint = {drive_letter, ":"c}
+                Console.WriteLine("Selected " & MountPoint & " as drive letter mount point")
+            End If
             Console.WriteLine("Opening image file and mounting as virtual disk...")
             Service.StartServiceThreadAndMountImDisk(ImDiskFlags.Auto, MountPoint)
             Console.WriteLine("Virtual disk created. Press Ctrl+C to remove virtual disk and exit.")
@@ -200,13 +209,28 @@ Module ServerModule
 
         AddHandler Console.CancelKeyPress,
             Sub(sender, e)
-                Console.WriteLine("Stopping service...")
-                Service.Dispose()
+                ThreadPool.QueueUserWorkItem(
+                Sub()
+
+                    If Not Monitor.TryEnter(break_lock) Then
+                        Return
+                    End If
+
+                    Try
+                        Console.WriteLine("Stopping service...")
+                        Service.Dispose()
+
+                    Finally
+                        Monitor.Exit(break_lock)
+
+                    End Try
+                End Sub)
 
                 Try
                     e.Cancel = True
                 Catch
                 End Try
+
             End Sub
 
         Service.WaitForServiceThreadExit()
@@ -214,5 +238,7 @@ Module ServerModule
         Console.WriteLine("Service stopped.")
 
     End Sub
+
+    Private ReadOnly break_lock As New Object
 
 End Module

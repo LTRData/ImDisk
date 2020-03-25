@@ -148,14 +148,19 @@ Namespace ImDisk
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
         ''' <param name="Offset">Offset in image file where master boot record is located.</param>
-        ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+        ''' <returns>An array of PARTITION_INFORMATION structures</returns>
         Public Shared Function GetPartitionInformation(ImageFile As String, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
-            Dim PartitionInformation(0 To 7) As NativeFileIO.Win32API.PARTITION_INFORMATION
+            Dim PartitionInformation As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
-            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInformation(ImageFile, SectorSize, Offset, PartitionInformation))
+            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInformationEx(ImageFile, SectorSize, Offset,
+                                                                      Function(data, ByRef info)
+                                                                          PartitionInformation.Add(info)
+                                                                          Return True
+                                                                      End Function,
+                                                                      Nothing))
 
-            Return Array.AsReadOnly(PartitionInformation)
+            Return PartitionInformation.AsReadOnly()
 
         End Function
 
@@ -166,16 +171,21 @@ Namespace ImDisk
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
         ''' <param name="Offset">Offset in image file where master boot record is located.</param>
-        ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+        ''' <returns>An array of PARTITION_INFORMATION structures</returns>
         Public Shared Function GetPartitionInformation(ImageFile As Stream, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
             Dim StreamReader = GetStreamReaderFunction(ImageFile)
 
-            Dim PartitionInformation(0 To 7) As NativeFileIO.Win32API.PARTITION_INFORMATION
+            Dim PartitionInformation As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
-            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirect(Nothing, StreamReader, SectorSize, Offset, PartitionInformation))
+            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirectEx(Nothing, StreamReader, SectorSize, Offset,
+                Function(data, ByRef info)
+                    PartitionInformation.Add(info)
+                    Return True
+                End Function,
+                Nothing))
 
-            Return Array.AsReadOnly(PartitionInformation)
+            Return PartitionInformation.AsReadOnly()
 
         End Function
 
@@ -187,14 +197,19 @@ Namespace ImDisk
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
         ''' <param name="Offset">Offset in image file where master boot record is located.</param>
-        ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+        ''' <returns>An array of PARTITION_INFORMATION structures</returns>
         Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileManagedProc, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
-            Dim PartitionInformation(0 To 7) As NativeFileIO.Win32API.PARTITION_INFORMATION
+            Dim PartitionInformation As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
-            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirect(Handle, ReadFileProc, SectorSize, Offset, PartitionInformation))
+            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirectEx(Handle, ReadFileProc, SectorSize, Offset,
+                                                                       Function(data, ByRef info)
+                                                                           PartitionInformation.Add(info)
+                                                                           Return True
+                                                                       End Function,
+                                                                       Nothing))
 
-            Return Array.AsReadOnly(PartitionInformation)
+            Return PartitionInformation.AsReadOnly()
 
         End Function
 
@@ -205,7 +220,7 @@ Namespace ImDisk
         ''' <param name="ReadFileProc">Reference to method that reads disk image.</param>
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
-        ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+        ''' <returns>An array of PARTITION_INFORMATION structures</returns>
         Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileManagedProc, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
             Return GetPartitionInformation(Handle, ReadFileProc, SectorSize, 0)
@@ -220,14 +235,19 @@ Namespace ImDisk
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
         ''' <param name="Offset">Offset in image file where master boot record is located.</param>
-        ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+        ''' <returns>An array of PARTITION_INFORMATION structures</returns>
         Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileUnmanagedProc, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
-            Dim PartitionInformation(0 To 7) As NativeFileIO.Win32API.PARTITION_INFORMATION
+            Dim PartitionInformation As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
-            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirect(Handle, ReadFileProc, SectorSize, Offset, PartitionInformation))
+            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirectEx(Handle, ReadFileProc, SectorSize, Offset,
+                                                                       Function(data, ByRef info)
+                                                                           PartitionInformation.Add(info)
+                                                                           Return True
+                                                                       End Function,
+                                                                       Nothing))
 
-            Return Array.AsReadOnly(PartitionInformation)
+            Return PartitionInformation.AsReadOnly()
 
         End Function
 
@@ -238,7 +258,7 @@ Namespace ImDisk
         ''' <param name="ReadFileProc">Reference to method that reads disk image.</param>
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
-        ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+        ''' <returns>An array of PARTITION_INFORMATION structures</returns>
         Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileUnmanagedProc, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
             Return GetPartitionInformation(Handle, ReadFileProc, SectorSize, 0)
@@ -251,7 +271,7 @@ Namespace ImDisk
         ''' <param name="ImageFile">Name of image file to examine</param>
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
-        ''' <returns>An array of eight PARTITION_INFORMATION structures</returns>
+        ''' <returns>An array of PARTITION_INFORMATION structures</returns>
         Public Shared Function GetPartitionInformation(ImageFile As String, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
 
             Return GetPartitionInformation(ImageFile, SectorSize, 0)

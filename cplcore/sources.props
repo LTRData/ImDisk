@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <TARGETNAME Condition="'$(OVERRIDE_TARGETNAME)'!='true'">imdisk</TARGETNAME>
+    <TARGETEXT Condition="'$(OVERRIDE_TARGETEXT)'!='true'">cpl</TARGETEXT>
+    <TARGETPATH Condition="'$(OVERRIDE_TARGETPATH)'!='true'">.</TARGETPATH>
+    <TARGETTYPE Condition="'$(OVERRIDE_TARGETTYPE)'!='true'">DYNLINK</TARGETTYPE>
+    <C_DEFINES Condition="'$(OVERRIDE_C_DEFINES)'!='true'">$(C_DEFINES) /DUNICODE /D_UNICODE</C_DEFINES>
+    <UMTYPE Condition="'$(OVERRIDE_UMTYPE)'!='true'">windows</UMTYPE>
+    <USE_MSVCRT Condition="'$(OVERRIDE_USE_MSVCRT)'!='true'">1</USE_MSVCRT>
+    <MSC_OPTIMIZATION Condition="'$(OVERRIDE_MSC_OPTIMIZATION)'!='true'">/Ox /GF</MSC_OPTIMIZATION>
+    <MSC_WARNING_LEVEL Condition="'$(OVERRIDE_MSC_WARNING_LEVEL)'!='true'">/W4 /WX /wd4201</MSC_WARNING_LEVEL>
+    <SOURCES Condition="'$(OVERRIDE_SOURCES)'!='true'">drvio.c mbr.c dummy.c</SOURCES>
+    <DLLDEF Condition="'$(OVERRIDE_DLLDEF)'!='true'">$(O)\imdisk.def</DLLDEF>
+  </PropertyGroup>
+  <Choose>
+    <When Condition="'$(_BUILDARCH)'=='x86'">
+      <PropertyGroup>
+        <BUFFER_OVERFLOW_CHECKS Condition="'$(OVERRIDE_BUFFER_OVERFLOW_CHECKS)'!='true'">0</BUFFER_OVERFLOW_CHECKS>
+        <DLLENTRY Condition="'$(OVERRIDE_DLLENTRY)'!='true'">DllMain@12 /subsystem:windows,4.00</DLLENTRY>
+        <_NT_TARGET_VERSION Condition="'$(OVERRIDE__NT_TARGET_VERSION)'!='true'">0x500</_NT_TARGET_VERSION>
+        <LINKER_FLAGS Condition="'$(OVERRIDE_LINKER_FLAGS)'!='true'">/osversion:4.00 /LARGEADDRESSAWARE</LINKER_FLAGS>
+        <TARGETLIBS Condition="'$(OVERRIDE_TARGETLIBS)'!='true'">crthlp.lib             $(SDK_LIB_PATH)\kernel32.lib             $(SDK_LIB_PATH)\advapi32.lib             $(SDK_LIB_PATH)\user32.lib             $(SDK_LIB_PATH)\shell32.lib             $(SDK_LIB_PATH)\ntdll.lib</TARGETLIBS>
+      </PropertyGroup>
+    </When>
+    <Otherwise>
+      <PropertyGroup>
+        <TARGETLIBS Condition="'$(OVERRIDE_TARGETLIBS)'!='true'">$(SDK_LIB_PATH)\kernel32.lib             $(SDK_LIB_PATH)\advapi32.lib             $(SDK_LIB_PATH)\user32.lib             $(SDK_LIB_PATH)\shell32.lib             $(SDK_LIB_PATH)\ntdll.lib</TARGETLIBS>
+      </PropertyGroup>
+    </Otherwise>
+  </Choose>
+</Project>

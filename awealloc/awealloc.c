@@ -1,7 +1,7 @@
 /*
 AWE Allocation Driver for Windows 2000/XP and later.
 
-Copyright (C) 2005-2015 Olof Lagerkvist.
+Copyright (C) 2005-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -99,8 +99,6 @@ typedef struct _PAGE_CONTEXT
 
 typedef struct _OBJECT_CONTEXT
 {
-    LONGLONG TotalSize;
-
     LONGLONG VirtualSize;
 
     PBLOCK_DESCRIPTOR FirstBlock;
@@ -413,7 +411,7 @@ IN OUT PKIRQL LowestAssumedIrql)
             if (Context->ActiveWriters <= 0)
             {
                 DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
-                DbgBreakPoint();
+                KdBreakPoint();
                 status = STATUS_DRIVER_INTERNAL_ERROR;
             }
             else
@@ -436,7 +434,7 @@ IN OUT PKIRQL LowestAssumedIrql)
             if (Context->ActiveReaders <= 0)
             {
                 DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
-                DbgBreakPoint();
+                KdBreakPoint();
                 status = STATUS_DRIVER_INTERNAL_ERROR;
             }
             else
@@ -463,7 +461,7 @@ IN OUT PKIRQL LowestAssumedIrql)
         if (Context->ActiveWriters < 0)
         {
             DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
-            DbgBreakPoint();
+            KdBreakPoint();
         }
     }
     if (ForReadOperation)
@@ -472,7 +470,7 @@ IN OUT PKIRQL LowestAssumedIrql)
         if (Context->ActiveReaders < 0)
         {
             DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
-            DbgBreakPoint();
+            KdBreakPoint();
         }
     }
     AWEAllocReleaseLock(&lock_handle, LowestAssumedIrql);
@@ -549,15 +547,15 @@ IN OUT PKIRQL LowestAssumedIrql)
 
     // Find block that contains this page
     for (block = Context->FirstBlock;
-        block != NULL;
-        block = block->NextBlock)
-        if (block->Offset <= page_base)
-            break;
+        block != NULL &&
+        block->Offset > page_base;
+        block = block->NextBlock);
 
     if (block == NULL)
     {
         DbgPrint("AWEAlloc: MapPage: Cannot find block for BaseAddress=%#I64x.\n",
             page_base);
+        KdBreakPoint();
 
         return STATUS_DRIVER_INTERNAL_ERROR;
     }
@@ -571,6 +569,7 @@ IN OUT PKIRQL LowestAssumedIrql)
     {
         DbgPrint("AWEAlloc: MapPage: Bad sized block BaseAddress=%#I64x.\n",
             page_base);
+        KdBreakPoint();
 
         return STATUS_DRIVER_INTERNAL_ERROR;
     }
@@ -581,6 +580,7 @@ IN OUT PKIRQL LowestAssumedIrql)
     if (CurrentPageContext->Mdl == NULL)
     {
         DbgPrint("AWEAlloc: IoAllocateMdl() FAILED.\n");
+        KdBreakPoint();
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -602,6 +602,7 @@ IN OUT PKIRQL LowestAssumedIrql)
     if (CurrentPageContext->Ptr == NULL)
     {
         DbgPrint("AWEAlloc: MmGetSystemAddressForMdlSafe() FAILED.\n");
+        KdBreakPoint();
 
         AWEAllocLogError(AWEAllocDriverObject,
             0,
@@ -808,6 +809,7 @@ IN PIRP Irp)
     if (system_buffer == NULL)
     {
         DbgPrint("AWEAlloc: Failed mapping system buffer.\n");
+        KdBreakPoint();
 
         Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
         Irp->IoStatus.Information = 0;
@@ -1071,6 +1073,19 @@ IN PWCHAR Message)
     IoWriteErrorLogEntry(error_log_packet);
 }
 
+LONGLONG
+FORCEINLINE
+AWEAllocGetTotalSize(IN POBJECT_CONTEXT Context)
+{
+    if (Context == NULL || Context->FirstBlock == NULL)
+    {
+        return 0;
+    }
+
+    return Context->FirstBlock->Offset +
+        AWEAllocGetPageBaseFromAbsOffset(MmGetMdlByteCount(Context->FirstBlock->Mdl));
+}
+
 BOOLEAN
 AWEAllocAddBlock(IN POBJECT_CONTEXT Context,
 IN PBLOCK_DESCRIPTOR Block)
@@ -1092,10 +1107,9 @@ IN PBLOCK_DESCRIPTOR Block)
         return FALSE;
     }
 
-    Block->Offset = Context->TotalSize;
+    Block->Offset = AWEAllocGetTotalSize(Context);
     Block->NextBlock = Context->FirstBlock;
     Context->FirstBlock = Block;
-    Context->TotalSize += block_size;
     return TRUE;
 }
 
@@ -1104,11 +1118,41 @@ AWEAllocSetSize(IN POBJECT_CONTEXT Context,
 IN OUT PIO_STATUS_BLOCK IoStatus,
 IN PLARGE_INTEGER EndOfFile)
 {
-    KdPrint(("AWEAlloc: Setting size to %u MB.\n",
-        (ULONG)(EndOfFile->QuadPart >> 20)));
+    KdPrint(("AWEAlloc: Setting size to %u KB.\n",
+        (ULONG)(EndOfFile->QuadPart >> 10)));
 
-    if (EndOfFile->QuadPart == 0)
+    if (AWEAllocGetTotalSize(Context) >= EndOfFile->QuadPart)
     {
+        if (AWEAllocGetTotalSize(Context) - EndOfFile->QuadPart >= ALLOC_PAGE_SIZE)
+        {
+            if (Context->LatestPageContext.Mdl != NULL)
+            {
+                IoFreeMdl(Context->LatestPageContext.Mdl);
+                Context->LatestPageContext.Mdl = NULL;
+            }
+
+            KdPrint(("AWEAlloc: Reducing size from 0x%I64X to 0x%I64X\n",
+                AWEAllocGetTotalSize(Context), EndOfFile->QuadPart));
+
+            while (Context->FirstBlock != NULL &&
+                Context->FirstBlock->Offset >= EndOfFile->QuadPart)
+            {
+                PBLOCK_DESCRIPTOR free_block = Context->FirstBlock;
+
+                Context->FirstBlock = free_block->NextBlock;
+
+                KdPrint(("AWEAlloc: Freeing block=%p mdl=%p.\n",
+                    free_block, free_block->Mdl));
+
+                if (free_block->Mdl != NULL)
+                {
+                    MmFreePagesFromMdl(free_block->Mdl);
+                    ExFreePool(free_block->Mdl);
+                }
+                ExFreePoolWithTag(free_block, POOL_TAG);
+            }
+        }
+
         Context->VirtualSize = EndOfFile->QuadPart;
         IoStatus->Status = STATUS_SUCCESS;
         IoStatus->Information = 0;
@@ -1120,7 +1164,7 @@ IN PLARGE_INTEGER EndOfFile)
         PBLOCK_DESCRIPTOR block;
         SIZE_T bytes_to_allocate;
 
-        if (Context->TotalSize >= EndOfFile->QuadPart)
+        if (AWEAllocGetTotalSize(Context) >= EndOfFile->QuadPart)
         {
             Context->VirtualSize = EndOfFile->QuadPart;
             IoStatus->Status = STATUS_SUCCESS;
@@ -1140,7 +1184,7 @@ IN PLARGE_INTEGER EndOfFile)
 
         RtlZeroMemory(block, sizeof(BLOCK_DESCRIPTOR));
 
-        if ((EndOfFile->QuadPart - Context->TotalSize) > MAX_BLOCK_SIZE)
+        if ((EndOfFile->QuadPart - AWEAllocGetTotalSize(Context)) > MAX_BLOCK_SIZE)
         {
             bytes_to_allocate = MAX_BLOCK_SIZE;
         }
@@ -1148,7 +1192,7 @@ IN PLARGE_INTEGER EndOfFile)
         {
             bytes_to_allocate = (SIZE_T)
                 AWEAllocGetRequiredPagesForSize(EndOfFile->QuadPart -
-                Context->TotalSize);
+                    AWEAllocGetTotalSize(Context));
         }
 
         KdPrint(("AWEAlloc: Allocating %u MB.\n",
@@ -1352,7 +1396,7 @@ IN PIRP Irp)
             return STATUS_SUCCESS;
         }
 
-        network_open_info->AllocationSize.QuadPart = context->TotalSize;
+        network_open_info->AllocationSize.QuadPart = AWEAllocGetTotalSize(context);
         network_open_info->EndOfFile.QuadPart = context->VirtualSize;
 
         Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -1375,7 +1419,7 @@ IN PIRP Irp)
             return STATUS_INVALID_PARAMETER;
         }
 
-        standard_info->AllocationSize.QuadPart = context->TotalSize;
+        standard_info->AllocationSize.QuadPart = AWEAllocGetTotalSize(context);
         standard_info->EndOfFile.QuadPart = context->VirtualSize;
         standard_info->DeletePending = TRUE;
 
@@ -1534,7 +1578,8 @@ IN BOOLEAN OwnsReadLock)
         FileName,
         OBJ_CASE_INSENSITIVE |
         OBJ_FORCE_ACCESS_CHECK |
-        OBJ_OPENIF,
+        OBJ_OPENIF |
+        OBJ_KERNEL_HANDLE,
         NULL,
         NULL);
 
@@ -1728,26 +1773,9 @@ IN PIRP Irp)
 
     if (context != NULL)
     {
-        PBLOCK_DESCRIPTOR block = context->FirstBlock;
+        LARGE_INTEGER zero = { 0 };
 
-        KdPrint2(("AWEAlloc: Freeing context data. First block=%p\n", block));
-
-        if (context->LatestPageContext.Mdl != NULL)
-            IoFreeMdl(context->LatestPageContext.Mdl);
-
-        while (block != NULL)
-        {
-            PBLOCK_DESCRIPTOR next_block = block->NextBlock;
-
-            KdPrint2(("AWEAlloc: Freeing block=%p mdl=%p.\n",
-                block, block->Mdl));
-
-            MmFreePagesFromMdl(block->Mdl);
-            ExFreePool(block->Mdl);
-            ExFreePoolWithTag(block, POOL_TAG);
-
-            block = next_block;
-        }
+        AWEAllocSetSize(context, &Irp->IoStatus, &zero);
 
         ExFreePoolWithTag(context, POOL_TAG);
     }

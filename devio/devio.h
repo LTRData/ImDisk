@@ -1,3 +1,5 @@
+#define DEVIO_VERSION "3.05"
+
 typedef safeio_ssize_t (__cdecl *dllread_proc)(void *handle,
 					       void *buf,
 					       safeio_size_t size,

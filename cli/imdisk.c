@@ -2,7 +2,7 @@
 
 Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-Copyright (C) 2004-2015 Olof Lagerkvist.
+Copyright (C) 2004-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -39,6 +39,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "..\inc\imdisk.h"
 #include "..\inc\imdproxy.h"
 
+#pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "ntdll.lib")
 
 enum
@@ -89,260 +90,260 @@ void __declspec(noreturn)
 ImDiskSyntaxHelp()
 {
     int rc = fputs
-        ("Control program for the ImDisk Virtual Disk Driver.\r\n"
-        "For copyrights and credits, type imdisk --version\r\n"
+        ("Control program for the ImDisk Virtual Disk Driver.\n"
+        "For copyrights and credits, type imdisk --version\n"
         "\n"
-        "Syntax:\r\n"
-        "imdisk -a -t type -m mountpoint [-n] [-o opt1[,opt2 ...]] [-f|-F file]\r\n"
-        "       [-s size] [-b offset] [-v partition] [-S sectorsize] [-u unit]\r\n"
-        "       [-x sectors/track] [-y tracks/cylinder] [-p \"format-parameters\"] [-P]\r\n"
-        "imdisk -d|-D [-u unit | -m mountpoint] [-P]\r\n"
-        "imdisk -R -u unit\r\n"
-        "imdisk -l [-u unit | -m mountpoint]\r\n"
-        "imdisk -e [-s size] [-o opt1[,opt2 ...]] [-u unit | -m mountpoint]\r\n"
+        "Syntax:\n"
+        "imdisk -a -t type -m mountpoint [-n] [-o opt1[,opt2 ...]] [-f|-F file]\n"
+        "       [-s size] [-b offset] [-v partition] [-S sectorsize] [-u unit]\n"
+        "       [-x sectors/track] [-y tracks/cylinder] [-p \"format-parameters\"] [-P]\n"
+        "imdisk -d|-D [-u unit | -m mountpoint] [-P]\n"
+        "imdisk -R -u unit\n"
+        "imdisk -l [-u unit | -m mountpoint]\n"
+        "imdisk -e [-s size] [-o opt1[,opt2 ...]] [-u unit | -m mountpoint]\n"
         "\n"
-        "-a      Attach a virtual disk. This will configure and attach a virtual disk\r\n"
-        "        with the parameters specified and attach it to the system.\r\n"
+        "-a      Attach a virtual disk. This will configure and attach a virtual disk\n"
+        "        with the parameters specified and attach it to the system.\n"
         "\n"
-        "-d      Detach a virtual disk from the system and release all resources.\r\n"
-        "        Use -D to force removal even if the device is in use.\r\n"
+        "-d      Detach a virtual disk from the system and release all resources.\n"
+        "        Use -D to force removal even if the device is in use.\n"
         "\n"
-        "-R      Emergency removal of hung virtual disks. Should only be used as a last\r\n"
-        "        resort when a virtual disk has some kind of problem that makes it\r\n"
-        "        impossible to detach it in a safe way. This could happen for example\r\n"
-        "        for proxy-type virtual disks sometimes when proxy communication fails.\r\n"
-        "        Note that this does not attempt to dismount filesystem or lock the\r\n"
-        "        volume in any way so there is a potential risk of data loss. Use with\r\n"
-        "        caution!\r\n"
+        "-R      Emergency removal of hung virtual disks. Should only be used as a last\n"
+        "        resort when a virtual disk has some kind of problem that makes it\n"
+        "        impossible to detach it in a safe way. This could happen for example\n"
+        "        for proxy-type virtual disks sometimes when proxy communication fails.\n"
+        "        Note that this does not attempt to dismount filesystem or lock the\n"
+        "        volume in any way so there is a potential risk of data loss. Use with\n"
+        "        caution!\n"
         "\n"
-        "-e      Edit an existing virtual disk.\r\n"
+        "-e      Edit an existing virtual disk.\n"
         "\n"
-        "        Along with the -s parameter extends the size of an existing virtual\r\n"
-        "        disk. Note that even if the disk can be extended successfully, the\r\n"
-        "        existing filesystem on it can only be extended to fill the new size\r\n"
-        "        without re-formatting if you are running Windows 2000 or later and the\r\n"
-        "        current filesystem is NTFS.\r\n"
+        "        Along with the -s parameter extends the size of an existing virtual\n"
+        "        disk. Note that even if the disk can be extended successfully, the\n"
+        "        existing filesystem on it can only be extended to fill the new size\n"
+        "        without re-formatting if you are running Windows 2000 or later and the\n"
+        "        current filesystem is NTFS.\n"
         "\n"
-        "        Along with the -o parameter changes media characteristics for an\r\n"
-        "        existing virtual disk. Options that can be changed on existing virtual\r\n"
-        "        disks are those specifying wether or not the media of the virtual disk\r\n"
-        "        should be writable and/or removable.\r\n"
+        "        Along with the -o parameter changes media characteristics for an\n"
+        "        existing virtual disk. Options that can be changed on existing virtual\n"
+        "        disks are those specifying wether or not the media of the virtual disk\n"
+        "        should be writable and/or removable.\n"
         "\n"
-        "-t type\r\n"
-        "        Select the backingstore for the virtual disk.\r\n"
+        "-t type\n"
+        "        Select the backingstore for the virtual disk.\n"
         "\n"
-        "vm      Storage for this type of virtual disk is allocated from virtual memory\r\n"
-        "        in the system process. If a file is specified with -f that file is\r\n"
-        "        is loaded into the memory allocated for the disk image.\r\n"
+        "vm      Storage for this type of virtual disk is allocated from virtual memory\n"
+        "        in the system process. If a file is specified with -f that file is\n"
+        "        is loaded into the memory allocated for the disk image.\n"
         "\n"
-        "file    A file specified with -f file becomes the backingstore for this\r\n"
-        "        virtual disk.\r\n"
+        "file    A file specified with -f file becomes the backingstore for this\n"
+        "        virtual disk.\n"
         "\n"
-        "proxy   The actual backingstore for this type of virtual disk is controlled by\r\n"
-        "        an ImDisk storage server accessed by the driver on this machine by\r\n"
-        "        sending storage I/O request through a named pipe specified with -f.\r\n"
+        "proxy   The actual backingstore for this type of virtual disk is controlled by\n"
+        "        an ImDisk storage server accessed by the driver on this machine by\n"
+        "        sending storage I/O request through a named pipe specified with -f.\n"
         "\n"
-        "-f file or -F file\r\n"
-        "        Filename to use as backingstore for the file type virtual disk, to\r\n"
-        "        initialize a vm type virtual disk or name of a named pipe for I/O\r\n"
-        "        client/server communication for proxy type virtual disks. For proxy\r\n"
-        "        type virtual disks \"file\" may be a COM port or a remote server\r\n"
-        "        address if the -o options includes \"ip\" or \"comm\".\r\n"
+        "-f file or -F file\n"
+        "        Filename to use as backingstore for the file type virtual disk, to\n"
+        "        initialize a vm type virtual disk or name of a named pipe for I/O\n"
+        "        client/server communication for proxy type virtual disks. For proxy\n"
+        "        type virtual disks \"file\" may be a COM port or a remote server\n"
+        "        address if the -o options includes \"ip\" or \"comm\".\n"
         "\n"
-        "        Instead of using -f to specify 'DOS-style' paths, such as\r\n"
-        "        C:\\dir\\image.bin or \\\\server\\share\\image.bin, you can use -F to\r\n"
-        "        specify 'NT-style' native paths, such as\r\n"
-        "        \\Device\\Harddisk0\\Partition1\\image.bin. This makes it possible to\r\n"
-        "        specify files on disks or communication devices that currently have no\r\n"
-        "        drive letters assigned.\r\n"
+        "        Instead of using -f to specify 'DOS-style' paths, such as\n"
+        "        C:\\dir\\image.bin or \\\\server\\share\\image.bin, you can use -F to\n"
+        "        specify 'NT-style' native paths, such as\n"
+        "        \\Device\\Harddisk0\\Partition1\\image.bin. This makes it possible to\n"
+        "        specify files on disks or communication devices that currently have no\n"
+        "        drive letters assigned.\n"
         "\n"
-        "-l      List configured devices. If given with -u or -m, display details about\r\n"
-        "        that particular device.\r\n"
+        "-l      List configured devices. If given with -u or -m, display details about\n"
+        "        that particular device.\n"
         "\n"
-        "-n      When printing ImDisk device names, print only the unit number without\r\n"
-        "        the \\Device\\ImDisk prefix.\r\n"
+        "-n      When printing ImDisk device names, print only the unit number without\n"
+        "        the \\Device\\ImDisk prefix.\n"
         "\n"
-        "-s size\r\n"
-        "        Size of the virtual disk. Size is number of bytes unless suffixed with\r\n"
-        "        a b, k, m, g, t, K, M, G or T which denotes number of 512-byte blocks,\r\n"
-        "        thousand bytes, million bytes, billion bytes, trillion bytes,\r\n"
-        "        kilobytes, megabytes, gigabytes and terabytes respectively. The suffix\r\n"
-        "        can also be % to indicate percentage of free physical memory which\r\n"
-        "        could be useful when creating vm type virtual disks. It is optional to\r\n"
-        "        specify a size unless the file to use for a file type virtual disk does\r\n"
-        "        not already exist or when a vm type virtual disk is created without\r\n"
-        "        specifying an initialization image file using the -f or -F. If size is\r\n"
-        "        specified when creating a file type virtual disk, the size of the file\r\n"
-        "        used as backingstore for the virtual disk is adjusted to the new size\r\n"
-        "        specified with this size option.\r\n"
+        "-s size\n"
+        "        Size of the virtual disk. Size is number of bytes unless suffixed with\n"
+        "        a b, k, m, g, t, K, M, G or T which denotes number of 512-byte blocks,\n"
+        "        thousand bytes, million bytes, billion bytes, trillion bytes,\n"
+        "        kilobytes, megabytes, gigabytes and terabytes respectively. The suffix\n"
+        "        can also be % to indicate percentage of free physical memory which\n"
+        "        could be useful when creating vm type virtual disks. It is optional to\n"
+        "        specify a size unless the file to use for a file type virtual disk does\n"
+        "        not already exist or when a vm type virtual disk is created without\n"
+        "        specifying an initialization image file using the -f or -F. If size is\n"
+        "        specified when creating a file type virtual disk, the size of the file\n"
+        "        used as backingstore for the virtual disk is adjusted to the new size\n"
+        "        specified with this size option.\n"
         "\n"
-        "        The size can be a negative value to indicate the size of free physical\r\n"
-        "        memory minus this size. If you e.g. type -400M the size of the virtual\r\n"
-        "        disk will be the amount of free physical memory minus 400 MB.\r\n"
+        "        The size can be a negative value to indicate the size of free physical\n"
+        "        memory minus this size. If you e.g. type -400M the size of the virtual\n"
+        "        disk will be the amount of free physical memory minus 400 MB.\n"
         "\n"
-        "-b offset\r\n"
-        "        Specifies an offset in an image file where the virtual disk begins. All\r\n"
-        "        offsets of I/O operations on the virtual disk will be relative to this\r\n"
-        "        offset. This parameter is particularily useful when mounting a specific\r\n"
-        "        partition in an image file that contains an image of a complete hard\r\n"
-        "        disk, not just one partition. This parameter has no effect when\r\n"
-        "        creating a blank vm type virtual disk. When creating a vm type virtual\r\n"
-        "        disk with a pre-load image file specified with -f or -F parameters, the\r\n"
-        "        -b parameter specifies an offset in the image file where the image to\r\n"
-        "        be loaded into the vm type virtual disk begins.\r\n"
+        "-b offset\n"
+        "        Specifies an offset in an image file where the virtual disk begins. All\n"
+        "        offsets of I/O operations on the virtual disk will be relative to this\n"
+        "        offset. This parameter is particularily useful when mounting a specific\n"
+        "        partition in an image file that contains an image of a complete hard\n"
+        "        disk, not just one partition. This parameter has no effect when\n"
+        "        creating a blank vm type virtual disk. When creating a vm type virtual\n"
+        "        disk with a pre-load image file specified with -f or -F parameters, the\n"
+        "        -b parameter specifies an offset in the image file where the image to\n"
+        "        be loaded into the vm type virtual disk begins.\n"
         "\n"
-        "        Specify auto as offset to automatically select offset for a few known\r\n"
-        "        non-raw disk image file formats. Currently auto-selection is supported\r\n"
-        "        for Nero .nrg and Microsoft .sdi image files.\r\n"
+        "        Specify auto as offset to automatically select offset for a few known\n"
+        "        non-raw disk image file formats. Currently auto-selection is supported\n"
+        "        for Nero .nrg and Microsoft .sdi image files.\n"
         "\n"
-        "-v partition\r\n"
-        "        Specifies which partition to mount when mounting a raw hard disk image\r\n"
-        "        file containing a master boot record and partitions.\r\n"
+        "-v partition\n"
+        "        Specifies which partition to mount when mounting a raw hard disk image\n"
+        "        file containing a master boot record and partitions.\n"
         "\n"
-        "        Specify number 1-4 to mount a partition from the primary partition\r\n"
-        "        table and 5-8 to mount a partition from an extended partition table.\r\n"
+        "        Specify number 1-4 to mount a partition from the primary partition\n"
+        "        table and 5-8 to mount a partition from an extended partition table.\n"
         "\n"
-        "-S sectorsize\r\n"
-        "        Sectorsize to use for the virtual disk device. Default value is 512\r\n"
-        "        bytes except for CD-ROM/DVD-ROM style devices where 2048 bytes is used\r\n"
-        "        by default.\r\n"
+        "-S sectorsize\n"
+        "        Sectorsize to use for the virtual disk device. Default value is 512\n"
+        "        bytes except for CD-ROM/DVD-ROM style devices where 2048 bytes is used\n"
+        "        by default.\n"
         "\n"
-        "-x sectors/track\r\n"
-        "        See the description of the -y option below.\r\n"
+        "-x sectors/track\n"
+        "        See the description of the -y option below.\n"
         "\n"
-        "-y tracks/cylinder\r\n"
-        "        The -x and -y options can be used to specify a synthetic geometry.\r\n"
-        "        This is useful for constructing bootable images for later download to\r\n"
-        "        physical devices. Default values depend on the device-type specified\r\n"
-        "        with the -o option. If the 'fd' option is specified the default values\r\n"
-        "        are based on the virtual disk size, e.g. a 1440K image gets 2\r\n"
-        "        tracks/cylinder and 18 sectors/track.\r\n"
+        "-y tracks/cylinder\n"
+        "        The -x and -y options can be used to specify a synthetic geometry.\n"
+        "        This is useful for constructing bootable images for later download to\n"
+        "        physical devices. Default values depend on the device-type specified\n"
+        "        with the -o option. If the 'fd' option is specified the default values\n"
+        "        are based on the virtual disk size, e.g. a 1440K image gets 2\n"
+        "        tracks/cylinder and 18 sectors/track.\n"
         "\n"
-        "-p \"format-parameters\"\r\n"
-        "        If -p is specified the 'format' command is invoked to create a\r\n"
-        "        filesystem when the new virtual disk has been created.\r\n"
-        "        \"format-parameters\" must be a parameter string enclosed within\r\n"
-        "        double-quotes. The string is added to the command line that starts\r\n"
-        "        'format'. You usually specify something like \"/fs:ntfs /q /y\", that\r\n"
-        "        is, create an NTFS filesystem with quick formatting and without user\r\n"
-        "        interaction.\r\n"
+        "-p \"format-parameters\"\n"
+        "        If -p is specified the 'format' command is invoked to create a\n"
+        "        filesystem when the new virtual disk has been created.\n"
+        "        \"format-parameters\" must be a parameter string enclosed within\n"
+        "        double-quotes. The string is added to the command line that starts\n"
+        "        'format'. You usually specify something like \"/fs:ntfs /q /y\", that\n"
+        "        is, create an NTFS filesystem with quick formatting and without user\n"
+        "        interaction.\n"
         "\n"
-        "-o option\r\n"
-        "        Set or reset options.\r\n"
+        "-o option\n"
+        "        Set or reset options.\n"
         "\n"
-        "ro      Creates a read-only virtual disk. For vm type virtual disks, this\r\n"
-        "        option can only be used if the -f option is also specified.\r\n"
+        "ro      Creates a read-only virtual disk. For vm type virtual disks, this\n"
+        "        option can only be used if the -f option is also specified.\n"
         "\n"
-        "rw      Specifies that the virtual disk should be read/writable. This is the\r\n"
-        "        default setting. It can be used with the -e parameter to set an\r\n"
-        "        existing read-only virtual disk writable.\r\n"
+        "rw      Specifies that the virtual disk should be read/writable. This is the\n"
+        "        default setting. It can be used with the -e parameter to set an\n"
+        "        existing read-only virtual disk writable.\n"
         "\n"
-        "sparse  Sets NTFS sparse attribute on image file. This has no effect on proxy\r\n"
-        "        or vm type virtual disks.\r\n"
+        "sparse  Sets NTFS sparse attribute on image file. This has no effect on proxy\n"
+        "        or vm type virtual disks.\n"
         "\n"
-        "rem     Specifies that the device should be created with removable media\r\n"
-        "        characteristics. This changes the device properties returned by the\r\n"
-        "        driver to the system. For example, this changes how some filesystems\r\n"
-        "        cache write operations.\r\n"
+        "rem     Specifies that the device should be created with removable media\n"
+        "        characteristics. This changes the device properties returned by the\n"
+        "        driver to the system. For example, this changes how some filesystems\n"
+        "        cache write operations.\n"
         "\n"
-        "fix     Specifies that the media characteristics of the virtual disk should be\r\n"
-        "        fixed media, as opposed to removable media specified with the rem\r\n"
-        "        option. Fixed media is the default setting. The fix option can be used\r\n"
-        "        with the -e parameter to set an existing removable virtual disk as\r\n"
-        "        fixed.\r\n"
+        "fix     Specifies that the media characteristics of the virtual disk should be\n"
+        "        fixed media, as opposed to removable media specified with the rem\n"
+        "        option. Fixed media is the default setting. The fix option can be used\n"
+        "        with the -e parameter to set an existing removable virtual disk as\n"
+        "        fixed.\n"
         "\n"
-        "saved   Clears the 'image modified' flag from an existing virtual disk. This\r\n"
-        "        flag is set by the driver when an image is modified and is displayed\r\n"
-        "        in the -l output for a virtual disk. The 'saved' option is only valid\r\n"
-        "        with the -e parameter.\r\n"
+        "saved   Clears the 'image modified' flag from an existing virtual disk. This\n"
+        "        flag is set by the driver when an image is modified and is displayed\n"
+        "        in the -l output for a virtual disk. The 'saved' option is only valid\n"
+        "        with the -e parameter.\n"
         "\n"
-        "        Note that virtual floppy or CD/DVD-ROM drives are always read-only and\r\n"
-        "        removable devices and that cannot be changed.\r\n"
+        "        Note that virtual floppy or CD/DVD-ROM drives are always read-only and\n"
+        "        removable devices and that cannot be changed.\n"
         "\n"
-        "cd      Creates a virtual CD-ROM/DVD-ROM. This is the default if the file\r\n"
-        "        name specified with the -f option ends with either .iso, .nrg or .bin\r\n"
-        "        extensions.\r\n"
+        "cd      Creates a virtual CD-ROM/DVD-ROM. This is the default if the file\n"
+        "        name specified with the -f option ends with either .iso, .nrg or .bin\n"
+        "        extensions.\n"
         "\n"
-        "fd      Creates a virtual floppy disk. This is the default if the size of the\r\n"
-        "        virtual disk is any of 160K, 180K, 320K, 360K, 640K, 720K, 820K, 1200K,\r\n"
-        "        1440K, 1680K, 1722K, 2880K, 123264K or 234752K.\r\n"
+        "fd      Creates a virtual floppy disk. This is the default if the size of the\n"
+        "        virtual disk is any of 160K, 180K, 320K, 360K, 640K, 720K, 820K, 1200K,\n"
+        "        1440K, 1680K, 1722K, 2880K, 123264K or 234752K.\n"
         "\n"
-        "hd      Creates a virtual fixed disk partition. This is the default unless\r\n"
-        "        file extension or size match the criterias for defaulting to the cd or\r\n"
-        "        fd options.\r\n"
+        "hd      Creates a virtual fixed disk partition. This is the default unless\n"
+        "        file extension or size match the criterias for defaulting to the cd or\n"
+        "        fd options.\n"
         "\n"
         "raw     Creates a device object with \"unknown\" device type. The system will not\n"
         "        attempt to do anything by its own with such devices, but it could be\n"
         "        useful in combination with third-party drivers that can provide further\n"
         "        device objects using this virtual disk device as a backing store.\n"
         "\n"
-        "ip      Can only be used with proxy-type virtual disks. With this option, the\r\n"
-        "        user-mode service component is initialized to connect to an ImDisk\r\n"
-        "        storage server using TCP/IP. With this option, the -f switch specifies\r\n"
-        "        the remote host optionally followed by a colon and a port number to\r\n"
-        "        connect to.\r\n"
+        "ip      Can only be used with proxy-type virtual disks. With this option, the\n"
+        "        user-mode service component is initialized to connect to an ImDisk\n"
+        "        storage server using TCP/IP. With this option, the -f switch specifies\n"
+        "        the remote host optionally followed by a colon and a port number to\n"
+        "        connect to.\n"
         "\n"
-        "comm    Can only be used with proxy-type virtual disks. With this option, the\r\n"
-        "        user-mode service component is initialized to connect to an ImDisk\r\n"
-        "        storage server through a COM port. With this option, the -f switch\r\n"
-        "        specifies the COM port to connect to, optionally followed by a colon,\r\n"
-        "        a space, and then a device settings string with the same syntax as the\r\n"
-        "        MODE command.\r\n"
+        "comm    Can only be used with proxy-type virtual disks. With this option, the\n"
+        "        user-mode service component is initialized to connect to an ImDisk\n"
+        "        storage server through a COM port. With this option, the -f switch\n"
+        "        specifies the COM port to connect to, optionally followed by a colon,\n"
+        "        a space, and then a device settings string with the same syntax as the\n"
+        "        MODE command.\n"
         "\n"
-        "shm     Can only be used with proxy-type virtual disks. With this option, the\r\n"
-        "        driver communicates with a storage server on the same computer using\r\n"
-        "        shared memory block to transfer I/O data.\r\n"
+        "shm     Can only be used with proxy-type virtual disks. With this option, the\n"
+        "        driver communicates with a storage server on the same computer using\n"
+        "        shared memory block to transfer I/O data.\n"
         "\n"
-        "awe     Can only be used with file-type virtual disks. With this option, the\r\n"
-        "        driver copies contents of image file to physical memory. No changes are\r\n"
-        "        written to image file. If this option is used in combination with  no\r\n"
-        "        image file name, a physical memory block will be used without loading\r\n"
-        "        an image file onto it. In that case, -s parameter is needed to specify\r\n"
-        "        size of memory block. This option requires awealloc driver, which\r\n"
-        "        requires Windows 2000 or later.\r\n"
+        "awe     Can only be used with file-type virtual disks. With this option, the\n"
+        "        driver copies contents of image file to physical memory. No changes are\n"
+        "        written to image file. If this option is used in combination with  no\n"
+        "        image file name, a physical memory block will be used without loading\n"
+        "        an image file onto it. In that case, -s parameter is needed to specify\n"
+        "        size of memory block. This option requires awealloc driver, which\n"
+        "        requires Windows 2000 or later.\n"
         "\n"
-        "bswap   Instructs driver to swap each pair of bytes read from or written to\r\n"
-        "        image file. Useful when examining images from some embedded systems\r\n"
-        "        and similar where data is stored in reverse byte order.\r\n"
+        "bswap   Instructs driver to swap each pair of bytes read from or written to\n"
+        "        image file. Useful when examining images from some embedded systems\n"
+        "        and similar where data is stored in reverse byte order.\n"
         "\n"
-        "shared  Instructs driver to open image file in shared write mode even when\r\n"
-        "        image is opened for writing. This can be useful to mount each partition\r\n"
-        "        of a multi-partition image as separate virtual disks with different\r\n"
-        "        image file offsets and sizes. It could potentially corrupt filesystems\r\n"
-        "        if used with incorrect offset and size parameters so use with caution!\r\n"
+        "shared  Instructs driver to open image file in shared write mode even when\n"
+        "        image is opened for writing. This can be useful to mount each partition\n"
+        "        of a multi-partition image as separate virtual disks with different\n"
+        "        image file offsets and sizes. It could potentially corrupt filesystems\n"
+        "        if used with incorrect offset and size parameters so use with caution!\n"
         "\n"
-        "par     Parallel I/O. Valid for file-type virtual disks. With this flag set,\r\n"
-        "        driver sends read and write requests for the virtual disk directly down\r\n"
-        "        to the filesystem driver that handles the image file, within the same\r\n"
-        "        thread context as the original request was made. In some scenarios this\r\n"
-        "        flag can increase performance, particularly when you use several layers\r\n"
-        "        of virtual disks backed by image files stored on other virtual disks,\r\n"
-        "        network file shares or similar storage.\r\n"
+        "par     Parallel I/O. Valid for file-type virtual disks. With this flag set,\n"
+        "        driver sends read and write requests for the virtual disk directly down\n"
+        "        to the filesystem driver that handles the image file, within the same\n"
+        "        thread context as the original request was made. In some scenarios this\n"
+        "        flag can increase performance, particularly when you use several layers\n"
+        "        of virtual disks backed by image files stored on other virtual disks,\n"
+        "        network file shares or similar storage.\n"
         "\n"
-        "        This flag is not supported in all scenarios depending on other drivers\r\n"
-        "        that need to complete requests to the image file. It could also degrade\r\n"
-        "        performance or cause reads and writes to fail if underlying drivers\r\n"
-        "        cannot handle I/O requests simultaneously.\r\n"
+        "        This flag is not supported in all scenarios depending on other drivers\n"
+        "        that need to complete requests to the image file. It could also degrade\n"
+        "        performance or cause reads and writes to fail if underlying drivers\n"
+        "        cannot handle I/O requests simultaneously.\n"
         "\n"
-        "-u unit\r\n"
-        "        Along with -a, request a specific unit number for the ImDisk device\r\n"
-        "        instead of automatic allocation. Along with -d or -l specifies the\r\n"
-        "        unit number of the virtual disk to remove or query.\r\n"
+        "-u unit\n"
+        "        Along with -a, request a specific unit number for the ImDisk device\n"
+        "        instead of automatic allocation. Along with -d or -l specifies the\n"
+        "        unit number of the virtual disk to remove or query.\n"
         "\n"
-        "-m mountpoint\r\n"
-        "        Specifies a drive letter or mount point for the new virtual disk, the\r\n"
-        "        virtual disk to query or the virtual disk to remove. When creating a\r\n"
-        "        new virtual disk you can specify #: as mountpoint in which case the\r\n"
-        "        first unused drive letter is automatically used.\r\n"
+        "-m mountpoint\n"
+        "        Specifies a drive letter or mount point for the new virtual disk, the\n"
+        "        virtual disk to query or the virtual disk to remove. When creating a\n"
+        "        new virtual disk you can specify #: as mountpoint in which case the\n"
+        "        first unused drive letter is automatically used.\n"
         "\n"
-        "-P      Persistent. Along with -a, saves registry settings for re-creating the\r\n"
-        "        same virtual disk automatically when driver is loaded, which usually\r\n"
-        "        occurs during system startup. Along with -d or -D, existing such\r\n"
-        "        settings for the removed virtual disk are also removed from registry.\r\n"
-        "        There are some limitations to what settings could be saved in this way.\r\n"
-        "        Only features directly implemented in the kernel level driver are\r\n"
-        "        saved, so for example the -p switch to format a virtual disk will not\r\n"
-        "        be saved.\r\n",
+        "-P      Persistent. Along with -a, saves registry settings for re-creating the\n"
+        "        same virtual disk automatically when driver is loaded, which usually\n"
+        "        occurs during system startup. Along with -d or -D, existing such\n"
+        "        settings for the removed virtual disk are also removed from registry.\n"
+        "        There are some limitations to what settings could be saved in this way.\n"
+        "        Only features directly implemented in the kernel level driver are\n"
+        "        saved, so for example the -p switch to format a virtual disk will not\n"
+        "        be saved.\n",
         stderr);
 
     if (rc > 0)
@@ -366,7 +367,9 @@ ImDiskOemPrintF(FILE *Stream, LPCSTR Message, ...)
         (LPSTR)&lpBuf, 0, &param_list))
         return FALSE;
 
+#ifndef _M_ARM
     CharToOemA(lpBuf, lpBuf);
+#endif
     fprintf(Stream, "%s\n", lpBuf);
     LocalFree(lpBuf);
     return TRUE;
@@ -424,7 +427,7 @@ ImDiskCliCheckDriverVersion(HANDLE Device)
     {
         case ERROR_INVALID_FUNCTION:
         case ERROR_NOT_SUPPORTED:
-            fputs("Error: Not an ImDisk device.\r\n", stderr);
+            fputs("Error: Not an ImDisk device.\n", stderr);
             return FALSE;
 
         default:
@@ -543,7 +546,7 @@ LPCWSTR FormatOptions)
     {
         fprintf
             (stderr,
-                "Format failed. No free drive letters available.\r\n");
+                "Format failed. No free drive letters available.\n");
 
         ReleaseMutex(hMutex);
         CloseHandle(hMutex);
@@ -660,17 +663,17 @@ BOOL SaveSettings)
         {
             case ERROR_SERVICE_DOES_NOT_EXIST:
                 fputs("The ImDisk Virtual Disk Driver is not installed. "
-                    "Please re-install ImDisk.\r\n", stderr);
+                    "Please re-install ImDisk.\n", stderr);
                 return IMDISK_CLI_ERROR_DRIVER_NOT_INSTALLED;
 
             case ERROR_PATH_NOT_FOUND:
             case ERROR_FILE_NOT_FOUND:
                 fputs("Cannot load imdisk.sys. "
-                    "Please re-install ImDisk.\r\n", stderr);
+                    "Please re-install ImDisk.\n", stderr);
                 return IMDISK_CLI_ERROR_DRIVER_NOT_INSTALLED;
 
             case ERROR_SERVICE_DISABLED:
-                fputs("The ImDisk Virtual Disk Driver is disabled.\r\n", stderr);
+                fputs("The ImDisk Virtual Disk Driver is disabled.\n", stderr);
                 return IMDISK_CLI_ERROR_DRIVER_NOT_INSTALLED;
 
             default:
@@ -694,13 +697,13 @@ BOOL SaveSettings)
         (IMDISK_FILE_TYPE(Flags) == IMDISK_FILE_TYPE_AWEALLOC))
     {
         HANDLE awealloc;
-        UNICODE_STRING file_name;
+        UNICODE_STRING awealloc_file_name;
 
-        RtlInitUnicodeString(&file_name, AWEALLOC_DEVICE_NAME);
+        RtlInitUnicodeString(&awealloc_file_name, AWEALLOC_DEVICE_NAME);
 
         for (;;)
         {
-            awealloc = ImDiskOpenDeviceByName(&file_name,
+            awealloc = ImDiskOpenDeviceByName(&awealloc_file_name,
                 GENERIC_READ | GENERIC_WRITE);
 
             if (awealloc != INVALID_HANDLE_VALUE)
@@ -721,18 +724,18 @@ BOOL SaveSettings)
             switch (GetLastError())
             {
             case ERROR_SERVICE_DOES_NOT_EXIST:
-                fputs("The AWEAlloc driver is not installed.\r\n"
-                    "Please re-install ImDisk.\r\n", stderr);
+                fputs("The AWEAlloc driver is not installed.\n"
+                    "Please re-install ImDisk.\n", stderr);
                 break;
 
             case ERROR_PATH_NOT_FOUND:
             case ERROR_FILE_NOT_FOUND:
-                fputs("Cannot load AWEAlloc driver.\r\n"
-                    "Please re-install ImDisk.\r\n", stderr);
+                fputs("Cannot load AWEAlloc driver.\n"
+                    "Please re-install ImDisk.\n", stderr);
                 break;
 
             case ERROR_SERVICE_DISABLED:
-                fputs("The AWEAlloc driver is disabled.\r\n", stderr);
+                fputs("The AWEAlloc driver is disabled.\n", stderr);
                 break;
 
             default:
@@ -767,20 +770,20 @@ BOOL SaveSettings)
                     {
                     case ERROR_SERVICE_DOES_NOT_EXIST:
                         fputs("The ImDisk Virtual Disk Driver Helper Service is not "
-                            "installed.\r\n"
-                            "Please re-install ImDisk.\r\n", stderr);
+                            "installed.\n"
+                            "Please re-install ImDisk.\n", stderr);
                         break;
 
                     case ERROR_PATH_NOT_FOUND:
                     case ERROR_FILE_NOT_FOUND:
                         fputs("Cannot start ImDisk Virtual Disk Driver Helper "
-                            "Service.\r\n"
-                            "Please re-install ImDisk.\r\n", stderr);
+                            "Service.\n"
+                            "Please re-install ImDisk.\n", stderr);
                         break;
 
                     case ERROR_SERVICE_DISABLED:
                         fputs("The ImDisk Virtual Disk Driver Helper Service is "
-                            "disabled.\r\n", stderr);
+                            "disabled.\n", stderr);
                         break;
 
                     default:
@@ -801,7 +804,7 @@ BOOL SaveSettings)
         if (!RtlCreateUnicodeString(&file_name, FileName))
         {
             CloseHandle(driver);
-            fputs("Memory allocation error.\r\n", stderr);
+            fputs("Memory allocation error.\n", stderr);
             return IMDISK_CLI_ERROR_FATAL;
         }
     }
@@ -827,7 +830,7 @@ BOOL SaveSettings)
         if (prefixed_name == NULL)
         {
             CloseHandle(driver);
-            fputs("Memory allocation error.\r\n", stderr);
+            fputs("Memory allocation error.\n", stderr);
             return IMDISK_CLI_ERROR_FATAL;
         }
 
@@ -837,7 +840,7 @@ BOOL SaveSettings)
         if (!RtlCreateUnicodeString(&file_name, prefixed_name))
         {
             CloseHandle(driver);
-            fputs("Memory allocation error.\r\n", stderr);
+            fputs("Memory allocation error.\n", stderr);
             return IMDISK_CLI_ERROR_FATAL;
         }
     }
@@ -846,7 +849,7 @@ BOOL SaveSettings)
         if (!RtlDosPathNameToNtPathName_U(FileName, &file_name, NULL, NULL))
         {
             CloseHandle(driver);
-            fputs("Memory allocation error.\r\n", stderr);
+            fputs("Memory allocation error.\n", stderr);
             return IMDISK_CLI_ERROR_FATAL;
         }
     }
@@ -918,22 +921,22 @@ BOOL SaveSettings)
 
                 case ERROR_INVALID_PARAMETER:
                     fputs("This version of Windows only supports drive letters "
-                        "as mount points.\r\n"
+                        "as mount points.\n"
                         "Windows 2000 or higher is required to support "
-                        "subdirectory mount points.\r\n",
+                        "subdirectory mount points.\n",
                         stderr);
                     break;
 
                 case ERROR_INVALID_FUNCTION:
                 case ERROR_NOT_A_REPARSE_POINT:
-                    fputs("Mount points are only supported on NTFS volumes.\r\n",
+                    fputs("Mount points are only supported on NTFS volumes.\n",
                         stderr);
                     break;
 
                 case ERROR_DIRECTORY:
                 case ERROR_DIR_NOT_EMPTY:
                     fputs("Mount points can only be created on empty "
-                        "directories.\r\n", stderr);
+                        "directories.\n", stderr);
                     break;
 
                 default:
@@ -941,7 +944,7 @@ BOOL SaveSettings)
                 }
 
                 fputs
-                    ("Warning: The device is created without a mount point.\r\n",
+                    ("Warning: The device is created without a mount point.\n",
                     stderr);
 
                 MountPoint[0] = 0;
@@ -1080,14 +1083,14 @@ BOOL RemoveSettings)
                 {
                 case ERROR_INVALID_PARAMETER:
                     fputs("This version of Windows only supports drive letters as "
-                        "mount points.\r\n"
+                        "mount points.\n"
                         "Windows 2000 or higher is required to support "
-                        "subdirectory mount points.\r\n",
+                        "subdirectory mount points.\n",
                         stderr);
                     return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
 
                 case ERROR_INVALID_FUNCTION:
-                    fputs("Mount points are only supported on NTFS volumes.\r\n",
+                    fputs("Mount points are only supported on NTFS volumes.\n",
                         stderr);
                     return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
 
@@ -1109,7 +1112,7 @@ BOOL RemoveSettings)
         {
             if (GetLastError() == ERROR_FILE_NOT_FOUND)
             {
-                fputs("No such device.\r\n", stderr);
+                fputs("No such device.\n", stderr);
                 return IMDISK_CLI_ERROR_DEVICE_NOT_FOUND;
             }
             else
@@ -1268,15 +1271,15 @@ BOOL RemoveSettings)
             {
             case ERROR_INVALID_PARAMETER:
                 fputs("This version of Windows only supports drive letters as "
-                    "mount points.\r\n"
+                    "mount points.\n"
                     "Windows 2000 or higher is required to support "
-                    "subdirectory mount points.\r\n",
+                    "subdirectory mount points.\n",
                     stderr);
                 break;
 
             case ERROR_INVALID_FUNCTION:
                 fputs("Mount points are only supported on empty directories "
-                    "on NTFS volumes.\r\n",
+                    "on NTFS volumes.\n",
                     stderr);
                 break;
 
@@ -1326,7 +1329,7 @@ ImDiskCliQueryStatusDriver(BOOL NumericPrint)
         switch (GetLastError())
         {
         case ERROR_FILE_NOT_FOUND:
-            fputs("The ImDisk Virtual Disk Driver is not loaded.\r\n", stderr);
+            fputs("The ImDisk Virtual Disk Driver is not loaded.\n", stderr);
             HeapFree(GetProcessHeap(), 0, device_list);
             return 0;
 
@@ -1420,15 +1423,15 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
             {
             case ERROR_INVALID_PARAMETER:
                 fputs("This version of Windows only supports drive letters as "
-                    "mount points.\r\n"
+                    "mount points.\n"
                     "Windows 2000 or higher is required to support "
-                    "subdirectory mount points.\r\n",
+                    "subdirectory mount points.\n",
                     stderr);
                 break;
 
             case ERROR_INVALID_FUNCTION:
                 fputs("Mount points are only supported on empty directories on "
-                    "NTFS volumes.\r\n",
+                    "NTFS volumes.\n",
                     stderr);
                 break;
 
@@ -1450,7 +1453,7 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
     if (device == INVALID_HANDLE_VALUE)
         if (GetLastError() == ERROR_FILE_NOT_FOUND)
         {
-            fputs("No such device.\r\n", stderr);
+            fputs("No such device.\n", stderr);
             return IMDISK_CLI_ERROR_DEVICE_NOT_FOUND;
         }
         else
@@ -1587,14 +1590,14 @@ DWORD FlagsToChange, DWORD Flags)
         {
             case ERROR_INVALID_PARAMETER:
                 fputs("This version of Windows only supports drive letters as "
-                    "mount points.\r\n"
+                    "mount points.\n"
                     "Windows 2000 or higher is required to support "
-                    "subdirectory mount points.\r\n",
+                    "subdirectory mount points.\n",
                     stderr);
                 return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
 
             case ERROR_INVALID_FUNCTION:
-                fputs("Mount points are only supported on NTFS volumes.\r\n",
+                fputs("Mount points are only supported on NTFS volumes.\n",
                     stderr);
                 return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
 
@@ -1614,7 +1617,7 @@ DWORD FlagsToChange, DWORD Flags)
     if (device == INVALID_HANDLE_VALUE)
         if (GetLastError() == ERROR_FILE_NOT_FOUND)
         {
-            fputs("No such device.\r\n", stderr);
+            fputs("No such device.\n", stderr);
             return IMDISK_CLI_ERROR_DEVICE_NOT_FOUND;
         }
         else
@@ -1731,14 +1734,14 @@ LARGE_INTEGER ExtendSize)
         {
             case ERROR_INVALID_PARAMETER:
                 fputs("This version of Windows only supports drive letters as "
-                    "mount points.\r\n"
+                    "mount points.\n"
                     "Windows 2000 or higher is required to support "
-                    "subdirectory mount points.\r\n",
+                    "subdirectory mount points.\n",
                     stderr);
                 return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
 
             case ERROR_INVALID_FUNCTION:
-                fputs("Mount points are only supported on NTFS volumes.\r\n",
+                fputs("Mount points are only supported on NTFS volumes.\n",
                     stderr);
                 return IMDISK_CLI_ERROR_BAD_MOUNT_POINT;
 
@@ -1758,7 +1761,7 @@ LARGE_INTEGER ExtendSize)
     if (device == INVALID_HANDLE_VALUE)
         if (GetLastError() == ERROR_FILE_NOT_FOUND)
         {
-            fputs("No such device.\r\n", stderr);
+            fputs("No such device.\n", stderr);
             return IMDISK_CLI_ERROR_DEVICE_NOT_FOUND;
         }
         else
@@ -1831,8 +1834,8 @@ LARGE_INTEGER ExtendSize)
         &dw, NULL))
     {
         PrintLastError(MountPoint);
-        puts("The disk size was extended successfully, but it was not possible to extend the\r\n"
-            "current filesystem on it. You will have to reformat the disk to use the full\r\n"
+        puts("The disk size was extended successfully, but it was not possible to extend the\n"
+            "current filesystem on it. You will have to reformat the disk to use the full\n"
             "disk size.");
     }
 
@@ -1883,42 +1886,42 @@ wmain(int argc, LPWSTR argv[])
                 ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\n"
                 "Version %i.%i.%i - (Compiled " __DATE__ ")\n"
                 "\n"
-                "Copyright (C) 2004-2015 Olof Lagerkvist.\r\n"
+                "Copyright (C) 2004-2018 Olof Lagerkvist.\n"
                 "\n"
-                "http://www.ltr-data.se     olof@ltr-data.se\r\n"
+                "http://www.ltr-data.se     olof@ltr-data.se\n"
                 "\n"
-                "Permission is hereby granted, free of charge, to any person\r\n"
-                "obtaining a copy of this software and associated documentation\r\n"
-                "files (the \"Software\"), to deal in the Software without\r\n"
-                "restriction, including without limitation the rights to use,\r\n"
-                "copy, modify, merge, publish, distribute, sublicense, and/or\r\n"
-                "sell copies of the Software, and to permit persons to whom the\r\n"
-                "Software is furnished to do so, subject to the following\r\n"
-                "conditions:\r\n"
-                "\r\n"
-                "The above copyright notice and this permission notice shall be\r\n"
-                "included in all copies or substantial portions of the Software.\r\n"
-                "\r\n"
-                "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\r\n"
-                "EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES\r\n"
-                "OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\r\n"
-                "NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT\r\n"
-                "HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\r\n"
-                "WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\r\n"
-                "FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\r\n"
-                "OTHER DEALINGS IN THE SOFTWARE.\r\n"
-                "\r\n"
-                "This program contains some GNU GPL licensed code:\r\n"
-                "- Parts related to floppy emulation based on VFD by Ken Kato.\r\n"
-                "  http://chitchat.at.infoseek.co.jp/vmware/vfd.html\r\n"
-                "Copyright (C) Free Software Foundation, Inc.\r\n"
-                "Read gpl.txt for the full GNU GPL license.\r\n"
-                "\r\n"
-                "This program may contain BSD licensed code:\r\n"
-                "- Some code ported to NT from the FreeBSD md driver by Olof Lagerkvist.\r\n"
-                "  http://www.ltr-data.se\r\n"
-                "Copyright (C) The FreeBSD Project.\r\n"
-                "Copyright (C) The Regents of the University of California.\r\n",
+                "Permission is hereby granted, free of charge, to any person\n"
+                "obtaining a copy of this software and associated documentation\n"
+                "files (the \"Software\"), to deal in the Software without\n"
+                "restriction, including without limitation the rights to use,\n"
+                "copy, modify, merge, publish, distribute, sublicense, and/or\n"
+                "sell copies of the Software, and to permit persons to whom the\n"
+                "Software is furnished to do so, subject to the following\n"
+                "conditions:\n"
+                "\n"
+                "The above copyright notice and this permission notice shall be\n"
+                "included in all copies or substantial portions of the Software.\n"
+                "\n"
+                "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\n"
+                "EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES\n"
+                "OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND\n"
+                "NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT\n"
+                "HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\n"
+                "WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\n"
+                "FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR\n"
+                "OTHER DEALINGS IN THE SOFTWARE.\n"
+                "\n"
+                "This program contains some GNU GPL licensed code:\n"
+                "- Parts related to floppy emulation based on VFD by Ken Kato.\n"
+                "  http://chitchat.at.infoseek.co.jp/vmware/vfd.html\n"
+                "Copyright (C) Free Software Foundation, Inc.\n"
+                "Read gpl.txt for the full GNU GPL license.\n"
+                "\n"
+                "This program may contain BSD licensed code:\n"
+                "- Some code ported to NT from the FreeBSD md driver by Olof Lagerkvist.\n"
+                "  http://www.ltr-data.se\n"
+                "Copyright (C) The FreeBSD Project.\n"
+                "Copyright (C) The Regents of the University of California.\n",
                 (IMDISK_VERSION & 0xFF00) >> 8,
                 (IMDISK_VERSION & 0xF0) >> 4,
                 IMDISK_VERSION & 0xF);
@@ -2164,7 +2167,7 @@ wmain(int argc, LPWSTR argv[])
                     WCHAR suffix = 0;
 
                     (void)swscanf(argv[1], L"%I64i%c",
-                        &disk_geometry.Cylinders, &suffix);
+                        &disk_geometry.Cylinders.QuadPart, &suffix);
 
                     switch (suffix)
                     {
@@ -2314,7 +2317,7 @@ wmain(int argc, LPWSTR argv[])
                     WCHAR suffix = 0;
 
                     (void)swscanf(argv[1], L"%I64u%c",
-                        &image_offset, &suffix);
+                        &image_offset.QuadPart, &suffix);
 
                     switch (suffix)
                     {
@@ -2394,7 +2397,7 @@ wmain(int argc, LPWSTR argv[])
                     (op_mode != OP_MODE_CREATE)))
                     ImDiskSyntaxHelp();
 
-                mount_point = CharUpper(argv[1]);
+                mount_point = _wcsupr(argv[1]);
 
                 argc--;
                 argv++;
@@ -2418,7 +2421,7 @@ wmain(int argc, LPWSTR argv[])
             mount_point[0] = ImDiskFindFreeDriveLetter();
             if (mount_point[0] == 0)
             {
-                fputs("All drive letters are in use.\r\n", stderr);
+                fputs("All drive letters are in use.\n", stderr);
                 return IMDISK_CLI_NO_FREE_DRIVE_LETTERS;
             }
         }
@@ -2431,52 +2434,41 @@ wmain(int argc, LPWSTR argv[])
 
         if (auto_find_partition_entry != 0)
         {
-            PARTITION_INFORMATION partition_information[8];
-            PPARTITION_INFORMATION part_rec =
-                partition_information +
-                auto_find_partition_entry - 1;
+            PARTITION_INFORMATION partition_information;
 
-            if (!ImDiskGetPartitionInformation(file_name,
+            if (!ImDiskGetSinglePartitionInformation(file_name,
                 disk_geometry.BytesPerSector,
                 &image_offset,
-                partition_information))
-            {
-                fputs("Error: Partition table not found.\r\n", stderr);
-                return IMDISK_CLI_ERROR_PARTITION_NOT_FOUND;
-            }
-
-            if (part_rec->PartitionLength.QuadPart == 0)
+                &partition_information, auto_find_partition_entry) ||
+                partition_information.PartitionLength.QuadPart == 0)
             {
                 fprintf(stderr,
                     "Error: Partition %i not defined.\n",
                     (int)auto_find_partition_entry);
+
                 return IMDISK_CLI_ERROR_PARTITION_NOT_FOUND;
             }
 
-            image_offset.QuadPart += part_rec->StartingOffset.QuadPart;
-            disk_geometry.Cylinders = part_rec->PartitionLength;
+            image_offset.QuadPart +=
+                partition_information.StartingOffset.QuadPart;
+
+            disk_geometry.Cylinders = partition_information.PartitionLength;
         }
         else if (auto_find_offset)
         {
-            PARTITION_INFORMATION partition_information[8];
-            if (ImDiskGetPartitionInformation(file_name,
+            PARTITION_INFORMATION partition_information;
+
+            if (ImDiskGetSinglePartitionInformation(file_name,
                 disk_geometry.BytesPerSector,
                 &image_offset,
-                partition_information))
+                &partition_information, 1) &&
+                partition_information.PartitionLength.QuadPart != 0)
             {
-                PPARTITION_INFORMATION part_rec;
-                for (part_rec = partition_information;
-                    part_rec < partition_information + 8;
-                    part_rec++)
-                    if ((part_rec->PartitionLength.QuadPart != 0) &
-                        !IsContainerPartition(part_rec->PartitionType))
-                    {
-                        image_offset.QuadPart +=
-                            part_rec->StartingOffset.QuadPart;
-                        disk_geometry.Cylinders = part_rec->PartitionLength;
-
-                        break;
-                    }
+                image_offset.QuadPart +=
+                    partition_information.StartingOffset.QuadPart;
+                
+                disk_geometry.Cylinders =
+                    partition_information.PartitionLength;
             }
         }
 
@@ -2510,8 +2502,8 @@ wmain(int argc, LPWSTR argv[])
     }
 
     case OP_MODE_REMOVE:
-        if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &
-            ((mount_point == NULL) |
+        if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &&
+            ((mount_point == NULL) ||
             emergency_remove))
             ImDiskSyntaxHelp();
 
@@ -2519,24 +2511,28 @@ wmain(int argc, LPWSTR argv[])
             emergency_remove, save_settings);
 
     case OP_MODE_QUERY:
-        if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &
+        if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &&
             (mount_point == NULL))
             return !ImDiskCliQueryStatusDriver(numeric_print);
 
         return ImDiskCliQueryStatusDevice(device_number, mount_point);
 
     case OP_MODE_EDIT:
-        if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &
+        if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &&
             (mount_point == NULL))
             ImDiskSyntaxHelp();
 
         if (flags_to_change != 0)
+        {
             ret = ImDiskCliChangeFlags(device_number, mount_point, flags_to_change,
-            flags);
+                flags);
+        }
 
         if (disk_geometry.Cylinders.QuadPart > 0)
+        {
             ret = ImDiskCliExtendDevice(device_number, mount_point,
-            disk_geometry.Cylinders);
+                disk_geometry.Cylinders);
+        }
 
         return ret;
     }
@@ -2546,7 +2542,7 @@ wmain(int argc, LPWSTR argv[])
 
 #pragma intrinsic(_InterlockedCompareExchange)
 
-#if !defined(_DEBUG) && !defined(DEBUG) && (defined(_WIN64) || _MSC_VER < 1600)
+#if !defined(_DEBUG) && !defined(DEBUG) && _MSC_PLATFORM_TOOLSET < 140
 
 // We have our own EXE entry to be less dependent on
 // specific MSVCRT code that may not be available in older Windows versions.
@@ -2561,10 +2557,12 @@ wmainCRTStartup()
 
     if (argv == NULL)
     {
+#ifndef _M_ARM
         MessageBoxA(NULL,
             "This program requires Windows NT/2000/XP.",
             "ImDisk Virtual Disk Driver",
             MB_ICONSTOP);
+#endif
 
         ExitProcess((UINT)-1);
     }

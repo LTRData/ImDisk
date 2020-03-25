@@ -27,6 +27,8 @@ Public Class NativeFileIO
         Public Const ERROR_FILE_NOT_FOUND As UInt32 = 2UI
         Public Const ERROR_PATH_NOT_FOUND As UInt32 = 3UI
         Public Const ERROR_ACCESS_DENIED As UInt32 = 5UI
+        Public Const ERROR_DEVICE_REMOVED As UInt32 = 1617UI
+        Public Const ERROR_DEV_NOT_EXIST As UInt32 = 55UI
 
         Public Const FSCTL_GET_COMPRESSION As UInt32 = &H9003C
         Public Const FSCTL_SET_COMPRESSION As UInt32 = &H9C040

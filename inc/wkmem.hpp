@@ -12,21 +12,6 @@ inline void *operator_new(size_t Size, UCHAR FillByte)
     return result;
 }
 
-inline void * __CRTDECL operator new(size_t Size)
-{
-    return operator_new(Size, 0);
-}
-
-inline void * __CRTDECL operator new[](size_t Size)
-{
-    return operator_new(Size, 0);
-}
-
-inline void * __CRTDECL operator new(size_t Size, UCHAR FillByte)
-{
-    return operator_new(Size, FillByte);
-}
-
 inline void operator_delete(void *Ptr)
 {
     if (Ptr != NULL)
@@ -35,20 +20,17 @@ inline void operator_delete(void *Ptr)
     }
 }
 
-inline void __CRTDECL operator delete(void * Ptr)
-{
-    operator_delete(Ptr);
-}
+void * __CRTDECL operator new(size_t Size);
 
-inline void __CRTDECL operator delete(void * Ptr, size_t)
-{
-    operator_delete(Ptr);
-}
+void * __CRTDECL operator new[](size_t Size);
 
-inline void __CRTDECL operator delete[](void * Ptr)
-{
-    operator_delete(Ptr);
-}
+void * __CRTDECL operator new(size_t Size, UCHAR FillByte);
+
+void __CRTDECL operator delete(void * Ptr);
+
+void __CRTDECL operator delete(void * Ptr, size_t);
+
+void __CRTDECL operator delete[](void * Ptr);
 
 template<typename T, POOL_TYPE pool_type> class WPoolMem
 {
@@ -95,6 +77,26 @@ public:
     {
         Free();
         return ptr = pBlk;
+    }
+
+    T* GetPtr()
+    {
+        return ptr;
+    }
+
+    T* GetPtr(LONG_PTR offset)
+    {
+        return ptr + offset;
+    }
+
+    template<typename TC> TC* GetPtr()
+    {
+        return (TC*)(void*)ptr;
+    }
+
+    template<typename TC> TC* GetPtr(LONG_PTR offset)
+    {
+        return ((TC*)(void*)ptr) + offset;
     }
 
     SIZE_T Count() const
@@ -158,6 +160,129 @@ public:
         Free();
         Initialize(AllocateSize);
         return ptr;
+    }
+};
+
+template<POOL_TYPE pool_type> struct WUnicodeString : public UNICODE_STRING
+{
+    operator bool()
+    {
+        return (Buffer != NULL) && (MaximumLength != 0);
+    }
+
+    operator !()
+    {
+        return (Buffer == NULL) || (MaximumLength == 0);
+    }
+
+    WUnicodeString(USHORT max_length)
+    {
+        Length = 0;
+        Buffer = (PWCHAR)ExAllocatePoolWithTag(pool_type, max_length, MP_TAG_GENERAL);
+        MaximumLength = Buffer != NULL ? max_length : 0;
+    }
+
+    WUnicodeString(PWCHAR buffer, USHORT length)
+    {
+        Buffer = buffer;
+        Length = MaximumLength = length;
+    }
+
+    WUnicodeString(PWCHAR buffer, USHORT length, USHORT max_length)
+    {
+        Buffer = buffer;
+        Length = length;
+        MaximumLength = max_length;
+    }
+
+    ~WUnicodeString()
+    {
+        if (Buffer != NULL)
+        {
+            ExFreePoolWithTag(Buffer, MP_TAG_GENERAL);
+        }
+    }
+};
+
+template<POOL_TYPE pool_type> struct WAnsiString : public ANSI_STRING
+{
+    operator bool()
+    {
+        return (Buffer != NULL) && (MaximumLength != 0);
+    }
+
+    operator !()
+    {
+        return (Buffer == NULL) || (MaximumLength == 0);
+    }
+
+    WAnsiString(USHORT max_length)
+    {
+        Length = 0;
+        Buffer = (PCHAR)ExAllocatePoolWithTag(pool_type, max_length, MP_TAG_GENERAL);
+        MaximumLength = Buffer != NULL ? max_length : 0;
+    }
+
+    WAnsiString(PCHAR buffer, USHORT length)
+    {
+        Buffer = buffer;
+        Length = MaximumLength = length;
+    }
+
+    WAnsiString(PCHAR buffer, USHORT length, USHORT max_length)
+    {
+        Buffer = buffer;
+        Length = length;
+        MaximumLength = max_length;
+    }
+
+    ~WAnsiString()
+    {
+        if (Buffer != NULL)
+        {
+            ExFreePoolWithTag(Buffer, MP_TAG_GENERAL);
+        }
+    }
+};
+
+template<POOL_TYPE pool_type> struct WOemString : public OEM_STRING
+{
+    operator bool()
+    {
+        return (Buffer != NULL) && (MaximumLength != 0);
+    }
+
+    operator !()
+    {
+        return (Buffer == NULL) || (MaximumLength == 0);
+    }
+
+    WOemString(USHORT max_length)
+    {
+        Length = 0;
+        Buffer = (PCHAR)ExAllocatePoolWithTag(pool_type, max_length, MP_TAG_GENERAL);
+        MaximumLength = Buffer != NULL ? max_length : 0;
+    }
+
+    WOemString(PCHAR buffer, USHORT length)
+    {
+        Buffer = buffer;
+        Length = MaximumLength = length;
+    }
+
+    WOemString(PCHAR buffer, USHORT length, USHORT max_length)
+    {
+        Buffer = buffer;
+        Length = length;
+        MaximumLength = max_length;
+    }
+
+    ~WOemString()
+    {
+        if (Buffer != NULL)
+        {
+            ExFreePoolWithTag(Buffer, MP_TAG_GENERAL);
+        }
     }
 };
 

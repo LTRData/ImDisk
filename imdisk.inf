@@ -1,7 +1,7 @@
 [Version]
 signature = "$Windows NT$"
 Provider = "LTR Data"
-DriverVer=12/14/2015,6.0.6001.18000
+DriverVer=11/19/2018,6.0.6001.18000
 
 
 [SourceDisksNames]
@@ -15,6 +15,7 @@ imdsksvc.exe = 1,svc\i386
 imdisk.cpl = 1,cpl\i386
 imdisk.exe = 1,cli\i386
 imdisk.inf = 1
+imdisk.pnf = 1
 uninstall_imdisk.cmd = 1
 
 
@@ -25,6 +26,7 @@ imdsksvc.exe = 1,svc\ia64
 imdisk.cpl = 1,cpl\ia64
 imdisk.exe = 1,cli\ia64
 imdisk.inf = 1
+imdisk.pnf = 1
 uninstall_imdisk.cmd = 1
 
 
@@ -35,6 +37,29 @@ imdsksvc.exe = 1,svc\amd64
 imdisk.cpl = 1,cpl\amd64
 imdisk.exe = 1,cli\amd64
 imdisk.inf = 1
+imdisk.pnf = 1
+uninstall_imdisk.cmd = 1
+
+
+[SourceDisksFiles.arm]
+awealloc.sys = 1,awealloc\arm
+imdisk.sys = 1,sys\arm
+imdsksvc.exe = 1,svc\arm
+imdisk.cpl = 1,cpl\arm
+imdisk.exe = 1,cli\arm
+imdisk.inf = 1
+imdisk.pnf = 1
+uninstall_imdisk.cmd = 1
+
+
+[SourceDisksFiles.arm64]
+awealloc.sys = 1,awealloc\arm64
+imdisk.sys = 1,sys\arm64
+imdsksvc.exe = 1,svc\arm64
+imdisk.cpl = 1,cpl\arm64
+imdisk.exe = 1,cli\arm64
+imdisk.inf = 1
+imdisk.pnf = 1
 uninstall_imdisk.cmd = 1
 
 
@@ -43,7 +68,8 @@ ImDiskExeFiles = 11
 ImDiskExe32Files = 16425
 ImDiskSysFiles = 12
 ImDiskInfFiles = 17
- 
+ImDiskPnfFiles = 17
+
 
 [DefaultInstall.ntx86]
 CopyFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles
@@ -52,7 +78,18 @@ DelReg = ImDiskDelOldReg
 
 
 [DefaultUninstall.ntx86]
-DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles
+DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles, ImDiskPnfFiles
+DelReg = ImDiskDelReg
+
+
+[DefaultInstall.ntarm]
+CopyFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles
+AddReg = ImDiskAddReg
+DelReg = ImDiskDelOldReg
+
+
+[DefaultUninstall.ntarm]
+DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskInfFiles, ImDiskPnfFiles
 DelReg = ImDiskDelReg
 
 
@@ -63,7 +100,18 @@ DelReg = ImDiskDelOldReg
 
 
 [DefaultUninstall.ntamd64]
-DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles
+DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles, ImDiskPnfFiles
+DelReg = ImDiskDelReg
+
+
+[DefaultInstall.ntarm64]
+CopyFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles
+AddReg = ImDiskAddReg
+DelReg = ImDiskDelOldReg
+
+
+[DefaultUninstall.ntarm64]
+DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles, ImDiskPnfFiles
 DelReg = ImDiskDelReg
 
 
@@ -74,7 +122,7 @@ DelReg = ImDiskDelOldReg
 
 
 [DefaultUninstall.ntia64]
-DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles
+DelFiles = ImDiskSysFiles, ImDiskExeFiles, ImDiskExe32Files, ImDiskInfFiles, ImDiskPnfFiles
 DelReg = ImDiskDelReg
 
 
@@ -90,6 +138,18 @@ DelService = ImDisk
 DelService = ImDskSvc
 
 
+[DefaultInstall.ntarm.Services]
+AddService = AWEAlloc, , AWEAllocDrv
+AddService = ImDisk, , ImDskDrv
+AddService = ImDskSvc, , ImDskSvc
+
+
+[DefaultUninstall.ntarm.Services]
+DelService = AWEAlloc
+DelService = ImDisk
+DelService = ImDskSvc
+
+
 [DefaultInstall.ntamd64.Services]
 AddService = AWEAlloc, , AWEAllocDrv
 AddService = ImDisk, , ImDskDrv
@@ -97,6 +157,18 @@ AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntamd64.Services]
+DelService = AWEAlloc
+DelService = ImDisk
+DelService = ImDskSvc
+
+
+[DefaultInstall.ntarm64.Services]
+AddService = AWEAlloc, , AWEAllocDrv
+AddService = ImDisk, , ImDskDrv
+AddService = ImDskSvc, , ImDskSvc
+
+
+[DefaultUninstall.ntarm64.Services]
 DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
@@ -135,12 +207,16 @@ imdisk.sys
 imdisk.inf
 
 
+[ImDiskPnfFiles]
+imdisk.pnf
+
+
 [ImDiskAddReg]
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayName", 0, "ImDisk Virtual Disk Driver"
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "Publisher", 0, "LTR Data"
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "HelpLink", 0, "http://ltr-data.se/opencode.html"
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayVersion", 0, "*"
-HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "UninstallString", 0, "uninstall_imdisk.cmd"
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "UninstallString", 0x00020000, """%%SystemRoot%%\system32\cmd.exe"" /c ""%%SystemRoot%%\system32\uninstall_imdisk.cmd"""
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayIcon", 0, "%11%\imdisk.cpl"
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "EstimatedSize", 65537, 320
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "NoRepair", 65537, 1

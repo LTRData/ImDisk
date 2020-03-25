@@ -4,9 +4,11 @@
 # that is shared by all the driver components of the Windows NT DDK
 #
 
+!IFDEF _BUILDARCH
 !INCLUDE $(NTMAKEENV)\makefile.def
+!ENDIF
 
-refresh: crthlp.lib drvio.c drvio.h mbr.c mbr.h
+refresh: crthlp.lib drvio.c drvio.h mbr.c mbr.h imdisk.rc imdisk.rc.h
 
 crthlp.lib: ..\cpl\$@
 	copy ..\cpl\$@ $@

@@ -98,13 +98,19 @@ Namespace Server.Services
         Public Event ServiceUnhandledException As UnhandledExceptionEventHandler
         Protected Overridable Sub OnServiceUnhandledException(e As UnhandledExceptionEventArgs)
             RaiseEvent ServiceUnhandledException(Me, e)
-            If HasImDiskDevice AndAlso ForceRemoveImDiskDeviceOnCrash Then
-                ImDiskAPI.ForceRemoveDevice(ImDiskDeviceNumber)
-            End If
+            Try
+                If HasImDiskDevice AndAlso ForceRemoveImDiskDeviceOnCrash Then
+                    ImDiskAPI.ForceRemoveDevice(ImDiskDeviceNumber)
+                End If
+
+            Catch ex As Exception
+                Trace.WriteLine("Error removing device: " & ex.ToString())
+
+            End Try
         End Sub
 
         ''' <summary>
-        ''' Event raised to stop service thread. Service thread handle this event by preparing commnunication for
+        ''' Event raised to stop service thread. Service thread handle this event by preparing communication for
         ''' disconnection.
         ''' </summary>
         Protected Event StopServiceThread As Action
@@ -227,7 +233,7 @@ Namespace Server.Services
         ''' </summary>
         ''' <param name="timeout">Timeout value, or Timeout.Infinite to wait infinitely.</param>
         ''' <returns>Returns True if service thread has exit or no service thread has been
-        ''' created, or False if timeout occured.</returns>
+        ''' created, or False if timeout occurred.</returns>
         Public Overridable Function WaitForServiceThreadExit(timeout As TimeSpan) As Boolean
 
             If ServiceThread IsNot Nothing AndAlso ServiceThread.IsAlive Then
@@ -301,6 +307,14 @@ Namespace Server.Services
             Do
                 Try
                     ImDiskAPI.RemoveDevice(_ImDiskDeviceNumber)
+                    _ImDiskDeviceNumber = UInteger.MaxValue
+                    Exit Do
+
+                Catch ex As Win32Exception When (
+                    ex.NativeErrorCode = NativeFileIO.Win32API.ERROR_DEVICE_REMOVED OrElse
+                    ex.NativeErrorCode = NativeFileIO.Win32API.ERROR_DEV_NOT_EXIST)
+
+                    _ImDiskDeviceNumber = UInteger.MaxValue
                     Exit Do
 
                 Catch ex As Win32Exception When (
@@ -400,22 +414,29 @@ Namespace Server.Services
         Protected Overridable Sub Dispose(disposing As Boolean)
             If Not Me.disposedValue Then
 
+                If ServiceThread.ManagedThreadId <> Thread.CurrentThread.ManagedThreadId Then
+                    If HasImDiskDevice Then
+                        DismountImDiskAndStopServiceThread()
+                    Else
+                        OnStopServiceThread()
+                        WaitForServiceThreadExit()
+                    End If
+                End If
+
                 If disposing Then
                     ' TODO: dispose managed state (managed objects).
 
+                    If _DevioProvider IsNot Nothing Then
+                        If OwnsProvider Then
+                            _DevioProvider.Dispose()
+                        End If
+                    End If
                 End If
 
                 ' TODO: free unmanaged resources (unmanaged objects) and override Finalize() below.
+
                 ' TODO: set large fields to null.
-
-                If _DevioProvider IsNot Nothing Then
-                    If OwnsProvider Then
-                        _DevioProvider.Dispose()
-                    End If
-                    _DevioProvider = Nothing
-                End If
-
-                OnStopServiceThread()
+                _DevioProvider = Nothing
 
             End If
             Me.disposedValue = True

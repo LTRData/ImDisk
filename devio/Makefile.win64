@@ -1,18 +1,18 @@
-all: x64\devio.exe
+all: Release\x64\devio.exe
 
 publish: P:\Utils64\devio.exe Z:\ltr-website\ltr-data.se\files\win64\devio.exe
 
-P:\Utils64\devio.exe: x64\devio.exe
-	copy /y x64\devio.exe P:\Utils64\\
+P:\Utils64\devio.exe: Release\x64\devio.exe
+	copy /y Release\x64\devio.exe P:\Utils64\\
 
-Z:\ltr-website\ltr-data.se\files\win64\devio.exe: x64\devio.exe
-	copy /y x64\devio.exe Z:\ltr-website\ltr-data.se\files\win64\\
+Z:\ltr-website\ltr-data.se\files\win64\devio.exe: Release\x64\devio.exe
+	copy /y Release\x64\devio.exe Z:\ltr-website\ltr-data.se\files\win64\\
 
-x64\devio.obj: devio.c ..\inc\*.h safeio.h devio.h devio_types.h Makefile.win64
-	cl /c /WX /W4 /wd4201 /wd4204 /wd4996 /Ox /GR- /MD /Fox64\devio.obj /nologo devio.c
+Release\x64\devio.obj: devio.c ..\inc\*.h safeio.h devio.h devio_types.h Makefile.win64
+	cl /c /WX /W4 /wd4201 /wd4204 /wd4996 /Ox /GR- /MD /FoRelease\x64\devio.obj /nologo devio.c
 
-x64\safeio_win32.obj: safeio_win32.cpp ..\inc\*.h safeio.h devio.h devio_types.h Makefile.win64
-	cl /c /WX /W4 /wd4201 /wd4204 /wd4996 /Ox /GR- /MD /Fox64\safeio_win32.obj /nologo safeio_win32.cpp
+Release\x64\safeio_win32.obj: safeio_win32.cpp ..\inc\*.h safeio.h devio.h devio_types.h Makefile.win64
+	cl /c /WX /W4 /wd4201 /wd4204 /wd4996 /Ox /GR- /MD /FoRelease\x64\safeio_win32.obj /nologo safeio_win32.cpp
 
-x64\devio.exe: x64\devio.obj x64\safeio_win32.obj Makefile.win64
-	link /opt:nowin98,ref,icf=10 /largeaddressaware /defaultlib:bufferoverflowU.lib /release /nologo /out:x64\devio.exe x64\devio.obj x64\safeio_win32.obj
+Release\x64\devio.exe: Release\x64\devio.obj Release\x64\safeio_win32.obj Makefile.win64
+	link /opt:nowin98,ref,icf=10 /largeaddressaware /defaultlib:bufferoverflowU.lib /release /debug /nologo /out:Release\x64\devio.exe Release\x64\devio.obj Release\x64\safeio_win32.obj

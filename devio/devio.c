@@ -1,7 +1,7 @@
 /*
 Server end for ImDisk Virtual Disk Driver proxy operation.
 
-Copyright (C) 2005-2015 Olof Lagerkvist.
+Copyright (C) 2005-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -53,8 +53,16 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include <winioctl.h>
 #include <io.h>
 
-#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "ws2_32.lib")
+
+#ifdef _M_ARM
+#ifdef CharToOemA
+#undef CharToOemA
+#endif
+#define CharToOemA(s,t)
+#endif
 
 __inline
 BOOL
@@ -161,7 +169,7 @@ HANDLE shm_response_event = NULL;
 #define O_FSYNC 0
 #endif
 
-#define DEF_BUFFER_SIZE (2 << 20)
+#define DEF_BUFFER_SIZE (64 << 20)
 
 #define DEF_REQUIRED_ALIGNMENT 1
 
@@ -192,7 +200,18 @@ int64_t GetBigEndian64(int8_t *storage)
     return number;
 }
 
-int fd = -1;
+uint32_t GetLittleEndian32U(uint8_t *storage)
+{
+    int i;
+    uint32_t number = 0;
+    for (i = 0; i < sizeof(uint32_t); i++)
+    {
+        number |= (uint32_t)storage[i] << (i << 3);
+    }
+    return number;
+}
+
+int image_fd = -1;
 void *libhandle = NULL;
 SOCKET sd = INVALID_SOCKET;
 int shm_mode = 0;
@@ -202,7 +221,7 @@ char *shm_view = NULL;
 char *buf = NULL;
 char *buf2 = NULL;
 safeio_size_t buffer_size = DEF_BUFFER_SIZE;
-off_t_64 offset = 0;
+off_t_64 image_offset = 0;
 IMDPROXY_INFO_RESP devio_info = { 0 };
 char dll_mode = 0;
 char vhd_mode = 0;
@@ -274,7 +293,7 @@ physical_read(void *io_ptr, safeio_size_t size, off_t_64 offset)
     if (dll_mode)
         return dll_read(libhandle, io_ptr, size, offset);
     else
-        return pread(fd, io_ptr, size, offset);
+        return pread(image_fd, io_ptr, size, offset);
 }
 
 safeio_ssize_t
@@ -283,7 +302,7 @@ physical_write(void *io_ptr, safeio_size_t size, off_t_64 offset)
     if (dll_mode)
         return dll_write(libhandle, io_ptr, size, offset);
     else
-        return pwrite(fd, io_ptr, size, offset);
+        return pwrite(image_fd, io_ptr, size, offset);
 }
 
 int
@@ -586,7 +605,7 @@ vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
 
         // New block is placed where the footer currently is
         block_offset_bytes =
-            _lseeki64(fd, -(off_t_64) sizeof(vhd_info.Footer), SEEK_END);
+            _lseeki64(image_fd, -(off_t_64) sizeof(vhd_info.Footer), SEEK_END);
         if (block_offset_bytes == -1)
         {
             syslog(LOG_ERR, "vhd_write: Error moving file pointer to last "
@@ -727,7 +746,8 @@ read_data()
     memset(buf, 0, size);
 
     readdone =
-        logical_read(buf, (safeio_size_t)size, (off_t_64)(offset + req_block.offset));
+        logical_read(buf, (safeio_size_t)size, (off_t_64)(image_offset + req_block.offset));
+
     if (readdone == -1)
     {
         resp_block.errorno = errno;
@@ -743,7 +763,7 @@ read_data()
         {
             syslog(LOG_ERR,
                 "Partial read at " SLL_FMT ": Got " SLL_FMT ", req " ULL_FMT ".\n",
-                (int64_t)(offset + req_block.offset), (int64_t)readdone, req_block.length);
+                (int64_t)(image_offset + req_block.offset), (int64_t)readdone, req_block.length);
         }
     }
 
@@ -810,7 +830,7 @@ write_data()
     else
     {
         safeio_ssize_t writedone = logical_write(buf, (safeio_size_t)req_block.length,
-            (off_t_64)(offset + req_block.offset));
+            (off_t_64)(image_offset + req_block.offset));
         if (writedone == -1)
         {
             resp_block.errorno = errno;
@@ -832,12 +852,12 @@ write_data()
             if (writedone < 0)
             {
                 syslog(LOG_ERR, "Write error (code " ULL_FMT ") at " ULL_FMT ": Req " ULL_FMT ".\n",
-                    resp_block.errorno, offset + req_block.offset, req_block.length);
+                    resp_block.errorno, image_offset + req_block.offset, req_block.length);
             }
             else
             {
                 syslog(LOG_ERR, "Partial write at " ULL_FMT ": Got " ULL_FMT ", req " ULL_FMT ".\n",
-                    resp_block.errorno, offset + req_block.offset, req_block.length);
+                    resp_block.errorno, image_offset + req_block.offset, req_block.length);
             }
         }
 
@@ -881,156 +901,152 @@ main(int argc, char **argv)
     WSAStartup(0x0101, &wsadata);
 #endif
 
-    if (argc > 1)
-        if (_stricmp(argv[1], "--dll") == 0)
-        {
-            fprintf(stderr,
-                "devio with custom DLL support\n"
-                "Copyright (C) 2005-2015 Olof Lagerkvist.\n"
-                "\n"
-                "Usage for unmanaged C/C++ DLL files:\n"
-                "devio --dll=dllfile;procedure other_devio_parameters ...\n"
-                "\n"
-                "dllfile     Name of custom DLL file to use for device I/O.\n"
-                "\n"
-                "procedure   Name of procedure in DLL file to use for opening device. This\n"
-                "            procedure must follow the dllopen_proc typedef as specified in\n"
-                "devio.h.\n"
-                "\n"
-                "Declaration for dllopen is:\n"
-                "void * __cdecl dllopen(const char *str,\n"
-                "                       int read_only,\n"
-                "                       dllread_proc *dllread,\n"
-                "                       dllwrite_proc *dllwrite,\n"
-                "                       dllclose_proc *dllclose,\n"
-                "                       __int64 *size)\n"
-                "\n"
-                "str         Device name to open as specified at devio command line.\n"
-                "\n"
-                "read_only   A non-zero value requests a device to be opened in read only mode.\n"
-                "\n"
-                "dllread     Pointer to memory where dllopen should store address to a function\n"
-                "            that is used when reading from device.\n"
-                "\n"
-                "dllwrite    Pointer to memory where dllopen should store address to a function\n"
-                "            that is used when writing to device. Address is ignored by devio\n"
-                "            if device is opened for read only.\n"
-                "\n"
-                "dllclose    Pointer to memory where dllopen should store address to a function\n"
-                "            that is used when closing device.\n"
-                "\n"
-                "size        Pointer to memory where dllopen should store detected size of\n"
-                "            successfully opened device. This is optional.\n"
-                "\n"
-                "Types for dllread_proc, dllwrite_proc, dllclose_proc are declared in devio.h.\n"
-                "\n"
-                "Return value from dllopen is typed as void * to be able to hold as much data\n"
-                "            for some kind of reference as current architecture allows. Devio\n"
-                "            practically ignores this value, it is just sent in later calls to\n"
-                "            dllread/dllwrite/dllclose. The only thing that devio checks is that\n"
-                "            this value is not (void *)-1. That case is treated as an error\n"
-                "            return.\n"
-                "\n"
-                "Value returned by dllopen will be passed by devio to to dllread, dllwrite and\n"
-                "dllclose functions.\n"
-                "\n"
-                "Usage for .NET managed class library files:\n"
-                "devio --dll=iobridge.dll;dllopen other_devio_parameters ...\n"
-                "\n"
-                "Parameter --dll=iobridge.dll;dllopen means to use iobridge.dll which is a\n"
-                "mixed managed/unmanaged DLL that serves as a bridge to transfer requests to a\n"
-                ".NET managed class library.\n"
-                "\n"
-                "The diskdev parameter to devio has somewhat special meaning in this case.\n"
-                "Syntax of diskdev parameter is treated as follows:\n"
-                "classlibraryfile::classname::procedure::devicename\n"
-                "\n"
-                "classlibraryfile\n"
-                "            Name of .NET managed class library DLL file.\n"
-                "\n"
-                "classname::procedure\n"
-                "            Name of class (managed type) and a static method in that class\n"
-                "            to be used to open a Stream object to be used for I/O requests.\n"
-                "\n"
-                "devicename  User specified data, such as a device name, file name or similar,\n"
-                "            that is sent as first parameter to above specified procedure.\n"
-                "\n"
-                "Declaration for classname::procedure:\n"
-                "public static System.IO.Stream open_stream(String devicename, bool read_only)\n"
-                "\n"
-                "devicename  Device name to open as specified as part of diskdev parameter in\n"
-                "            devio command line, as specified above.\n"
-                "\n"
-                "read_only   Value of true requests a device to be opened in read only mode.\n"
-                "\n"
-                "Return value from method needs to be a valid seekable stream object of a type\n"
-                "that derives from System.IO.Stream class. Devio will use Read(), Write() and\n"
-                "Close() methods as well as Position and Length properties on opened Stream\n"
-                "object.\n");
-
-            return -1;
-        }
-
-    if (argc >= 3)
-        if (_strnicmp(argv[1], "--dll=", 6) == 0)
-        {
-#ifdef _WIN32
-            char *dllargs = argv[1] + 6;
-
-            char *dllfile = strtok(dllargs, ";");
-            char *dllfunc = strtok(NULL, "");
-
-            HMODULE hDLL;
-
-            hDLL = LoadLibrary(dllfile);
-            if (hDLL == NULL)
-            {
-                syslog(stderr, "Error loading %s: %m\n", dllfile);
-                return 1;
-            }
-
-            dll_open = (dllopen_proc)GetProcAddress(hDLL, dllfunc);
-            if (dll_open == NULL)
-            {
-                syslog(stderr, "Cannot find procedure %s in %s: %m\n",
-                    dllfunc,
-                    dllfile);
-                return 1;
-            }
-
-            dll_mode = 1;
-
-            argc--;
-            argv++;
-#else
-            fprintf(stderr, "Custom DLL mode only supported on Windows.\n");
-            return -1;
-#endif
-        }
-
-    if (argc >= 4)
-        if (strcmp(argv[1], "--novhd") == 0)
-        {
-            auto_vhd_detect = 0;
-            argv++;
-            argc--;
-        }
-
-    if (argc >= 4)
-        if (strcmp(argv[1], "-r") == 0)
-        {
-            devio_info.flags |= IMDPROXY_FLAG_RO;
-            argv++;
-            argc--;
-        }
-
-    if ((argc < 3) | (argc > 7))
+    if (argc > 1 && _stricmp(argv[1], "--dll") == 0)
     {
         fprintf(stderr,
-            "devio - Device I/O Service ver 3.04\n"
+            "devio with custom DLL support\n"
+            "Copyright (C) 2005-2018 Olof Lagerkvist.\n"
+            "\n"
+            "Usage for unmanaged C/C++ DLL files:\n"
+            "devio --dll=dllfile;procedure other_devio_parameters ...\n"
+            "\n"
+            "dllfile     Name of custom DLL file to use for device I/O.\n"
+            "\n"
+            "procedure   Name of procedure in DLL file to use for opening device. This\n"
+            "            procedure must follow the dllopen_proc typedef as specified in\n"
+            "devio.h.\n"
+            "\n"
+            "Declaration for dllopen is:\n"
+            "void * __cdecl dllopen(const char *str,\n"
+            "                       int read_only,\n"
+            "                       dllread_proc *dllread,\n"
+            "                       dllwrite_proc *dllwrite,\n"
+            "                       dllclose_proc *dllclose,\n"
+            "                       __int64 *size)\n"
+            "\n"
+            "str         Device name to open as specified at devio command line.\n"
+            "\n"
+            "read_only   A non-zero value requests a device to be opened in read only mode.\n"
+            "\n"
+            "dllread     Pointer to memory where dllopen should store address to a function\n"
+            "            that is used when reading from device.\n"
+            "\n"
+            "dllwrite    Pointer to memory where dllopen should store address to a function\n"
+            "            that is used when writing to device. Address is ignored by devio\n"
+            "            if device is opened for read only.\n"
+            "\n"
+            "dllclose    Pointer to memory where dllopen should store address to a function\n"
+            "            that is used when closing device.\n"
+            "\n"
+            "size        Pointer to memory where dllopen should store detected size of\n"
+            "            successfully opened device. This is optional.\n"
+            "\n"
+            "Types for dllread_proc, dllwrite_proc, dllclose_proc are declared in devio.h.\n"
+            "\n"
+            "Return value from dllopen is typed as void * to be able to hold as much data\n"
+            "            for some kind of reference as current architecture allows. Devio\n"
+            "            practically ignores this value, it is just sent in later calls to\n"
+            "            dllread/dllwrite/dllclose. The only thing that devio checks is that\n"
+            "            this value is not (void *)-1. That case is treated as an error\n"
+            "            return.\n"
+            "\n"
+            "Value returned by dllopen will be passed by devio to to dllread, dllwrite and\n"
+            "dllclose functions.\n"
+            "\n"
+            "Usage for .NET managed class library files:\n"
+            "devio --dll=iobridge.dll;dllopen other_devio_parameters ...\n"
+            "\n"
+            "Parameter --dll=iobridge.dll;dllopen means to use iobridge.dll which is a\n"
+            "mixed managed/unmanaged DLL that serves as a bridge to transfer requests to a\n"
+            ".NET managed class library.\n"
+            "\n"
+            "The diskdev parameter to devio has somewhat special meaning in this case.\n"
+            "Syntax of diskdev parameter is treated as follows:\n"
+            "classlibraryfile::classname::procedure::devicename\n"
+            "\n"
+            "classlibraryfile\n"
+            "            Name of .NET managed class library DLL file.\n"
+            "\n"
+            "classname::procedure\n"
+            "            Name of class (managed type) and a static method in that class\n"
+            "            to be used to open a Stream object to be used for I/O requests.\n"
+            "\n"
+            "devicename  User specified data, such as a device name, file name or similar,\n"
+            "            that is sent as first parameter to above specified procedure.\n"
+            "\n"
+            "Declaration for classname::procedure:\n"
+            "public static System.IO.Stream open_stream(String devicename, bool read_only)\n"
+            "\n"
+            "devicename  Device name to open as specified as part of diskdev parameter in\n"
+            "            devio command line, as specified above.\n"
+            "\n"
+            "read_only   Value of true requests a device to be opened in read only mode.\n"
+            "\n"
+            "Return value from method needs to be a valid seekable stream object of a type\n"
+            "that derives from System.IO.Stream class. Devio will use Read(), Write() and\n"
+            "Close() methods as well as Position and Length properties on opened Stream\n"
+            "object.\n");
+
+        return -1;
+    }
+
+    if (argc >= 3  && _strnicmp(argv[1], "--dll=", 6) == 0)
+    {
+#ifdef _WIN32
+        char *dllargs = argv[1] + 6;
+
+        char *dllfile = strtok(dllargs, ";");
+        char *dllfunc = strtok(NULL, "");
+
+        HMODULE hDLL;
+
+        hDLL = LoadLibrary(dllfile);
+        if (hDLL == NULL)
+        {
+            syslog(stderr, "Error loading %s: %m\n", dllfile);
+            return 1;
+        }
+
+        dll_open = (dllopen_proc)GetProcAddress(hDLL, dllfunc);
+        if (dll_open == NULL)
+        {
+            syslog(stderr, "Cannot find procedure %s in %s: %m\n",
+                dllfunc,
+                dllfile);
+            return 1;
+        }
+
+        dll_mode = 1;
+
+        argc--;
+        argv++;
+#else
+        fprintf(stderr, "Custom DLL mode only supported on Windows.\n");
+        return -1;
+#endif
+    }
+
+    if (argc >= 4 && strcmp(argv[1], "--novhd") == 0)
+    {
+        auto_vhd_detect = 0;
+        argv++;
+        argc--;
+    }
+
+    if (argc >= 4 && strcmp(argv[1], "-r") == 0)
+    {
+        devio_info.flags |= IMDPROXY_FLAG_RO;
+        argv++;
+        argc--;
+    }
+
+    if (argc < 3 || argc > 7)
+    {
+        fprintf(stderr,
+            "devio - Device I/O Service ver " DEVIO_VERSION "\n"
             "With support for Microsoft VHD format, custom DLL files and shared memory proxy\n"
             "operation.\n"
-            "Copyright (C) 2005-2015 Olof Lagerkvist.\n"
+            "Copyright (C) 2005-2018 Olof Lagerkvist.\n"
             "\n"
             "Usage:\n"
             "devio [-r] tcp-port|commdev diskdev [blocks] [offset] [alignm] [buffersize]\n"
@@ -1082,11 +1098,11 @@ main(int argc, char **argv)
     else
     {
         if (devio_info.flags & IMDPROXY_FLAG_RO)
-            fd = _open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDONLY);
+            image_fd = _open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDONLY);
         else
-            fd = _open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDWR);
+            image_fd = _open(argv[2], O_BINARY | O_DIRECT | O_FSYNC | O_RDWR);
 
-        if (fd == -1)
+        if (image_fd == -1)
         {
             syslog(LOG_ERR, "Failed to open '%s': %m\n", argv[2]);
             return 1;
@@ -1189,7 +1205,7 @@ main(int argc, char **argv)
 
             devio_info.file_size = spec_size;
         }
-        else if (spec_size <= 8)
+        else if (spec_size < 512)
         {
             partition_number = (int)spec_size;
         }
@@ -1204,18 +1220,23 @@ main(int argc, char **argv)
     }
 
 #ifdef _WIN32
+
     if (devio_info.file_size == 0)
     {
         if (dll_mode)
-            syslog(LOG_ERR, "Cannot determine size of image/partition.\n");
+            syslog(LOG_ERR, "DLL did not return size of image/partition.\n");
         else
         {
-            HANDLE h = (HANDLE)_get_osfhandle(fd);
+            HANDLE h = (HANDLE)_get_osfhandle(image_fd);
             BY_HANDLE_FILE_INFORMATION by_handle_file_info;
 
-            // If not regular disk file, try to lock volume using FSCTL operation.
-            if (!GetFileInformationByHandle(h, &by_handle_file_info))
+            if ((!GetFileInformationByHandle(h, &by_handle_file_info) &&
+                (by_handle_file_info.nFileSizeLow = GetFileSize(h,
+                    &by_handle_file_info.nFileSizeHigh)) == INVALID_FILE_SIZE) &&
+                GetLastError() != NO_ERROR)
             {
+                // If not regular disk file, try to lock volume using FSCTL operation.
+
                 DWORD dw;
                 FlushFileBuffers(h);
                 if (DeviceIoControl(h, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0,
@@ -1232,8 +1253,9 @@ main(int argc, char **argv)
                     }
                 }
                 else
-                    switch (GetLastError())
                 {
+                    switch (GetLastError())
+                    {
                     case ERROR_NOT_SUPPORTED:
                     case ERROR_INVALID_FUNCTION:
                     case ERROR_INVALID_HANDLE:
@@ -1241,7 +1263,6 @@ main(int argc, char **argv)
                         break;
 
                     default:
-                    {
                         syslog(LOG_ERR, "Cannot dismount filesystem on %s.\n",
                             argv[2]);
 
@@ -1253,19 +1274,22 @@ main(int argc, char **argv)
                 if (devio_info.file_size == 0)
                 {
                     PARTITION_INFORMATION partition_info = { 0 };
-                    DWORD dw;
 
                     if (!DeviceIoControl(h, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0,
                         &partition_info, sizeof(partition_info),
                         &dw, NULL))
+                    {
                         syslog(LOG_ERR,
-                        "Cannot determine size of image/partition.\n");
+                            "Cannot determine size of disk volume.\n");
+                    }
                     else
+                    {
                         devio_info.file_size =
-                        partition_info.PartitionLength.QuadPart;
+                            partition_info.PartitionLength.QuadPart;
+                    }
                 }
             }
-            else if (devio_info.file_size == 0)
+            else
             {
                 LARGE_INTEGER file_size;
                 file_size.HighPart = by_handle_file_info.nFileSizeHigh;
@@ -1294,124 +1318,184 @@ main(int argc, char **argv)
         printf("Image size used: " ULL_FMT " bytes.\n", devio_info.file_size);
     }
 
-    if ((partition_number >= 1) & (partition_number <= 8))
+    if (partition_number >= 1 && partition_number < 512)
     {
-        if (logical_read(mbr, 512, 0) == -1)
+        if (logical_read(mbr, 512, 0) < 512)
+        {
             syslog(LOG_ERR, "Error reading device: %m\n");
-        else if ((*(u_short*)(mbr + 0x01FE) == 0xAA55) &
-            ((*(u_char*)(mbr + 0x01BE) & 0x7F) == 0) &
-            ((*(u_char*)(mbr + 0x01CE) & 0x7F) == 0) &
-            ((*(u_char*)(mbr + 0x01DE) & 0x7F) == 0) &
+        }
+        else if ((*(u_char*)(mbr + 0x01FE) == 0x55) &&
+            (*(u_char*)(mbr + 0x01FF) == 0xAA) &&
+            ((*(u_char*)(mbr + 0x01BE) & 0x7F) == 0) &&
+            ((*(u_char*)(mbr + 0x01CE) & 0x7F) == 0) &&
+            ((*(u_char*)(mbr + 0x01DE) & 0x7F) == 0) &&
             ((*(u_char*)(mbr + 0x01EE) & 0x7F) == 0))
         {
+            int i = 0;
+            int c = 0;
+
             puts("Detected a master boot record at sector 0.");
 
-            offset = 0;
+            image_offset = 0;
 
-            if ((partition_number >= 5) & (partition_number <= 8))
+            for (i = 0; i < 4; i++)
             {
-                int i = 0;
-                for (i = 0; i < 4; i++)
-                    switch (*(mbr + 512 - 66 + (i << 4) + 4))
+                char type = *(mbr + 512 - 66 + (i << 4) + 4);
+
+                if (type == 0)
                 {
-                    case 0x05: case 0x0F:
-                        offset = (off_t_64)
-                            (*(u_int*)(mbr + 512 - 66 + (i << 4) + 8)) <<
-                            sector_shift;
+                    continue;
+                }
+
+                if (type == 0x05 || type == 0x0F)
+                {
+                    char read_next_ebr = TRUE;
+
+                    off_t_64 first_ebr_offset =
+                        ((off_t_64)GetLittleEndian32U((uint8_t*)mbr + 512 - 66 + (i << 4) + 8))
+                        << sector_shift;
+
+                    image_offset = first_ebr_offset;
+
+                    while (read_next_ebr)
+                    {
+                        char ebr[512];
+                        int e;
+
+                        read_next_ebr = FALSE;
 
                         printf("Reading extended partition table at " SLL_FMT
-                            ".\n", (int64_t)offset);
+                            ".\n", (int64_t)image_offset);
 
-                        if (logical_read(mbr, 512, offset) == 512)
-                            if ((*(u_short*)(mbr + 0x01FE) == 0xAA55) &
-                                ((*(u_char*)(mbr + 0x01BE) & 0x7F) == 0) &
-                                ((*(u_char*)(mbr + 0x01CE) & 0x7F) == 0) &
-                                ((*(u_char*)(mbr + 0x01DE) & 0x7F) == 0) &
-                                ((*(u_char*)(mbr + 0x01EE) & 0x7F) == 0))
+                        if (logical_read(ebr, 512, image_offset) == 512 &&
+                            (*(u_char*)(ebr + 0x01FE) == 0x55) &&
+                            (*(u_char*)(ebr + 0x01FF) == 0xAA) &&
+                            ((*(u_char*)(ebr + 0x01BE) & 0x7F) == 0) &&
+                            ((*(u_char*)(ebr + 0x01CE) & 0x7F) == 0) &&
+                            ((*(u_char*)(ebr + 0x01DE) & 0x7F) == 0) &&
+                            ((*(u_char*)(ebr + 0x01EE) & 0x7F) == 0))
+                        {
+                            puts("Found valid extended partition table.");
+                        }
+                        else
+                        {
+                            puts("Invalid extended partition table.");
+                            break;
+                        }
+
+                        for (e = 0; e < 4; e++)
+                        {
+                            type = *(ebr + 512 - 66 + (e << 4) + 4);
+
+                            if (type == 0)
                             {
-                                puts("Found valid extended partition table.");
-                                partition_number -= 4;
+                                continue;
                             }
-                }
 
-                if (partition_number > 4)
+                            if (type == 0x05 || type == 0x0F)
+                            {
+                                image_offset =
+                                    first_ebr_offset + (((off_t_64)
+                                        GetLittleEndian32U((uint8_t*)ebr + 512 - 66 + (e << 4) + 8)) << sector_shift);
+
+                                read_next_ebr = TRUE;
+
+                                break;
+                            }
+
+                            ++c;
+
+                            if (c == partition_number)
+                            {
+                                image_offset += ((off_t_64)
+                                    GetLittleEndian32U((uint8_t*)ebr + 512 - 66 + (e << 4) + 8))
+                                    << sector_shift;
+                                devio_info.file_size = ((off_t_64)
+                                    GetLittleEndian32U((uint8_t*)ebr + 512 - 66 + (e << 4) + 12))
+                                    << sector_shift;
+
+                                break;
+                            }
+                        }
+                    }
+                }
+                else
                 {
-                    syslog(LOG_ERR,
-                        "No valid extended partition table found.\n");
-                    return 1;
+                    ++c;
+
+                    if (c == partition_number)
+                    {
+                        image_offset = ((off_t_64)
+                            GetLittleEndian32U((uint8_t*)mbr + 512 - 66 + (i << 4) + 8))
+                            << sector_shift;
+                        devio_info.file_size = ((off_t_64)
+                            GetLittleEndian32U((uint8_t*)mbr + 512 - 66 + (i << 4) + 12))
+                            << sector_shift;
+
+                        break;
+                    }
                 }
             }
 
-            if ((partition_number >= 1) & (partition_number <= 4))
+            if ((devio_info.file_size == 0) ||
+                ((current_size != 0) &&
+                (image_offset + (off_t_64)devio_info.file_size > current_size)))
             {
-                offset += (off_t_64)
-                    (*(u_int*)(mbr + 512 - 66 + ((partition_number - 1) << 4) + 8))
-                    << sector_shift;
-                devio_info.file_size = (off_t_64)
-                    (*(u_int*)(mbr + 512 - 66 + ((partition_number - 1) << 4) + 12))
-                    << sector_shift;
-
-                if ((devio_info.file_size == 0) |
-                    ((current_size != 0) &
-                    (offset + (off_t_64)devio_info.file_size > current_size)))
-                {
-                    syslog(LOG_ERR,
-                        "Partition %i not found.\n", partition_number);
-                    return 1;
-                }
-
-                printf("Using partition %i.\n", partition_number);
+                syslog(LOG_ERR,
+                    "Partition %i not found.\n", partition_number);
+                return 1;
             }
+
+            printf("Using partition %i.\n", partition_number);
         }
         else
             puts("No master boot record detected. Using entire image.");
     }
 
-    if (offset == 0)
-        if (argc > 4)
+    if (image_offset == 0 && argc > 4)
+    {
+        int64_t offset64 = image_offset;
+
+        char suf = 0;
+        if (sscanf(argv[4], SLL_FMT "%c", &offset64, &suf) == 2)
+            switch (suf)
+            {
+            case 'T':
+                offset64 <<= 10;
+            case 'G':
+                offset64 <<= 10;
+            case 'M':
+                offset64 <<= 10;
+            case 'K':
+                offset64 <<= 10;
+            case 'B':
+                break;
+            case 't':
+                offset64 *= 1000;
+            case 'g':
+                offset64 *= 1000;
+            case 'm':
+                offset64 *= 1000;
+            case 'k':
+                offset64 *= 1000;
+            case 'b':
+                break;
+            default:
+                syslog(LOG_ERR, "Unsupported size suffix: %c\n", suf);
+            }
+        else
+            offset64 <<= 9;
+
+        if ((((int64_t)(-1) - (off_t_64)(-1)) & offset64) != 0)
         {
-            int64_t offset64 = offset;
-
-            char suf = 0;
-            if (sscanf(argv[4], SLL_FMT "%c", &offset64, &suf) == 2)
-                switch (suf)
-            {
-                case 'T':
-                    offset64 <<= 10;
-                case 'G':
-                    offset64 <<= 10;
-                case 'M':
-                    offset64 <<= 10;
-                case 'K':
-                    offset64 <<= 10;
-                case 'B':
-                    break;
-                case 't':
-                    offset64 *= 1000;
-                case 'g':
-                    offset64 *= 1000;
-                case 'm':
-                    offset64 *= 1000;
-                case 'k':
-                    offset64 *= 1000;
-                case 'b':
-                    break;
-                default:
-                    syslog(LOG_ERR, "Unsupported size suffix: %c\n", suf);
-            }
-            else
-                offset64 <<= 9;
-            
-            if ((((int64_t)(-1) - (off_t_64)(-1)) & offset64) != 0)
-            {
-                syslog(LOG_ERR, "Offset too big for this system.\n");
-            }
-
-            offset = (off_t_64)offset64;
-
-            argc--;
-            argv++;
+            syslog(LOG_ERR, "Offset too big for this system.\n");
         }
+
+        image_offset = (off_t_64)offset64;
+
+        argc--;
+        argv++;
+    }
 
     if (argc > 4)
     {
@@ -1472,13 +1556,13 @@ main(int argc, char **argv)
         "Buffer size: " SIZ_FMT " bytes.\n",
         (int64_t)current_size,
         devio_info.file_size,
-        (int64_t)offset,
+        (int64_t)image_offset,
         devio_info.req_alignment,
         buffer_size);
 
     retval = do_comm(comm_device);
 
-    printf("Image close result: %i\n", physical_close(fd));
+    printf("Image close result: %i\n", physical_close(image_fd));
 
     return retval;
 }
@@ -1832,7 +1916,7 @@ ExceptionFilter(LPEXCEPTION_POINTERS ExceptionInfo)
         fprintf(stderr,
             "Parameter %u: 0x%p\n",
             i + 1,
-            ExceptionInfo->ExceptionRecord->ExceptionInformation[i]);
+            (LPVOID)ExceptionInfo->ExceptionRecord->ExceptionInformation[i]);
     }
 
     _flushall();

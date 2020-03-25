@@ -2,7 +2,7 @@
 rundll32.exe compatible functions for the ImDisk Virtual Disk Driver for
 Windows NT/2000/XP.
 
-Copyright (C) 2007-2015 Olof Lagerkvist.
+Copyright (C) 2007-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -44,6 +44,8 @@ OTHER DEALINGS IN THE SOFTWARE.
 #pragma warning(disable: 4204)
 
 extern HINSTANCE hInstance;
+
+#ifndef CORE_BUILD
 
 IMDISK_API
 void
@@ -196,3 +198,5 @@ int nCmdShow)
 
     CloseHandle(hDev);
 }
+
+#endif

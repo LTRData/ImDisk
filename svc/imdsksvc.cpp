@@ -5,7 +5,7 @@ This service redirects I/O requests sent to the ImDisk Virtual Disk Driver
 to another computer through a serial communication interface or by opening
 a TCP/IP connection.
 
-Copyright (C) 2005-2015 Olof Lagerkvist.
+Copyright (C) 2005-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -43,9 +43,10 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "..\inc\wio.hpp"
 #include "..\inc\wmem.hpp"
 
+#pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "ws2_32.lib")
 
-#pragma comment(linker, "/subsystem:Windows")
+//#pragma comment(linker, "/subsystem:Console /entry:wWinMainCRTStartup")
 
 SERVICE_STATUS ImDiskSvcStatus;
 SERVICE_STATUS_HANDLE ImDiskSvcStatusHandle;
@@ -74,7 +75,12 @@ DbgPrintF(LPCSTR Message, ...)
         return FALSE;
 
     OutputDebugStringA(lpBuf);
+    
+    DWORD dw;
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE), lpBuf, (DWORD)strlen(lpBuf), &dw, NULL);
+    
     LocalFree(lpBuf);
+    
     return TRUE;
 }
 
@@ -189,6 +195,7 @@ class ImDiskSvcServerSession
         HANDLE hTarget;
         switch (IMDISK_PROXY_TYPE(ConnectReq.flags))
         {
+#ifndef _M_ARM
         case IMDISK_PROXY_TYPE_COMM:
         {
             LPWSTR FileName = wcstok(ConnectionString, L": ");
@@ -238,6 +245,7 @@ class ImDiskSvcServerSession
 
             break;
         }
+#endif
 
         case IMDISK_PROXY_TYPE_TCP:
         {
@@ -446,7 +454,7 @@ public:
 
             KdPrint(("ImDskSvc: Creating thread.%n"));
 
-            UINT id;
+            UINT id = 0;
             HANDLE hThread = (HANDLE)
                 _beginthreadex(NULL, 0, ThreadFunction.Static, this, 0, &id);
             if (hThread == NULL)
@@ -581,11 +589,14 @@ ImDiskSvcStart(DWORD, LPWSTR *)
 extern "C"
 int
 CALLBACK
+#pragma warning(suppress: 28251)
 wWinMain(HINSTANCE,
     HINSTANCE,
     LPWSTR,
     int)
 {
+    KdPrint(("ImDskSvc: Starting up process.%n"));
+
     WSADATA wsadata;
     WSAStartup(0x0101, &wsadata);
 
@@ -604,9 +615,13 @@ wWinMain(HINSTANCE,
 
     if (!StartServiceCtrlDispatcher(ServiceTable))
     {
+        KdPrintLastError(("StartServiceCtrlDispatcher() failed"));
+
+#ifndef _M_ARM
         MessageBoxA(NULL, "This program can only run as a Windows NT service.",
             "ImDisk Service",
             MB_ICONSTOP | MB_TASKMODAL);
+#endif
 
         return 0;
     }
@@ -616,7 +631,7 @@ wWinMain(HINSTANCE,
     return 1;
 }
 
-#if !defined(_DEBUG) && !defined(DEBUG) && (defined(_WIN64) || _MSC_VER < 1600)
+#if !defined(_DEBUG) && !defined(DEBUG) && _MSC_PLATFORM_TOOLSET < 140
 
 // We have our own EXE entry to be less dependent on
 // specific MSVCRT code that may not be available in older Windows versions.

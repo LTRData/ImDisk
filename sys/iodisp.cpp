@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2015 Olof Lagerkvist.
+Copyright (C) 2005-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -81,7 +81,7 @@ ImDiskDispatchCreateClose(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: Attempt to open device %i when shut down.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_REMOVED;
+        status = STATUS_DEVICE_DOES_NOT_EXIST;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -99,7 +99,7 @@ ImDiskDispatchCreateClose(IN PDEVICE_OBJECT DeviceObject,
     Irp->IoStatus.Status = status;
     Irp->IoStatus.Information = FILE_OPENED;
 
-    IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
     return status;
 }
@@ -150,7 +150,7 @@ ImDiskDispatchReadWrite(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: Read/write attempt on device %i while removing.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_REMOVED;
+        status = STATUS_DEVICE_DOES_NOT_EXIST;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -188,7 +188,7 @@ ImDiskDispatchReadWrite(IN PDEVICE_OBJECT DeviceObject,
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
 
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
         return status;
     }
@@ -203,7 +203,7 @@ ImDiskDispatchReadWrite(IN PDEVICE_OBJECT DeviceObject,
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
 
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
         return status;
     }
@@ -216,59 +216,58 @@ ImDiskDispatchReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
     status = STATUS_PENDING;
 
-    if (io_stack->MajorFunction == IRP_MJ_READ)
+    if ((io_stack->MajorFunction == IRP_MJ_READ) &&
+        (device_extension->last_io_data != NULL) &&
+        !device_extension->shared_image)
     {
         KLOCK_QUEUE_HANDLE lock_handle;
 
         ImDiskAcquireLock(&device_extension->last_io_lock, &lock_handle);
 
-        if (device_extension->last_io_data != NULL)
+        if ((io_stack->Parameters.Read.ByteOffset.QuadPart >=
+            device_extension->last_io_offset) &
+            ((io_stack->Parameters.Read.ByteOffset.QuadPart +
+                io_stack->Parameters.Read.Length) <=
+                (device_extension->last_io_offset +
+                    device_extension->last_io_length)))
         {
-            if ((io_stack->Parameters.Read.ByteOffset.QuadPart >=
-                device_extension->last_io_offset) &
-                ((io_stack->Parameters.Read.ByteOffset.QuadPart +
-                    io_stack->Parameters.Read.Length) <=
-                    (device_extension->last_io_offset +
-                        device_extension->last_io_length)))
+            PUCHAR system_buffer =
+                (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress,
+                    NormalPagePriority);
+            if (system_buffer == NULL)
             {
-                PUCHAR system_buffer =
-                    (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress,
-                        NormalPagePriority);
-                if (system_buffer == NULL)
-                {
-                    Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
-                    Irp->IoStatus.Information = 0;
-                    status = STATUS_INSUFFICIENT_RESOURCES;
-                }
-                else
-                {
-                    KdPrint(("ImDisk: Device %i read Offset=0x%.8x%.8x Len=%#x, "
-                        "intermediate cache hit.\n",
-                        device_extension->device_number,
-                        io_stack->Parameters.Read.ByteOffset.HighPart,
-                        io_stack->Parameters.Read.ByteOffset.LowPart,
-                        io_stack->Parameters.Read.Length));
+                Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+                Irp->IoStatus.Information = 0;
+                status = STATUS_INSUFFICIENT_RESOURCES;
+            }
+            else
+            {
+                KdPrint(("ImDisk: Device %i read Offset=0x%.8x%.8x Len=%#x, "
+                    "intermediate cache hit.\n",
+                    device_extension->device_number,
+                    io_stack->Parameters.Read.ByteOffset.HighPart,
+                    io_stack->Parameters.Read.ByteOffset.LowPart,
+                    io_stack->Parameters.Read.Length));
 
-                    Irp->IoStatus.Status = STATUS_SUCCESS;
-                    Irp->IoStatus.Information = io_stack->Parameters.Read.Length;
+                Irp->IoStatus.Status = STATUS_SUCCESS;
+                Irp->IoStatus.Information = io_stack->Parameters.Read.Length;
 
-                    RtlCopyMemory(system_buffer,
-                        device_extension->last_io_data +
-                        io_stack->Parameters.Read.ByteOffset.QuadPart -
-                        device_extension->last_io_offset,
+                RtlCopyMemory(system_buffer,
+                    device_extension->last_io_data +
+                    io_stack->Parameters.Read.ByteOffset.QuadPart -
+                    device_extension->last_io_offset,
+                    Irp->IoStatus.Information);
+
+                if (device_extension->byte_swap)
+                    ImDiskByteSwapBuffer(system_buffer,
                         Irp->IoStatus.Information);
 
-                    if (device_extension->byte_swap)
-                        ImDiskByteSwapBuffer(system_buffer,
-                            Irp->IoStatus.Information);
-
-                    if (io_stack->FileObject != NULL)
-                    {
-                        io_stack->FileObject->CurrentByteOffset.QuadPart +=
-                            Irp->IoStatus.Information;
-                    }
-                    status = STATUS_SUCCESS;
+                if (io_stack->FileObject != NULL)
+                {
+                    io_stack->FileObject->CurrentByteOffset.QuadPart +=
+                        Irp->IoStatus.Information;
                 }
+                status = STATUS_SUCCESS;
             }
         }
 
@@ -310,19 +309,13 @@ ImDiskDispatchReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
     if (status == STATUS_PENDING)
     {
-        IoMarkIrpPending(Irp);
-
-        ImDiskInterlockedInsertTailList(&device_extension->list_head,
-            &Irp->Tail.Overlay.ListEntry,
-            &device_extension->list_lock);
-
-        KeSetEvent(&device_extension->request_event, (KPRIORITY)0, FALSE);
+        ImDiskQueueIrp(device_extension, Irp);
 
         return STATUS_PENDING;
     }
     else
     {
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
         return status;
     }
@@ -355,7 +348,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: IOCTL attempt on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_REMOVED;
+        status = STATUS_DEVICE_DOES_NOT_EXIST;
 
         Irp->IoStatus.Status = status;
 
@@ -416,6 +409,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     switch (io_stack->Parameters.DeviceIoControl.IoControlCode)
     {
     case IOCTL_IMDISK_SET_DEVICE_FLAGS:
+    {
         KdPrint(("ImDisk: IOCTL_IMDISK_SET_DEVICE_FLAGS for device %i.\n",
             device_extension->device_number));
 
@@ -426,105 +420,107 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
             break;
         }
 
+        PIMDISK_SET_DEVICE_FLAGS device_flags = (PIMDISK_SET_DEVICE_FLAGS)
+            Irp->AssociatedIrp.SystemBuffer;
+
+        KIRQL irql = KeGetCurrentIrql();
+
+        if (irql >= DISPATCH_LEVEL)
         {
-            PIMDISK_SET_DEVICE_FLAGS device_flags = (PIMDISK_SET_DEVICE_FLAGS)
-                Irp->AssociatedIrp.SystemBuffer;
+            status = STATUS_ACCESS_DENIED;
+            break;
+        }
 
-            KIRQL irql = KeGetCurrentIrql();
+        status = STATUS_SUCCESS;
 
-            if (irql >= DISPATCH_LEVEL)
+        if (IMDISK_READONLY(device_flags->FlagsToChange))
+            if (DeviceObject->DeviceType == FILE_DEVICE_DISK)
             {
-                status = STATUS_ACCESS_DENIED;
-                break;
-            }
-
-            status = STATUS_SUCCESS;
-
-            if (IMDISK_READONLY(device_flags->FlagsToChange))
-                if (DeviceObject->DeviceType == FILE_DEVICE_DISK)
+                // Set read-only
+                if ((IMDISK_READONLY(device_flags->FlagValues) != 0) &
+                    (device_extension->special_file_count <= 0))
                 {
-                    if ((IMDISK_READONLY(device_flags->FlagValues) != 0) &
-                        (device_extension->special_file_count <= 0))
+                    DeviceObject->Characteristics |= FILE_READ_ONLY_DEVICE;
+                    device_extension->read_only = TRUE;
+
+                    device_flags->FlagsToChange &= ~IMDISK_OPTION_RO;
+                }
+                // Clear read-only
+                else
+                {
+                    // It is not possible to make a file- or proxy virtual disk
+                    // writable on the fly. (A physical image file or the proxy
+                    // comm channel might not be opened for writing.)
+                    if (device_extension->vm_disk)
                     {
-                        DeviceObject->Characteristics |= FILE_READ_ONLY_DEVICE;
-                        device_extension->read_only = TRUE;
+                        DeviceObject->Characteristics &= ~FILE_READ_ONLY_DEVICE;
+                        device_extension->read_only = FALSE;
 
                         device_flags->FlagsToChange &= ~IMDISK_OPTION_RO;
                     }
-                    else
-                        // It is not possible to make a file- or proxy virtual disk
-                        // writable on the fly. (A physical image file or the proxy
-                        // comm channel might not be opened for writing.)
-                        if (device_extension->vm_disk)
-                        {
-                            DeviceObject->Characteristics &= ~FILE_READ_ONLY_DEVICE;
-                            device_extension->read_only = FALSE;
-
-                            device_flags->FlagsToChange &= ~IMDISK_OPTION_RO;
-                        }
                 }
+            }
 
-            if (IMDISK_REMOVABLE(device_flags->FlagsToChange))
-                if (DeviceObject->DeviceType == FILE_DEVICE_DISK)
-                {
-                    if (IMDISK_REMOVABLE(device_flags->FlagValues))
-                        DeviceObject->Characteristics |= FILE_REMOVABLE_MEDIA;
-                    else
-                        DeviceObject->Characteristics &= ~FILE_REMOVABLE_MEDIA;
-
-                    device_flags->FlagsToChange &= ~IMDISK_OPTION_REMOVABLE;
-                }
-
-            if (device_flags->FlagsToChange & IMDISK_IMAGE_MODIFIED)
+        if (IMDISK_REMOVABLE(device_flags->FlagsToChange))
+            if (DeviceObject->DeviceType == FILE_DEVICE_DISK)
             {
-                if (device_flags->FlagValues & IMDISK_IMAGE_MODIFIED)
-                    device_extension->image_modified = TRUE;
+                if (IMDISK_REMOVABLE(device_flags->FlagValues))
+                    DeviceObject->Characteristics |= FILE_REMOVABLE_MEDIA;
                 else
-                    device_extension->image_modified = FALSE;
+                    DeviceObject->Characteristics &= ~FILE_REMOVABLE_MEDIA;
 
-                device_flags->FlagsToChange &= ~IMDISK_IMAGE_MODIFIED;
+                device_flags->FlagsToChange &= ~IMDISK_OPTION_REMOVABLE;
             }
 
-            if (irql == PASSIVE_LEVEL)
-            {
-                if (IMDISK_SPARSE_FILE(device_flags->FlagsToChange) &&
-                    IMDISK_SPARSE_FILE(device_flags->FlagValues) &&
-                    (!device_extension->use_proxy) &&
-                    (!device_extension->vm_disk))
-                {
-                    IO_STATUS_BLOCK io_status;
-                    status = ZwFsControlFile(device_extension->file_handle,
-                        NULL,
-                        NULL,
-                        NULL,
-                        &io_status,
-                        FSCTL_SET_SPARSE,
-                        NULL,
-                        0,
-                        NULL,
-                        0);
-
-                    if (NT_SUCCESS(status))
-                    {
-                        device_extension->use_set_zero_data = TRUE;
-                        device_flags->FlagsToChange &= ~IMDISK_OPTION_SPARSE_FILE;
-                    }
-                }
-
-                // Fire refresh event
-                if (RefreshEvent != NULL)
-                    KePulseEvent(RefreshEvent, 0, FALSE);
-            }
+        if (device_flags->FlagsToChange & IMDISK_IMAGE_MODIFIED)
+        {
+            if (device_flags->FlagValues & IMDISK_IMAGE_MODIFIED)
+                device_extension->image_modified = TRUE;
             else
-                KdPrint
-                (("ImDisk: Some flags cannot be changed at this IRQL (%#x).\n",
-                    irql));
+                device_extension->image_modified = FALSE;
 
-            if (device_flags->FlagsToChange == 0)
-                status = STATUS_SUCCESS;
-            else if (NT_SUCCESS(status))
-                status = STATUS_INVALID_DEVICE_REQUEST;
+            device_flags->FlagsToChange &= ~IMDISK_IMAGE_MODIFIED;
         }
+
+        if (irql == PASSIVE_LEVEL)
+        {
+            if (IMDISK_SPARSE_FILE(device_flags->FlagsToChange) &&
+                IMDISK_SPARSE_FILE(device_flags->FlagValues) &&
+                (!device_extension->use_proxy) &&
+                (!device_extension->vm_disk))
+            {
+                IO_STATUS_BLOCK io_status;
+                status = ZwFsControlFile(device_extension->file_handle,
+                    NULL,
+                    NULL,
+                    NULL,
+                    &io_status,
+                    FSCTL_SET_SPARSE,
+                    NULL,
+                    0,
+                    NULL,
+                    0);
+
+                if (NT_SUCCESS(status))
+                {
+                    device_extension->use_set_zero_data = TRUE;
+                    device_flags->FlagsToChange &= ~IMDISK_OPTION_SPARSE_FILE;
+                }
+            }
+
+            // Fire refresh event
+            if (RefreshEvent != NULL)
+                KePulseEvent(RefreshEvent, 0, FALSE);
+        }
+        else
+            KdPrint
+            (("ImDisk: Some flags cannot be changed at this IRQL (%#x).\n",
+                irql));
+
+        if (device_flags->FlagsToChange == 0)
+            status = STATUS_SUCCESS;
+        else if (NT_SUCCESS(status))
+            status = STATUS_INVALID_DEVICE_REQUEST;
 
         if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
             sizeof(IMDISK_SET_DEVICE_FLAGS))
@@ -533,6 +529,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
         }
 
         break;
+    }
 
     case IOCTL_IMDISK_REFERENCE_HANDLE:
     {
@@ -752,8 +749,6 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     {
         ULONG device_number;
         KLOCK_QUEUE_HANDLE lock_handle;
-        PDEVICE_OBJECT device_object =
-            ImDiskCtlDevice->DriverObject->DeviceObject;
 
         KdPrint(("ImDisk: IOCTL_IMDISK_REMOVE_DEVICE.\n"));
 
@@ -779,14 +774,17 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
         ImDiskAcquireLock(&DeviceListLock, &lock_handle);
 
+        PDEVICE_OBJECT device_object =
+            ImDiskCtlDevice->DriverObject->DeviceObject;
+
         while (device_object != NULL)
         {
-            PDEVICE_EXTENSION device_extension =
+            PDEVICE_EXTENSION device_object_extension =
                 (PDEVICE_EXTENSION)device_object->DeviceExtension;
 
-            if (device_extension->device_number == device_number)
+            if (device_object_extension->device_number == device_number)
             {
-                if (device_extension->special_file_count > 0)
+                if (device_object_extension->special_file_count > 0)
                 {
                     status = STATUS_ACCESS_DENIED;
                 }
@@ -848,8 +846,9 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
             ImDiskAcquireLock(&DeviceListLock, &lock_handle);
 
-            for (device_object = DeviceObject->DriverObject->DeviceObject;
-            device_object != NULL;
+            for (
+                device_object = DeviceObject->DriverObject->DeviceObject;
+                device_object != NULL;
 #pragma warning(suppress: 28175)
                 device_object = device_object->NextDevice)
             {
@@ -1852,22 +1851,28 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
     if (status == STATUS_PENDING)
     {
-        IoMarkIrpPending(Irp);
-
-        ImDiskInterlockedInsertTailList(&device_extension->list_head,
-            &Irp->Tail.Overlay.ListEntry,
-            &device_extension->list_lock);
-
-        KeSetEvent(&device_extension->request_event, (KPRIORITY)0, FALSE);
+        ImDiskQueueIrp(device_extension, Irp);
     }
     else
     {
         Irp->IoStatus.Status = status;
 
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
     }
 
     return status;
+}
+
+VOID
+ImDiskQueueIrp(PDEVICE_EXTENSION DeviceExtension, PIRP Irp)
+{
+    IoMarkIrpPending(Irp);
+
+    ImDiskInterlockedInsertTailList(&DeviceExtension->list_head,
+        &Irp->Tail.Overlay.ListEntry,
+        &DeviceExtension->list_lock);
+
+    KeSetEvent(&DeviceExtension->request_event, (KPRIORITY)0, FALSE);
 }
 
 NTSTATUS
@@ -1909,7 +1914,7 @@ ImDiskDispatchFlushBuffers(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: flush dispatch on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_REMOVED;
+        status = STATUS_DEVICE_DOES_NOT_EXIST;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -1935,7 +1940,7 @@ ImDiskDispatchFlushBuffers(IN PDEVICE_OBJECT DeviceObject,
     {
         Irp->IoStatus.Status = STATUS_SUCCESS;
 
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
         return STATUS_SUCCESS;
     }
@@ -1945,13 +1950,7 @@ ImDiskDispatchFlushBuffers(IN PDEVICE_OBJECT DeviceObject,
     }
     else
     {
-        IoMarkIrpPending(Irp);
-
-        ImDiskInterlockedInsertTailList(&device_extension->list_head,
-            &Irp->Tail.Overlay.ListEntry,
-            &device_extension->list_lock);
-
-        KeSetEvent(&device_extension->request_event, (KPRIORITY)0, FALSE);
+        ImDiskQueueIrp(device_extension, Irp);
 
         return STATUS_PENDING;
     }
@@ -1999,7 +1998,7 @@ ImDiskDispatchQueryInformation(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: QueryInformation dispatch on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_REMOVED;
+        status = STATUS_DEVICE_DOES_NOT_EXIST;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -2068,19 +2067,13 @@ ImDiskDispatchQueryInformation(IN PDEVICE_OBJECT DeviceObject,
 
     if (status == STATUS_PENDING)
     {
-        IoMarkIrpPending(Irp);
-
-        ImDiskInterlockedInsertTailList(&device_extension->list_head,
-            &Irp->Tail.Overlay.ListEntry,
-            &device_extension->list_lock);
-
-        KeSetEvent(&device_extension->request_event, (KPRIORITY)0, FALSE);
+        ImDiskQueueIrp(device_extension, Irp);
     }
     else
     {
         Irp->IoStatus.Status = status;
 
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
     }
 
     return status;
@@ -2128,7 +2121,7 @@ ImDiskDispatchSetInformation(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: SetInformation dispatch on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_REMOVED;
+        status = STATUS_DEVICE_DOES_NOT_EXIST;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -2183,7 +2176,7 @@ ImDiskDispatchSetInformation(IN PDEVICE_OBJECT DeviceObject,
     KdPrint2(("ImDisk: SetFile.FileInformationClass %u result status %#x\n",
         io_stack->Parameters.SetFile.FileInformationClass, status));
 
-    IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
     return status;
 }
@@ -2229,7 +2222,7 @@ ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: PnP dispatch on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_REMOVED;
+        status = STATUS_DEVICE_DOES_NOT_EXIST;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -2287,19 +2280,13 @@ ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
 
     if (status == STATUS_PENDING)
     {
-        IoMarkIrpPending(Irp);
-
-        ImDiskInterlockedInsertTailList(&device_extension->list_head,
-            &Irp->Tail.Overlay.ListEntry,
-            &device_extension->list_lock);
-
-        KeSetEvent(&device_extension->request_event, (KPRIORITY)0, FALSE);
+        ImDiskQueueIrp(device_extension, Irp);
     }
     else
     {
         Irp->IoStatus.Status = status;
 
-        IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
     }
 
     return status;

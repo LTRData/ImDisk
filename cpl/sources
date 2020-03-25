@@ -7,8 +7,13 @@ UMTYPE=windows
 USE_MSVCRT=1
 MSC_OPTIMIZATION=/Ox /GF
 MSC_WARNING_LEVEL=/W4 /WX /wd4201
-SOURCES=imdisk.cpp resource.rc drvio.c rundll.c mbr.c
+SOURCES=imdisk.cpp wconmsg.cpp resource.rc drvio.c rundll.c mbr.c
 DLLDEF=$O\imdisk.def
+
+#SXS_APPLICATION_MANIFEST=imdisk.cpl.manifest
+#SXS_ASSEMBLY_VERSION=1.0
+#SXS_ASSEMBLY_NAME=ImDisk
+#SXS_ASSEMBLY_LANGUAGE=0000
 
 !IF "$(_BUILDARCH)" == "x86"
 

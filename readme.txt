@@ -1,5 +1,5 @@
 
-  ImDisk Virtual Disk Driver for Windows NT/2000/XP.
+  ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003/Vista/7/8/8.1/10.
 
   This driver emulates harddisk partitions, floppy drives and CD/DVD-ROM
   drives from disk image files, in virtual memory or by redirecting I/O
@@ -14,14 +14,16 @@
   without parameters.
 
   I have tested this product under 32 bit versions of Windows NT 3.51, NT 4.0,
-  2000, XP, Server 2003, Vista and 7. There have also been a few tests under 64
-  bit versions of Windows XP, Server 2003, Vista and 7.
+  2000, XP, Server 2003, Vista, 7, 8, 8.1 and 10 and x86-64 versions of XP,
+  Server 2003, Vista, 7, 8, 8.1 and 10. Primary target are older versions and
+  there are several known compatibility issues on modern version of Windows.
+  Please see website for more details: http://ltr-data.se/opencode.html#ImDisk
 
-  The install/uninstall routines do not work under NT 3.51. If
-  you want to use this product under NT 3.51 you have to manually add the
-  registry entries for the driver and the service.
+  The install/uninstall routines do not work under NT 3.51. If you want to use
+  this product under NT 3.51 you have to manually add registry entries needed
+  by driver and service or use resource kit tools to add necessary settings.
 
-    Copyright (c) 2005-2009 Olof Lagerkvist
+    Copyright (c) 2005-2016 Olof Lagerkvist
     http://www.ltr-data.se      olof@ltr-data.se
 
     Permission is hereby granted, free of charge, to any person

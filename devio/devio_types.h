@@ -1,5 +1,5 @@
 
-#if defined(_MSC_VER) && _MSC_VER < 1900
+#if defined(_MSC_VER) && _MSC_PLATFORM_TOOLSET < 120
 
 #define PRIu64 "I64u"
 #define PRIi64 "I64i"
@@ -20,8 +20,12 @@ typedef __int64 int64_t;
 
 #endif
 
+#ifndef ULL_FMT
 #define ULL_FMT         "%" PRIu64
+#endif
+#ifndef SLL_FMT
 #define SLL_FMT         "%" PRIi64
+#endif
 
 #ifdef _WIN32
 

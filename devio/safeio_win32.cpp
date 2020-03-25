@@ -1,7 +1,7 @@
 /*
     General I/O support routines for WIN32 environments.
 
-    Copyright (C) 2005-2007 Olof Lagerkvist.
+    Copyright (C) 2005-2018 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation

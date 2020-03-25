@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2015 Olof Lagerkvist.
+Copyright (C) 2005-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -104,23 +104,31 @@ ImDiskReadWriteLowerDeviceCompletion(PDEVICE_OBJECT DeviceObject,
 
         if (item->AllocatedBuffer != NULL)
         {
-            KLOCK_QUEUE_HANDLE lock_handle;
-
-            ImDiskAcquireLock(&item->DeviceExtension->last_io_lock, &lock_handle);
-
-            if (item->DeviceExtension->last_io_data != NULL)
+            if (item->DeviceExtension->shared_image)
             {
-                ExFreePoolWithTag(item->DeviceExtension->last_io_data,
-                    POOL_TAG);
+                ExFreePoolWithTag(item->AllocatedBuffer, POOL_TAG);
             }
+            else
+            {
+                KLOCK_QUEUE_HANDLE lock_handle;
 
-            item->DeviceExtension->last_io_data = item->AllocatedBuffer;
+                ImDiskAcquireLock(&item->DeviceExtension->last_io_lock,
+                    &lock_handle);
 
-            item->DeviceExtension->last_io_offset = item->OriginalOffset;
-            item->DeviceExtension->last_io_length =
-                (ULONG)Irp->IoStatus.Information;
+                if (item->DeviceExtension->last_io_data != NULL)
+                {
+                    ExFreePoolWithTag(item->DeviceExtension->last_io_data,
+                        POOL_TAG);
+                }
 
-            ImDiskReleaseLock(&lock_handle);
+                item->DeviceExtension->last_io_data = item->AllocatedBuffer;
+
+                item->DeviceExtension->last_io_offset = item->OriginalOffset;
+                item->DeviceExtension->last_io_length =
+                    (ULONG)Irp->IoStatus.Information;
+
+                ImDiskReleaseLock(&lock_handle);
+            }
         }
     }
 
@@ -133,7 +141,9 @@ ImDiskReadWriteLowerDeviceCompletion(PDEVICE_OBJECT DeviceObject,
         IoFreeIrp(Irp);
     }
 
-    IoCompleteRequest(item->OriginalIrp, IO_DISK_INCREMENT);
+    IoCompleteRequest(item->OriginalIrp,
+        NT_SUCCESS(item->OriginalIrp->IoStatus.Status) ?
+        IO_DISK_INCREMENT : IO_NO_INCREMENT);
 
     ExFreePoolWithTag(item, POOL_TAG);
 

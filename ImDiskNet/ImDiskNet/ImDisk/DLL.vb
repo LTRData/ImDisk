@@ -67,6 +67,23 @@
             <MarshalAs(UnmanagedType.LPArray), Out> PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION()
           ) As Boolean
 
+        Public Declare Unicode Function ImDiskGetPartitionInformationEx _
+          Lib "imdisk.cpl" (
+            <MarshalAs(UnmanagedType.LPWStr), [In]> ImageFileName As String,
+            SectorSize As UInt32,
+            <[In]> ByRef Offset As Int64,
+            <MarshalAs(UnmanagedType.FunctionPtr)> PartitionInformationProc As ImDiskGetPartitionInfoProc,
+            UserData As IntPtr
+          ) As Boolean
+
+        Public Declare Unicode Function ImDiskGetSinglePartitionInformation _
+          Lib "imdisk.cpl" (
+            <MarshalAs(UnmanagedType.LPWStr), [In]> ImageFileName As String,
+            SectorSize As UInt32,
+            <[In]> ByRef Offset As Int64,
+            <Out> ByRef PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION
+          ) As Boolean
+
         Public Delegate Function ImDiskReadFileManagedProc _
           (
             Handle As IntPtr,
@@ -83,6 +100,12 @@
             Offset As Int64,
             NumberOfBytes As UInt32,
             <Out> ByRef NumberOfBytesRead As UInt32
+          ) As Boolean
+
+        Public Delegate Function ImDiskGetPartitionInfoProc _
+          (
+            UserData As IntPtr,
+            <[In]> ByRef PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION
           ) As Boolean
 
         Public Declare Unicode Function ImDiskReadFileHandle _
@@ -128,6 +151,35 @@
             SectorSize As UInt32,
             <[In]> ByRef Offset As Int64,
             <MarshalAs(UnmanagedType.LPArray), Out> PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION()
+          ) As Boolean
+
+        Public Declare Unicode Function ImDiskGetPartitionInfoIndirectEx _
+          Lib "imdisk.cpl" (
+            Handle As IntPtr,
+            <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileManagedProc,
+            SectorSize As UInt32,
+            <[In]> ByRef Offset As Int64,
+            <MarshalAs(UnmanagedType.FunctionPtr)> PartitionInformationProc As ImDiskGetPartitionInfoProc,
+            UserData As IntPtr
+          ) As Boolean
+
+        Public Declare Unicode Function ImDiskGetPartitionInfoIndirectEx _
+          Lib "imdisk.cpl" (
+            Handle As IntPtr,
+            <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileUnmanagedProc,
+            SectorSize As UInt32,
+            <[In]> ByRef Offset As Int64,
+            <MarshalAs(UnmanagedType.FunctionPtr)> PartitionInformationProc As ImDiskGetPartitionInfoProc,
+            UserData As IntPtr
+          ) As Boolean
+
+        Public Declare Unicode Function ImDiskGetSinglePartitionInfoIndirect _
+          Lib "imdisk.cpl" (
+            Handle As IntPtr,
+            <MarshalAs(UnmanagedType.FunctionPtr)> ReadFileProc As ImDiskReadFileManagedProc,
+            SectorSize As UInt32,
+            <[In]> ByRef Offset As Int64,
+            <Out> ByRef PartitionInformation As NativeFileIO.Win32API.PARTITION_INFORMATION
           ) As Boolean
 
         Public Declare Unicode Function ImDiskImageContainsISOFS _

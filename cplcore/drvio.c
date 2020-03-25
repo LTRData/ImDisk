@@ -1,7 +1,7 @@
 /*
 API library for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-Copyright (C) 2007-2015 Olof Lagerkvist.
+Copyright (C) 2007-2018 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -40,6 +40,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "drvio.h"
 #include "mbr.h"
 
+#pragma comment(lib, "kernel32.lib")
+#pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "ntdll.lib")
 
 #pragma warning(disable: 4100)
@@ -62,6 +65,7 @@ IMDISK_API VOID
 WINAPI
 ImDiskFlushWindowMessages(HWND hWnd)
 {
+#ifndef CORE_BUILD
     MSG msg;
     
     while (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
@@ -73,6 +77,7 @@ ImDiskFlushWindowMessages(HWND hWnd)
 
         DispatchMessage(&msg);
     }
+#endif
 }
 
 IMDISK_API LPWSTR
@@ -112,6 +117,7 @@ ImDiskSetAPIFlags(ULONGLONG Flags)
     return old_flags;
 }
 
+#ifndef CORE_BUILD
 INT_PTR
 CALLBACK
 StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -151,6 +157,7 @@ StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     return FALSE;
 }
+#endif
 
 IMDISK_API BOOL
 CDECL
@@ -167,7 +174,7 @@ ImDiskMsgBoxPrintF(HWND hWnd, UINT uStyle, LPCWSTR lpTitle, LPCWSTR lpMessage, .
         (LPWSTR)&lpBuf, 0, &param_list))
         return 0;
 
-    msg_result = MessageBox(hWnd, lpBuf, lpTitle, uStyle);
+    msg_result = MessageBoxW(hWnd, lpBuf, lpTitle, uStyle);
     LocalFree(lpBuf);
     return msg_result;
 }
@@ -304,11 +311,76 @@ IN OUT PLARGE_INTEGER Offset)
 
 IMDISK_API BOOL
 WINAPI
+ImDiskGetPartitionInformationEx(IN LPCWSTR ImageFile,
+    IN DWORD SectorSize OPTIONAL,
+    IN PLARGE_INTEGER Offset OPTIONAL,
+    IN ImDiskGetPartitionInfoProc GetPartitionInfoProc,
+    IN LPVOID UserData OPTIONAL)
+{
+    HANDLE hImageFile;
+    BOOL bResult;
+    DWORD dwLastError;
+
+    hImageFile = CreateFile(ImageFile, GENERIC_READ, FILE_SHARE_READ |
+        FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+        OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+
+    if (hImageFile == INVALID_HANDLE_VALUE)
+        return FALSE;
+
+    bResult = ImDiskGetPartitionInfoIndirectEx(hImageFile,
+        ImDiskReadFileHandle,
+        SectorSize,
+        Offset,
+        GetPartitionInfoProc,
+        UserData);
+
+    dwLastError = GetLastError();
+    CloseHandle(hImageFile);
+    SetLastError(dwLastError);
+
+    return bResult;
+}
+
+IMDISK_API BOOL
+WINAPI
+ImDiskGetSinglePartitionInformation(IN LPCWSTR ImageFile,
+    IN DWORD SectorSize OPTIONAL,
+    IN PLARGE_INTEGER Offset OPTIONAL,
+    IN OUT PPARTITION_INFORMATION PartitionInformation,
+    IN INT PartitionNumber)
+{
+    HANDLE hImageFile;
+    BOOL bResult;
+    DWORD dwLastError;
+
+    hImageFile = CreateFile(ImageFile, GENERIC_READ, FILE_SHARE_READ |
+        FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+        OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+
+    if (hImageFile == INVALID_HANDLE_VALUE)
+        return FALSE;
+
+    bResult = ImDiskGetSinglePartitionInfoIndirect(hImageFile,
+        ImDiskReadFileHandle,
+        SectorSize,
+        Offset,
+        PartitionInformation,
+        PartitionNumber);
+
+    dwLastError = GetLastError();
+    CloseHandle(hImageFile);
+    SetLastError(dwLastError);
+
+    return bResult;
+}
+
+IMDISK_API BOOL
+WINAPI
 ImDiskGetPartitionInformation(IN LPCWSTR ImageFile,
-IN DWORD SectorSize OPTIONAL,
-IN PLARGE_INTEGER Offset OPTIONAL,
-IN OUT PPARTITION_INFORMATION
-PartitionInformation)
+    IN DWORD SectorSize OPTIONAL,
+    IN PLARGE_INTEGER Offset OPTIONAL,
+    IN OUT PPARTITION_INFORMATION PartitionInformation)
 {
     HANDLE hImageFile;
     BOOL bResult;
@@ -359,6 +431,267 @@ IN OUT LPDWORD NumberOfBytesRead)
         NumberOfBytesRead,
         NULL);
 }
+
+IMDISK_API BOOL
+WINAPI
+ImDiskGetPartitionInfoIndirectEx(IN HANDLE Handle,
+    IN ImDiskReadFileProc ReadFileProc,
+    IN DWORD SectorSize OPTIONAL,
+    IN PLARGE_INTEGER Offset OPTIONAL,
+    IN ImDiskGetPartitionInfoProc GetPartitionInfoProc,
+    IN LPVOID UserData OPTIONAL)
+{
+    LARGE_INTEGER zero_offset = { 0 };
+    LPBYTE buffer = NULL;
+    DWORD read_size = 0;
+    LARGE_INTEGER first_ebr_offset = { 0 };
+    LARGE_INTEGER current_ebr_offset = { 0 };
+    PARTITION_INFORMATION partition_information = { 0 };
+    PMBR_PARTITION_TABLE partition_table;
+    int partition_count = 0;
+    int i;
+
+    if (Offset == NULL)
+        Offset = &zero_offset;
+
+    if (SectorSize == 0)
+        SectorSize = 512;
+
+    buffer = (LPBYTE)_alloca(SectorSize << 1);
+
+    if (!ReadFileProc(Handle, buffer, *Offset, SectorSize, &read_size))
+        return FALSE;
+
+    if (read_size != SectorSize)
+    {
+        SetLastError(ERROR_DISK_CORRUPT);
+        return FALSE;
+    }
+
+    partition_table = (PMBR_PARTITION_TABLE)(buffer + 512 - 66);
+
+    // Check if MBR signature is there and no flags set (except boot
+    // indicators), otherwise this is not an MBR
+    if (partition_table->Signature != 0xAA55 ||
+        partition_table->PartitionEntry[0].Zero ||
+        partition_table->PartitionEntry[1].Zero ||
+        partition_table->PartitionEntry[2].Zero ||
+        partition_table->PartitionEntry[3].Zero)
+    {
+        SetLastError(ERROR_DISK_CORRUPT);
+        return FALSE;
+    }
+
+    for (i = 0; i < 4; i++)
+    {
+        partition_information.StartingOffset.QuadPart =
+            (LONGLONG)SectorSize *
+            partition_table->PartitionEntry[i].StartingSector;
+
+        partition_information.PartitionLength.QuadPart =
+            (LONGLONG)SectorSize *
+            partition_table->PartitionEntry[i].NumberOfSectors;
+
+        partition_information.HiddenSectors =
+            partition_table->PartitionEntry[i].StartingSector;
+
+        partition_information.PartitionType =
+            partition_table->PartitionEntry[i].PartitionType;
+
+        partition_information.BootIndicator =
+            partition_table->PartitionEntry[i].BootIndicator;
+
+        partition_information.RecognizedPartition = FALSE;
+
+        partition_information.RewritePartition = FALSE;
+
+        if (IsContainerPartition(partition_information.PartitionType))
+        {
+            BOOL read_next_ebr = TRUE;
+            PMBR_PARTITION_TABLE ebr_partition_table =
+                (PMBR_PARTITION_TABLE)(buffer + (SectorSize << 1) - 66);
+
+            first_ebr_offset.QuadPart = Offset->QuadPart +
+                partition_information.StartingOffset.QuadPart;
+
+            current_ebr_offset = first_ebr_offset;
+
+            while (read_next_ebr)
+            {
+                int e;
+
+                read_next_ebr = FALSE;
+
+                if (!ReadFileProc(Handle, buffer + SectorSize, current_ebr_offset, SectorSize,
+                    &read_size))
+                {
+                    return FALSE;
+                }
+
+                if (read_size != SectorSize)
+                {
+                    break;
+                }
+
+                // Check if EBR signature is there and no flags set (except boot
+                // indicators), otherwise this is not an EBR
+                if (ebr_partition_table->Signature != 0xAA55 ||
+                    ebr_partition_table->PartitionEntry[0].Zero ||
+                    ebr_partition_table->PartitionEntry[1].Zero ||
+                    ebr_partition_table->PartitionEntry[2].Zero ||
+                    ebr_partition_table->PartitionEntry[3].Zero)
+                {
+                    break;
+                }
+
+                for (e = 0; e < 4; e++)
+                {
+                    if (ebr_partition_table->PartitionEntry[e].PartitionType == 0)
+                    {
+                        continue;
+                    }
+
+                    if (IsContainerPartition(ebr_partition_table->PartitionEntry[e].PartitionType))
+                    {
+                        current_ebr_offset.QuadPart =
+                            first_ebr_offset.QuadPart + (LONGLONG)SectorSize *
+                            ebr_partition_table->PartitionEntry[e].StartingSector;
+
+                        read_next_ebr = TRUE;
+
+                        break;
+                    }
+
+                    partition_information.StartingOffset.QuadPart =
+                        current_ebr_offset.QuadPart +
+                        (LONGLONG)SectorSize *
+                        ebr_partition_table->PartitionEntry[e].StartingSector;
+
+                    partition_information.PartitionLength.QuadPart =
+                        (LONGLONG)SectorSize *
+                        ebr_partition_table->PartitionEntry[e].NumberOfSectors;
+
+                    partition_information.HiddenSectors =
+                        ebr_partition_table->PartitionEntry[e].StartingSector;
+
+                    partition_information.PartitionNumber = ++partition_count;
+
+                    partition_information.PartitionType =
+                        ebr_partition_table->PartitionEntry[e].PartitionType;
+
+                    partition_information.BootIndicator =
+                        ebr_partition_table->PartitionEntry[e].BootIndicator;
+
+                    partition_information.RecognizedPartition = FALSE;
+
+                    partition_information.RewritePartition = FALSE;
+
+                    if (!GetPartitionInfoProc(UserData, &partition_information))
+                    {
+                        SetLastError(ERROR_CANCELLED);
+                        return FALSE;
+                    }
+                }
+            }
+        }
+        else if (partition_information.PartitionType != 0)
+        {
+            partition_information.PartitionNumber = ++partition_count;
+
+            if (!GetPartitionInfoProc(UserData, &partition_information))
+            {
+                SetLastError(ERROR_CANCELLED);
+                return FALSE;
+            }
+        }
+    }
+
+    return TRUE;
+}
+
+typedef struct _IMDISKGETPARTITIONINFOINDIRECTEX_DATA
+{
+    PPARTITION_INFORMATION Next;
+    DWORD Count;
+} IMDISKGETPARTITIONINFOINDIRECTEX_DATA, *PIMDISKGETPARTITIONINFOINDIRECTEX_DATA;
+
+BOOL CALLBACK
+GotPartInfoForArray(LPVOID UserData, PPARTITION_INFORMATION PartitionInformation)
+{
+    PIMDISKGETPARTITIONINFOINDIRECTEX_DATA data = (PIMDISKGETPARTITIONINFOINDIRECTEX_DATA)UserData;
+
+    *data->Next = *PartitionInformation;
+
+    ++data->Next;
+
+    --data->Count;
+
+    return data->Count > 0;
+}
+
+BOOL CALLBACK
+GotPartInfoForSingle(LPVOID UserData, PPARTITION_INFORMATION PartitionInformation)
+{
+    PIMDISKGETPARTITIONINFOINDIRECTEX_DATA data = (PIMDISKGETPARTITIONINFOINDIRECTEX_DATA)UserData;
+
+    if (PartitionInformation->PartitionNumber == data->Count)
+    {
+        *data->Next = *PartitionInformation;
+        data->Count = 0;
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+IMDISK_API BOOL
+WINAPI
+ImDiskGetPartitionInfoIndirect(IN HANDLE Handle,
+    IN ImDiskReadFileProc ReadFileProc,
+    IN DWORD SectorSize OPTIONAL,
+    IN PLARGE_INTEGER Offset OPTIONAL,
+    IN OUT PPARTITION_INFORMATION PartitionInformation)
+{
+    IMDISKGETPARTITIONINFOINDIRECTEX_DATA data;
+    data.Count = 8;
+    data.Next = PartitionInformation;
+
+    ZeroMemory(PartitionInformation, 8 * sizeof(PARTITION_INFORMATION));
+
+    return ImDiskGetPartitionInfoIndirectEx(Handle, ReadFileProc, SectorSize,
+        Offset, GotPartInfoForArray, &data);
+}
+
+IMDISK_API BOOL
+WINAPI
+ImDiskGetSinglePartitionInfoIndirect(IN HANDLE Handle,
+    IN ImDiskReadFileProc ReadFileProc,
+    IN DWORD SectorSize OPTIONAL,
+    IN PLARGE_INTEGER Offset OPTIONAL,
+    IN OUT PPARTITION_INFORMATION PartitionInformation,
+    IN INT PartitionNumber)
+{
+    IMDISKGETPARTITIONINFOINDIRECTEX_DATA data;
+    data.Count = PartitionNumber;
+    data.Next = PartitionInformation;
+
+    if (ImDiskGetPartitionInfoIndirectEx(Handle, ReadFileProc, SectorSize,
+        Offset, GotPartInfoForSingle, &data))
+    {
+        SetLastError(ERROR_NOT_FOUND);
+        return FALSE;
+    }
+
+    if (data.Count == 0)
+    {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+// Old buggy version
+#if 0
 
 IMDISK_API BOOL
 WINAPI
@@ -464,6 +797,7 @@ PartitionInformation)
 
     return TRUE;
 }
+#endif
 
 IMDISK_API BOOL
 WINAPI
@@ -732,7 +1066,9 @@ ImDiskRemoveMountPoint(LPCWSTR MountPoint)
 
         if ((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0)
         {
+#ifndef CORE_BUILD
             SHChangeNotify(SHCNE_DRIVEREMOVED, SHCNF_PATH, MountPoint, NULL);
+#endif
         }
 #ifndef _WIN64
         else if (!IMDISK_GTE_WIN2K())
@@ -762,6 +1098,10 @@ ImDiskRemoveMountPoint(LPCWSTR MountPoint)
         RegDeleteKey(HKEY_CURRENT_USER, reg_key);
         RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
 
+#ifdef CORE_BUILD
+        dwp;
+        dev_broadcast_volume;
+#else
         if ((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0)
         {
             dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
@@ -782,6 +1122,7 @@ ImDiskRemoveMountPoint(LPCWSTR MountPoint)
                 4000,
                 &dwp);
         }
+#endif
 
         if (!result)
         {
@@ -1142,7 +1483,7 @@ ULONG CreateDataSize)
 
     NtClose(device);
 
-    if (dw < FIELD_OFFSET(IMDISK_CREATE_DATA, FileName))
+    if (dw < (DWORD)FIELD_OFFSET(IMDISK_CREATE_DATA, FileName))
     {
         SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
@@ -1275,13 +1616,13 @@ LPWSTR MountPoint)
         (IMDISK_FILE_TYPE(Flags) == IMDISK_FILE_TYPE_AWEALLOC))
     {
         HANDLE awealloc;
-        UNICODE_STRING file_name;
+        UNICODE_STRING awealloc_file_name;
 
-        RtlInitUnicodeString(&file_name, AWEALLOC_DEVICE_NAME);
+        RtlInitUnicodeString(&awealloc_file_name, AWEALLOC_DEVICE_NAME);
 
         for (;;)
         {
-            awealloc = ImDiskOpenDeviceByName(&file_name,
+            awealloc = ImDiskOpenDeviceByName(&awealloc_file_name,
                 GENERIC_READ | GENERIC_WRITE);
 
             if (awealloc != INVALID_HANDLE_VALUE)
@@ -1560,6 +1901,7 @@ WINAPI
 ImDiskNotifyShellDriveLetter(HWND hWnd,
 LPWSTR DriveLetterPath)
 {
+#ifndef CORE_BUILD
     DWORD_PTR dwp;
     DEV_BROADCAST_VOLUME dev_broadcast_volume = {
         sizeof(DEV_BROADCAST_VOLUME),
@@ -1616,6 +1958,7 @@ LPWSTR DriveLetterPath)
     DBT_DEVICEARRIVAL,
     (LPARAM)&dev_broadcast_volume);
     */
+#endif
 
     return TRUE;
 }
@@ -1625,6 +1968,7 @@ WINAPI
 ImDiskNotifyRemovePending(HWND hWnd,
 WCHAR DriveLetter)
 {
+#ifndef CORE_BUILD
     DEV_BROADCAST_VOLUME dev_broadcast_volume = {
         sizeof(DEV_BROADCAST_VOLUME),
         DBT_DEVTYP_VOLUME
@@ -1648,6 +1992,7 @@ WCHAR DriveLetter)
         SMTO_BLOCK | SMTO_ABORTIFHUNG,
         4000,
         &dwp);
+#endif
 
     return TRUE;
 }
@@ -1814,12 +2159,14 @@ LPCWSTR MountPoint)
 
         // If interactive mode, check if image has been modified and if so ask user
         // if it should be saved first.
+#ifndef CORE_BUILD
         if (hWnd != NULL)
             if (!ImDiskInteractiveCheckSave(hWnd, device))
             {
                 NtClose(device);
                 return FALSE;
             }
+#endif
 
         if (hWnd != NULL)
             SetWindowText(hWnd, L"Removing device...");
