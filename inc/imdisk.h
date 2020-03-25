@@ -40,7 +40,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0182
+#define IMDISK_VERSION                 0x0183
 #define IMDISK_DRIVER_VERSION          0x0103
 
 #ifndef ZERO_STRUCT

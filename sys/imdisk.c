@@ -5183,6 +5183,14 @@ IN PIRP Irp)
 
 	if (device_extension->use_proxy | device_extension->vm_disk)
 	{
+		Irp->IoStatus.Status = STATUS_SUCCESS;
+
+		IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+		return STATUS_SUCCESS;
+	}
+	else
+	{
 		IoMarkIrpPending(Irp);
 
 		ExInterlockedInsertTailList(&device_extension->list_head,
@@ -5192,14 +5200,6 @@ IN PIRP Irp)
 		KeSetEvent(&device_extension->request_event, (KPRIORITY)0, FALSE);
 
 		return STATUS_PENDING;
-	}
-	else
-	{
-		Irp->IoStatus.Status = STATUS_SUCCESS;
-
-		IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-		return STATUS_SUCCESS;
 	}
 }
 
@@ -5604,6 +5604,10 @@ ImDiskDeviceThread(IN PVOID Context)
 			{
 				irp->IoStatus.Status = status;
 				irp->IoStatus.Information = 0;
+
+				KdPrint(("ImDisk: ObReferenceObjectByHandle failed on image handle: %#x\n",
+					status));
+
 				break;
 			}
 
@@ -5625,6 +5629,8 @@ ImDiskDeviceThread(IN PVOID Context)
 			{
 				ObDereferenceObject(&image_file_object);
 
+				KdPrint(("ImDisk: IoBuildSynchronousFsdRequest failed for image object.\n"));
+
 				irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
 				irp->IoStatus.Information = 0;
 				break;
@@ -5644,9 +5650,14 @@ ImDiskDeviceThread(IN PVOID Context)
 					NULL);
 			}
 			else
+			{
 				irp->IoStatus.Status = status;
+			}
 
 			ObDereferenceObject(&image_file_object);
+
+			KdPrint(("ImDisk: IoCallDriver failed on image object: %#x\n",
+				status));
 
 			break;
 		}

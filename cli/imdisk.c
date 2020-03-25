@@ -205,7 +205,7 @@ ImDiskSyntaxHelp()
      "-y tracks/cylinder\r\n"
      "        The -x and -y options can be used to specify a synthetic geometry.\r\n"
      "        This is useful for constructing bootable images for later download to\r\n"
-     "        physical devices. Default values depends on the device-type specified\r\n"
+     "        physical devices. Default values depend on the device-type specified\r\n"
      "        with the -o option. If the 'fd' option is specified the default values\r\n"
      "        are based on the virtual disk size, e.g. a 1440K image gets 2\r\n"
      "        tracks/cylinder and 18 sectors/track.\r\n"
