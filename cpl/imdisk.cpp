@@ -106,6 +106,47 @@ DbgPrintF(LPCSTR Message, ...)
 }
 #endif
 
+double
+GetDlgItemDouble(HWND hDlg,       // handle to dialog box
+		 int nIDDlgItem,  // control identifier
+		 BOOL *lpTranslated
+		 // points to variable to receive success/failure 
+		 // indicator
+		 )
+{
+  WCHAR wcSize[40];
+  UINT item_text_size =
+    GetDlgItemText(hDlg,
+		   nIDDlgItem,
+		   wcSize,
+		   sizeof(wcSize)/sizeof(*wcSize));
+
+  if ((item_text_size == 0) |
+      (item_text_size >= sizeof(wcSize)/sizeof(*wcSize)))
+    {
+      if (lpTranslated != NULL)
+	*lpTranslated = FALSE;
+
+      return 0;
+    }
+
+  PWCHAR stop_pos;
+  double size = wcstod(wcSize, &stop_pos);
+
+  if ((stop_pos == wcSize) | (stop_pos[0] != 0))
+    {
+      if (lpTranslated != NULL)
+	*lpTranslated = FALSE;
+
+      return 0;
+    }
+
+  if (lpTranslated != NULL)
+    *lpTranslated = TRUE;
+
+  return size;
+}
+
 int
 LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
 {
@@ -1088,7 +1129,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_COMMAND:
       {
 	if ((GetWindowTextLength(GetDlgItem(hWnd, IDC_EDT_IMAGEFILE)) > 0) |
-	    (GetDlgItemInt(hWnd, IDC_EDT_SIZE, NULL, FALSE) > 0))
+	    (GetDlgItemDouble(hWnd, IDC_EDT_SIZE, NULL) > 0))
 	  EnableWindow(GetDlgItem(hWnd, IDOK), TRUE);
 	else
 	  EnableWindow(GetDlgItem(hWnd, IDOK), FALSE);
@@ -1142,6 +1183,58 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	  case IDOK:
 	    {
+	      DISK_GEOMETRY disk_geometry = { 0 };
+
+	      WCHAR wcSize[40];
+	      UINT item_text_size =
+		GetDlgItemText(hWnd,
+			       IDC_EDT_SIZE,
+			       wcSize,
+			       sizeof(wcSize)/sizeof(*wcSize));
+
+	      if ((item_text_size == 0) |
+		  (item_text_size >= sizeof(wcSize)/sizeof(*wcSize)))
+		{
+		  MessageBox(hWnd,
+			     L"Invalid size specified.",
+			     L"ImDisk Virtual Disk Driver",
+			     MB_ICONEXCLAMATION);
+
+		  return TRUE;
+		}
+
+	      // First, try to parse as integer
+	      PWCHAR stop_pos = NULL;
+	      disk_geometry.Cylinders.QuadPart = wcstoul(wcSize, &stop_pos, 0);
+
+	      // If failed, try to parse as double
+	      if ((stop_pos == wcSize) | (stop_pos[0] != 0))
+		{
+		  double size = wcstod(wcSize, &stop_pos);
+
+		  if (IsDlgButtonChecked(hWnd, IDC_UNIT_GB))
+		    size *= (1 << 30);
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_MB))
+		    size *= (1 << 20);
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_KB))
+		    size *= (1 << 10);
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_BLOCKS))
+		    size *= (1 << 9);
+
+		  disk_geometry.Cylinders.QuadPart = (LONGLONG) size;
+		}
+	      else
+		{
+		  if (IsDlgButtonChecked(hWnd, IDC_UNIT_GB))
+		    disk_geometry.Cylinders.QuadPart <<= 30;
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_MB))
+		    disk_geometry.Cylinders.QuadPart <<= 20;
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_KB))
+		    disk_geometry.Cylinders.QuadPart <<= 10;
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_BLOCKS))
+		    disk_geometry.Cylinders.QuadPart <<= 9;
+		}
+
 	      EnableWindow(hWnd, FALSE);
 	      HWND hWndStatus =
 		CreateDialog(hInstance, MAKEINTRESOURCE(IDD_DLG_STATUS), hWnd,
@@ -1149,19 +1242,6 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	      SetDlgItemText(hWndStatus, IDC_STATUS_MSG,
 			     L"Creating virtual disk...");
-
-	      DISK_GEOMETRY disk_geometry = { 0 };
-	      disk_geometry.Cylinders.QuadPart =
-		GetDlgItemInt(hWnd, IDC_EDT_SIZE, NULL, FALSE);
-
-	      if (IsDlgButtonChecked(hWnd, IDC_UNIT_GB))
-		disk_geometry.Cylinders.QuadPart <<= 30;
-	      else if (IsDlgButtonChecked(hWnd, IDC_UNIT_MB))
-		disk_geometry.Cylinders.QuadPart <<= 20;
-	      else if (IsDlgButtonChecked(hWnd, IDC_UNIT_KB))
-		disk_geometry.Cylinders.QuadPart <<= 10;
-	      else if (IsDlgButtonChecked(hWnd, IDC_UNIT_BLOCKS))
-		disk_geometry.Cylinders.QuadPart <<= 9;
 
 	      LARGE_INTEGER image_offset = { 0 };
 	      image_offset.QuadPart =
@@ -1260,12 +1340,12 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	    switch (HIWORD(wParam))
 	      {
 	      case EN_SETFOCUS:
-		if (GetDlgItemInt(hWnd, IDC_EDT_SIZE, NULL, FALSE) == 0)
+		if (GetDlgItemDouble(hWnd, IDC_EDT_SIZE, NULL) <= 0)
 		  SetDlgItemText(hWnd, IDC_EDT_SIZE, L"");
 		return TRUE;
 
 	      case EN_KILLFOCUS:
-		if (GetDlgItemInt(hWnd, IDC_EDT_SIZE, NULL, FALSE) == 0)
+		if (GetDlgItemDouble(hWnd, IDC_EDT_SIZE, NULL) <= 0)
 		  SetDlgItemText(hWnd, IDC_EDT_SIZE,
 				 TXT_CURRENT_IMAGE_FILE_SIZE);
 		return TRUE;
@@ -1307,7 +1387,7 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 
     case WM_COMMAND:
       {
-	if (GetDlgItemInt(hWnd, IDC_EDT_EXTEND_SIZE, NULL, FALSE) > 0)
+	if (GetDlgItemDouble(hWnd, IDC_EDT_EXTEND_SIZE, NULL) > 0)
 	  EnableWindow(GetDlgItem(hWnd, IDOK), TRUE);
 	else
 	  EnableWindow(GetDlgItem(hWnd, IDOK), FALSE);
@@ -1316,11 +1396,6 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 	  {
 	  case IDOK:
 	    {
-	      EnableWindow(hWnd, FALSE);
-	      HWND hWndStatus =
-		CreateDialog(hInstance, MAKEINTRESOURCE(IDD_DLG_STATUS), hWnd,
-			     StatusDlgProc);
-
 	      LVITEM lvi = { 0 };
 	      lvi.iItem = (int)
 		SendDlgItemMessage(GetParent(hWnd), IDC_LISTVIEW,
@@ -1338,18 +1413,62 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
 	      SendDlgItemMessage(GetParent(hWnd), IDC_LISTVIEW, LVM_GETITEM, 0,
 				 (LPARAM) &lvi);
 
-	      LARGE_INTEGER extend_size;
-	      extend_size.QuadPart =
-		GetDlgItemInt(hWnd, IDC_EDT_EXTEND_SIZE, NULL, FALSE);
+	      WCHAR wcSize[40];
+	      UINT item_text_size =
+		GetDlgItemText(hWnd,
+			       IDC_EDT_EXTEND_SIZE,
+			       wcSize,
+			       sizeof(wcSize)/sizeof(*wcSize));
 
-	      if (IsDlgButtonChecked(hWnd, IDC_UNIT_GB))
-		extend_size.QuadPart <<= 30;
-	      else if (IsDlgButtonChecked(hWnd, IDC_UNIT_MB))
-		extend_size.QuadPart <<= 20;
-	      else if (IsDlgButtonChecked(hWnd, IDC_UNIT_KB))
-		extend_size.QuadPart <<= 10;
-	      else if (IsDlgButtonChecked(hWnd, IDC_UNIT_BLOCKS))
-		extend_size.QuadPart <<= 9;
+	      if ((item_text_size == 0) |
+		  (item_text_size >= sizeof(wcSize)/sizeof(*wcSize)))
+		{
+		  MessageBox(hWnd,
+			     L"Invalid size specified.",
+			     L"ImDisk Virtual Disk Driver",
+			     MB_ICONEXCLAMATION);
+
+		  return TRUE;
+		}
+
+	      LARGE_INTEGER extend_size = { 0 };
+
+	      // First, try to parse as integer
+	      PWCHAR stop_pos = NULL;
+	      extend_size.QuadPart = wcstoul(wcSize, &stop_pos, 0);
+
+	      // If failed, try to parse as double
+	      if ((stop_pos == wcSize) | (stop_pos[0] != 0))
+		{
+		  double size = wcstod(wcSize, &stop_pos);
+
+		  if (IsDlgButtonChecked(hWnd, IDC_UNIT_GB))
+		    size *= (1 << 30);
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_MB))
+		    size *= (1 << 20);
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_KB))
+		    size *= (1 << 10);
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_BLOCKS))
+		    size *= (1 << 9);
+
+		  extend_size.QuadPart = (LONGLONG) size;
+		}
+	      else
+		{
+		  if (IsDlgButtonChecked(hWnd, IDC_UNIT_GB))
+		    extend_size.QuadPart <<= 30;
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_MB))
+		    extend_size.QuadPart <<= 20;
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_KB))
+		    extend_size.QuadPart <<= 10;
+		  else if (IsDlgButtonChecked(hWnd, IDC_UNIT_BLOCKS))
+		    extend_size.QuadPart <<= 9;
+		}
+
+	      EnableWindow(hWnd, FALSE);
+	      HWND hWndStatus =
+		CreateDialog(hInstance, MAKEINTRESOURCE(IDD_DLG_STATUS), hWnd,
+			     StatusDlgProc);
 
 	      BOOL status =
 		ImDiskExtendDevice(GetDlgItem(hWndStatus, IDC_STATUS_MSG),

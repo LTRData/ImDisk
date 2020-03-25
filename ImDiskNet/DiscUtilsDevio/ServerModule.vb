@@ -1,4 +1,6 @@
-﻿Module ServerModule
+﻿Imports DiscUtils
+
+Module ServerModule
 
     <MTAThread()>
     Sub Main(args As String())

@@ -15,6 +15,7 @@ imdsksvc.exe = 1,svc\i386
 imdisk.cpl = 1,cpl\i386
 imdisk.exe = 1,cli\i386
 imdisk.inf = 1
+uninstall_imdisk.cmd = 1
 
 
 [SourceDisksFiles.ia64]
@@ -24,6 +25,7 @@ imdsksvc.exe = 1,svc\ia64
 imdisk.cpl = 1,cpl\ia64
 imdisk.exe = 1,cli\ia64
 imdisk.inf = 1
+uninstall_imdisk.cmd = 1
 
 
 [SourceDisksFiles.amd64]
@@ -33,6 +35,7 @@ imdsksvc.exe = 1,svc\amd64
 imdisk.cpl = 1,cpl\amd64
 imdisk.exe = 1,cli\amd64
 imdisk.inf = 1
+uninstall_imdisk.cmd = 1
 
 
 [DestinationDirs]
@@ -115,6 +118,7 @@ DelService = ImDskSvc
 imdisk.exe
 imdisk.cpl
 imdsksvc.exe
+uninstall_imdisk.cmd
 
 
 [ImDiskExe32Files]
@@ -133,7 +137,8 @@ imdisk.inf
 
 [ImDiskAddReg]
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayName", 0, "ImDisk Virtual Disk Driver"
-HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "UninstallString", 0, "rundll32.exe setupapi.dll,InstallHinfSection DefaultUninstall 132 %17%\imdisk.inf"
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayVersion", 0, "1.*"
+HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "UninstallString", 0, "uninstall_imdisk.cmd"
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "DisplayIcon", 0, "%11%\imdisk.cpl"
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "EstimatedSize", 65537, 320
 HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ImDisk", "Size", 0, ""

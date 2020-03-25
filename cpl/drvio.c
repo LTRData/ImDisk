@@ -1332,71 +1332,77 @@ ImDiskCreateDeviceEx(HWND hWnd,
 		 IMDISK_DEVICE_BASE_NAME L"%u", create_data->DeviceNumber);
       device_path[sizeof(device_path)/sizeof(*device_path) - 1] = 0;
 
+      if ((wcslen(MountPoint) == 2) ?
+	  (MountPoint[1] == L':') : FALSE)
+	{
 #ifndef _WIN64
-      if (!DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
-	if (hWnd != NULL)
-	  MsgBoxLastError(hWnd, L"Error creating mount point:");
+	  if (!DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
+	    if (hWnd != NULL)
+	      MsgBoxLastError(hWnd, L"Error creating mount point:");
 #endif
 
-      // Notify processes that new device has arrived.
-      if (((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0) &
-	  (MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
-	{
-	  DWORD_PTR dwp;
-	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
-	    sizeof(DEV_BROADCAST_VOLUME),
-	    DBT_DEVTYP_VOLUME
-	  };
+	  // Notify processes that new device has arrived.
+	  if (((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0) &
+	      (MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
+	    {
+	      DWORD_PTR dwp;
+	      DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+		sizeof(DEV_BROADCAST_VOLUME),
+		DBT_DEVTYP_VOLUME
+	      };
 
-	  if (hWnd != NULL)
-	    SetWindowText
-	      (hWnd,
-	       L"Notifying applications that device has been created...");
+	      if (hWnd != NULL)
+		SetWindowText
+		  (hWnd,
+		   L"Notifying applications that device has been created...");
 
-	  SHChangeNotify(SHCNE_DRIVEADD, SHCNF_PATH, MountPoint, NULL);
+	      SHChangeNotify(SHCNE_DRIVEADD, SHCNF_PATH, MountPoint, NULL);
 
-	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+	      dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
 
-	  SendMessageTimeout(HWND_BROADCAST,
-			     WM_DEVICECHANGE,
-			     DBT_DEVICEARRIVAL,
-			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
-			     4000,
-			     &dwp);
+	      SendMessageTimeout(HWND_BROADCAST,
+				 WM_DEVICECHANGE,
+				 DBT_DEVICEARRIVAL,
+				 (LPARAM)&dev_broadcast_volume,
+				 SMTO_BLOCK | SMTO_ABORTIFHUNG,
+				 4000,
+				 &dwp);
 
-	  dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
+	      dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
 
-	  SendMessageTimeout(HWND_BROADCAST,
-			     WM_DEVICECHANGE,
-			     DBT_DEVICEARRIVAL,
-			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
-			     4000,
-			     &dwp);
+	      SendMessageTimeout(HWND_BROADCAST,
+				 WM_DEVICECHANGE,
+				 DBT_DEVICEARRIVAL,
+				 (LPARAM)&dev_broadcast_volume,
+				 SMTO_BLOCK | SMTO_ABORTIFHUNG,
+				 4000,
+				 &dwp);
 
-	  SendMessageTimeout(HWND_BROADCAST,
-			     WM_DEVICECHANGE,
-			     DBT_DEVNODES_CHANGED,
-			     (LPARAM)0,
-			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
-			     4000,
-			     &dwp);
+	      SendMessageTimeout(HWND_BROADCAST,
+				 WM_DEVICECHANGE,
+				 DBT_DEVNODES_CHANGED,
+				 (LPARAM)0,
+				 SMTO_BLOCK | SMTO_ABORTIFHUNG,
+				 4000,
+				 &dwp);
 
-	  /* Tried PostMessage instead of SendMessageTimeout
-	  PostMessage(HWND_BROADCAST,
-		      WM_DEVICECHANGE,
-		      DBT_DEVICEARRIVAL,
-		      (LPARAM)&dev_broadcast_volume);
+	      /* Tried PostMessage instead of SendMessageTimeout
+		 PostMessage(HWND_BROADCAST,
+		 WM_DEVICECHANGE,
+		 DBT_DEVICEARRIVAL,
+		 (LPARAM)&dev_broadcast_volume);
 
-	  dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
+		 dev_broadcast_volume.dbcv_flags = DBTF_MEDIA;
 
-	  PostMessage(HWND_BROADCAST,
-		      WM_DEVICECHANGE,
-		      DBT_DEVICEARRIVAL,
-		      (LPARAM)&dev_broadcast_volume);
-	  */
+		 PostMessage(HWND_BROADCAST,
+		 WM_DEVICECHANGE,
+		 DBT_DEVICEARRIVAL,
+		 (LPARAM)&dev_broadcast_volume);
+	      */
+	    }
 	}
+      else
+	ImDiskCreateMountPoint(MountPoint, device_path);
     }
 
   return TRUE;
@@ -1492,10 +1498,18 @@ ImDiskRemoveDevice(HWND hWnd,
   else
     {
       if (hWnd != NULL)
-	MsgBoxPrintF(hWnd, MB_ICONSTOP, L"ImDisk Virtual Disk Driver",
-		     L"Unsupported mount point: '%1'", MountPoint);
-      SetLastError(ERROR_INVALID_FUNCTION);
-      return FALSE;
+	SetWindowText(hWnd, L"Opening device...");
+
+      device = ImDiskOpenDeviceByMountPoint(MountPoint,
+					    GENERIC_READ | GENERIC_WRITE);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = ImDiskOpenDeviceByMountPoint(MountPoint,
+					      GENERIC_READ);
+
+      if (device == INVALID_HANDLE_VALUE)
+	device = ImDiskOpenDeviceByMountPoint(MountPoint,
+					      FILE_READ_ATTRIBUTES);
     }
 
   if (device == INVALID_HANDLE_VALUE)
@@ -1617,55 +1631,60 @@ ImDiskRemoveDevice(HWND hWnd,
   NtClose(device);
 
   if (MountPoint != NULL)
-    {
-      DWORD_PTR dwp;
+    if ((wcslen(MountPoint) == 2) ? MountPoint[1] == ':' : 
+	(wcslen(MountPoint) == 3) ? wcscmp(MountPoint + 1, L":\\") == 0 :
+	FALSE)
+      {
+	DWORD_PTR dwp;
 
-      WCHAR reg_key[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints\\ ";
-      WCHAR reg_key2[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\ ";
+	WCHAR reg_key[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints\\ ";
+	WCHAR reg_key2[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\ ";
 
-      if (hWnd != NULL)
-	SetWindowText(hWnd, L"Removing drive letter...");
-
-      if ((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0)
-	SHChangeNotify(SHCNE_DRIVEREMOVED, SHCNF_PATH, MountPoint, NULL);
-
-      if (!DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL))
 	if (hWnd != NULL)
-	  MsgBoxLastError(hWnd, L"Error removing drive letter:");
+	  SetWindowText(hWnd, L"Removing drive letter...");
 
-      reg_key[63] = MountPoint[0];
-      reg_key2[64] = MountPoint[0];
+	if ((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0)
+	  SHChangeNotify(SHCNE_DRIVEREMOVED, SHCNF_PATH, MountPoint, NULL);
 
-      RegDeleteKey(HKEY_CURRENT_USER, reg_key);
-      RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
+	if (!DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL))
+	  if (hWnd != NULL)
+	    MsgBoxLastError(hWnd, L"Error removing drive letter:");
 
-      if (((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0) &
-	  (MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
-	{
-	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
-	    sizeof(DEV_BROADCAST_VOLUME),
-	    DBT_DEVTYP_VOLUME
-	  };
+	reg_key[63] = MountPoint[0];
+	reg_key2[64] = MountPoint[0];
 
-	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+	RegDeleteKey(HKEY_CURRENT_USER, reg_key);
+	RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
 
-	  SendMessageTimeout(HWND_BROADCAST,
-			     WM_DEVICECHANGE,
-			     DBT_DEVICEREMOVECOMPLETE,
-			     (LPARAM)&dev_broadcast_volume,
-			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
-			     4000,
-			     &dwp);
+	if (((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0) &
+	    (MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
+	  {
+	    DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	      sizeof(DEV_BROADCAST_VOLUME),
+	      DBT_DEVTYP_VOLUME
+	    };
 
-	  SendMessageTimeout(HWND_BROADCAST,
-			     WM_DEVICECHANGE,
-			     DBT_DEVNODES_CHANGED,
-			     (LPARAM)0,
-			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
-			     4000,
-			     &dwp);
-	}
-    }
+	    dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+
+	    SendMessageTimeout(HWND_BROADCAST,
+			       WM_DEVICECHANGE,
+			       DBT_DEVICEREMOVECOMPLETE,
+			       (LPARAM)&dev_broadcast_volume,
+			       SMTO_BLOCK | SMTO_ABORTIFHUNG,
+			       4000,
+			       &dwp);
+
+	    SendMessageTimeout(HWND_BROADCAST,
+			       WM_DEVICECHANGE,
+			       DBT_DEVNODES_CHANGED,
+			       (LPARAM)0,
+			       SMTO_BLOCK | SMTO_ABORTIFHUNG,
+			       4000,
+			       &dwp);
+	  }
+	else
+	  ImDiskRemoveMountPoint(MountPoint);
+      }
 
   if (hWnd != NULL)
     SetWindowText(hWnd, L"OK.");

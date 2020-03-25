@@ -152,7 +152,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ImDiskNet\ImDiskNet.vbproj">
-      <Project>{3EFCB6F8-EF7E-4F60-A0DE-BB197240FCC9}</Project>
+      <Project>{3efcb6f8-ef7e-4f60-a0de-bb197240fcc9}</Project>
       <Name>ImDiskNet</Name>
     </ProjectReference>
   </ItemGroup>

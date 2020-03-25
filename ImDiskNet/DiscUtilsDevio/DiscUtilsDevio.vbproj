@@ -72,14 +72,13 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="DiscUtils, Version=0.9.0.0, Culture=neutral, PublicKeyToken=60a04f11f1df810d, processorArchitecture=MSIL">
+    <Reference Include="DiscUtils, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>P:\Utils\DiscUtils.dll</HintPath>
+      <HintPath>..\..\..\discutils_9a798b768c01\src\bin\Release\DiscUtils.dll</HintPath>
     </Reference>
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
-    <Import Include="DiscUtils" />
     <Import Include="LTR.IO.ImDisk.Devio.Server.Providers" />
     <Import Include="LTR.IO.ImDisk.Devio.Server.Services" />
     <Import Include="System" />

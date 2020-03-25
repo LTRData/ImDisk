@@ -21,8 +21,8 @@ STRINGTABLE
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,7,5,46
-PRODUCTVERSION 1,7,5,46
+FILEVERSION 1,7,6,47
+PRODUCTVERSION 1,7,6,47
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -39,12 +39,12 @@ FILESUBTYPE    0
         {
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "Control Panel Applet for the ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", "1.7.5.46\0"
+            VALUE "FileVersion", "1.7.6.47\0"
             VALUE "InternalName", "imdisk\0"
             VALUE "LegalCopyright", "Copyright © 2004-2013 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "imdisk.cpl\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", "1.7.5.46\0"
+            VALUE "ProductVersion", "1.7.6.47\0"
         }
     }
     BLOCK "VarFileInfo"
@@ -90,7 +90,7 @@ FONT 8, "MS Sans Serif"
  CONTROL "&Drive letter", IDC_STATICTEXT1, "static", SS_LEFT | WS_CHILD | WS_VISIBLE, 189, 32, 35, 9
  CONTROL "", IDC_EDT_DRIVE, "edit", ES_LEFT | ES_AUTOHSCROLL | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 188, 42, 36, 13
  CONTROL "Si&ze of virtual disk", IDC_GROUPBOX2, "button", BS_GROUPBOX | WS_CHILD | WS_VISIBLE | WS_GROUP, 4, 56, 220, 40
- CONTROL "(current image file size)", IDC_EDT_SIZE, "edit", ES_LEFT | ES_AUTOHSCROLL | ES_NUMBER | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 8, 66, 212, 13
+ CONTROL "(current image file size)", IDC_EDT_SIZE, "edit", ES_LEFT | ES_AUTOHSCROLL | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 8, 66, 212, 13
  CONTROL "Bytes", IDC_UNIT_B, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 8, 80, 32, 13
  CONTROL "Blocks", IDC_UNIT_BLOCKS, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 40, 80, 36, 13
  CONTROL "Kilobytes", IDC_UNIT_KB, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 76, 80, 44, 13
@@ -136,7 +136,7 @@ CAPTION "Extend disk size"
 FONT 8, "MS Sans Serif"
 {
  CONTROL "Enter the size you want to add to the selected virtual disk (not the new total size):", IDC_STATICTEXT7, "static", SS_LEFT | WS_CHILD | WS_VISIBLE, 4, 4, 164, 16
- CONTROL "", IDC_EDT_EXTEND_SIZE, "edit", ES_LEFT | ES_AUTOHSCROLL | ES_NUMBER | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 4, 24, 164, 13
+ CONTROL "", IDC_EDT_EXTEND_SIZE, "edit", ES_LEFT | ES_AUTOHSCROLL | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 4, 24, 164, 13
  CONTROL "Size unit", IDC_GROUPBOX3, "button", BS_GROUPBOX | WS_CHILD | WS_VISIBLE | WS_GROUP, 4, 40, 220, 28
  CONTROL "&Bytes", IDC_UNIT_B, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 8, 52, 32, 13
  CONTROL "B&locks", IDC_UNIT_BLOCKS, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 40, 52, 36, 13

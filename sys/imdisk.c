@@ -6600,6 +6600,8 @@ ImDiskReadProxy(IN PPROXY_CONNECTION Proxy,
   IMDPROXY_READ_REQ read_req;
   IMDPROXY_READ_RESP read_resp;
   NTSTATUS status;
+  ULONG_PTR max_transfer_size;
+  ULONG length_done;
 
   PAGED_CODE();
 
@@ -6608,45 +6610,76 @@ ImDiskReadProxy(IN PPROXY_CONNECTION Proxy,
   ASSERT(Buffer != NULL);
   ASSERT(ByteOffset != NULL);
 
-  read_req.request_code = IMDPROXY_REQ_READ;
-  read_req.offset = ByteOffset->QuadPart;
-  read_req.length = Length;
+  if (Proxy->connection_type == PROXY_CONNECTION_SHM)
+    max_transfer_size = Proxy->shared_memory_size - IMDPROXY_HEADER_SIZE;
+  else
+    max_transfer_size = Length;
 
-  KdPrint2(("ImDisk Proxy Client: IMDPROXY_REQ_READ %u bytes at %u.\n",
-	    (ULONG) read_req.length, (ULONG) read_req.offset));
+  length_done = 0;
+  status = STATUS_SUCCESS;
 
-  status = ImDiskCallProxy(Proxy,
-			   IoStatusBlock,
-			   CancelEvent,
-			   &read_req,
-			   sizeof(read_req),
-			   NULL,
-			   0,
-			   &read_resp,
-			   sizeof(read_resp),
-			   Buffer,
-			   Length,
-			   (PULONG) &read_resp.length);
-
-  if (!NT_SUCCESS(status))
+  while (length_done < Length)
     {
-      IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-      IoStatusBlock->Information = 0;
-      return IoStatusBlock->Status;
+      ULONG length_to_do = Length - length_done;
+
+      KdPrint2(("ImDisk Proxy Client: "
+		"IMDPROXY_REQ_READ 0x%.8x done 0x%.8x left to do.\n",
+		length_done, length_to_do));
+
+      read_req.request_code = IMDPROXY_REQ_READ;
+      read_req.offset = ByteOffset->QuadPart + length_done;
+      read_req.length =
+	length_to_do <= max_transfer_size ?
+	length_to_do : max_transfer_size;
+
+      KdPrint2(("ImDisk Proxy Client: "
+		"IMDPROXY_REQ_READ 0x%.8x%.8x bytes at 0x%.8x%.8x.\n",
+		((PLARGE_INTEGER)&read_req.length)->HighPart,
+		((PLARGE_INTEGER)&read_req.length)->LowPart,
+		((PLARGE_INTEGER)&read_req.offset)->HighPart,
+		((PLARGE_INTEGER)&read_req.offset)->LowPart));
+
+      status = ImDiskCallProxy(Proxy,
+			       IoStatusBlock,
+			       CancelEvent,
+			       &read_req,
+			       sizeof(read_req),
+			       NULL,
+			       0,
+			       &read_resp,
+			       sizeof(read_resp),
+			       (PUCHAR) Buffer + length_done,
+			       (ULONG) read_req.length,
+			       (PULONG) &read_resp.length);
+
+      length_done += (ULONG) read_resp.length;
+
+      if (!NT_SUCCESS(status))
+	{
+	  IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+	  IoStatusBlock->Information = length_done;
+	  return IoStatusBlock->Status;
+	}
+
+      if (read_resp.errorno != 0)
+	{
+	  KdPrint(("ImDisk Proxy Client: Server returned error 0x%.8x%.8x.\n",
+		   read_resp.errorno));
+	  IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+	  IoStatusBlock->Information = length_done;
+	  return IoStatusBlock->Status;
+	}
+
+      KdPrint2(("ImDisk Proxy Client: Server sent 0x%.8x%.8x bytes.\n",
+		((PLARGE_INTEGER)&read_resp.length)->HighPart,
+		((PLARGE_INTEGER)&read_resp.length)->LowPart));
+
+      if (read_resp.length == 0)
+	break;
     }
 
-  if (read_resp.errorno != 0)
-    {
-      KdPrint(("ImDisk Proxy Client: Server returned error 0x%.8x%.8x.\n",
-	       read_resp.errorno));
-      IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-      IoStatusBlock->Information = 0;
-      return IoStatusBlock->Status;
-    }
-
-  KdPrint2(("ImDisk Proxy Client: Server sent 0x%.8x%.8x bytes.\n",
-	    ((PLARGE_INTEGER)&read_resp.length)->HighPart,
-	    ((PLARGE_INTEGER)&read_resp.length)->LowPart));
+  IoStatusBlock->Status = status;
+  IoStatusBlock->Information = length_done;
 
   return status;
 }
@@ -6662,6 +6695,8 @@ ImDiskWriteProxy(IN PPROXY_CONNECTION Proxy,
   IMDPROXY_READ_REQ write_req;
   IMDPROXY_READ_RESP write_resp;
   NTSTATUS status;
+  ULONG_PTR max_transfer_size;
+  ULONG length_done;
 
   PAGED_CODE();
 
@@ -6670,57 +6705,82 @@ ImDiskWriteProxy(IN PPROXY_CONNECTION Proxy,
   ASSERT(Buffer != NULL);
   ASSERT(ByteOffset != NULL);
 
-  write_req.request_code = IMDPROXY_REQ_WRITE;
-  write_req.offset = ByteOffset->QuadPart;
-  write_req.length = Length;
+  if (Proxy->connection_type == PROXY_CONNECTION_SHM)
+    max_transfer_size = Proxy->shared_memory_size - IMDPROXY_HEADER_SIZE;
+  else
+    max_transfer_size = Length;
 
-  KdPrint2(("ImDisk Proxy Client: IMDPROXY_REQ_WRITE %u bytes at %u.\n",
-	    (ULONG) write_req.length, (ULONG) write_req.offset));
+  length_done = 0;
+  status = STATUS_SUCCESS;
 
-  status = ImDiskCallProxy(Proxy,
-			   IoStatusBlock,
-			   CancelEvent,
-			   &write_req,
-			   sizeof(write_req),
-			   Buffer,
-			   (ULONG) write_req.length,
-			   &write_resp,
-			   sizeof(write_resp),
-			   NULL,
-			   0,
-			   NULL);
-
-  if (!NT_SUCCESS(status))
+  while (length_done < Length)
     {
-      IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-      IoStatusBlock->Information = 0;
-      return IoStatusBlock->Status;
-    }
+      ULONG length_to_do = Length - length_done;
 
-  if (write_resp.errorno != 0)
-    {
-      KdPrint(("ImDisk Proxy Client: Server returned error 0x%.8x%.8x.\n",
-	       write_resp.errorno));
-      IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-      IoStatusBlock->Information = 0;
-      return IoStatusBlock->Status;
-    }
+      KdPrint2(("ImDisk Proxy Client: "
+		"IMDPROXY_REQ_WRITE 0x%.8x done 0x%.8x left to do.\n",
+		length_done, length_to_do));
 
-  if (write_resp.length != Length)
-    {
-      KdPrint(("ImDisk Proxy Client: IMDPROXY_REQ_WRITE %u bytes, "
-	       "IMDPROXY_RESP_WRITE %u bytes.\n",
-	       Length, (ULONG) write_resp.length));
-      IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-      IoStatusBlock->Information = 0;
-      return IoStatusBlock->Status;
-    }
+      write_req.request_code = IMDPROXY_REQ_WRITE;
+      write_req.offset = ByteOffset->QuadPart + length_done;
+      write_req.length =
+	length_to_do <= max_transfer_size ?
+	length_to_do : max_transfer_size;
 
-  KdPrint2(("ImDisk Proxy Client: Got ok response. "
-	    "Resetting IoStatusBlock fields.\n"));
+      KdPrint2(("ImDisk Proxy Client: "
+		"IMDPROXY_REQ_WRITE 0x%.8x%.8x bytes at 0x%.8x%.8x.\n",
+		((PLARGE_INTEGER)&write_req.length)->HighPart,
+		((PLARGE_INTEGER)&write_req.length)->LowPart,
+		((PLARGE_INTEGER)&write_req.offset)->HighPart,
+		((PLARGE_INTEGER)&write_req.offset)->LowPart));
+
+      status = ImDiskCallProxy(Proxy,
+			       IoStatusBlock,
+			       CancelEvent,
+			       &write_req,
+			       sizeof(write_req),
+			       (PUCHAR) Buffer + length_done,
+			       (ULONG) write_req.length,
+			       &write_resp,
+			       sizeof(write_resp),
+			       NULL,
+			       0,
+			       NULL);
+
+      if (!NT_SUCCESS(status))
+	{
+	  IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+	  IoStatusBlock->Information = length_done;
+	  return IoStatusBlock->Status;
+	}
+
+      if (write_resp.errorno != 0)
+	{
+	  KdPrint(("ImDisk Proxy Client: Server returned error 0x%.8x%.8x.\n",
+		   write_resp.errorno));
+	  IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+	  IoStatusBlock->Information = length_done;
+	  return IoStatusBlock->Status;
+	}
+
+      if (write_resp.length != write_req.length)
+	{
+	  KdPrint(("ImDisk Proxy Client: IMDPROXY_REQ_WRITE %u bytes, "
+		   "IMDPROXY_RESP_WRITE %u bytes.\n",
+		   Length,
+		   (ULONG) write_resp.length));
+	  IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+	  IoStatusBlock->Information = length_done;
+	  return IoStatusBlock->Status;
+	}
+
+      KdPrint2(("ImDisk Proxy Client: Server replied OK.\n"));
+
+      length_done += (ULONG) write_req.length;
+    }
 
   IoStatusBlock->Status = STATUS_SUCCESS;
-  IoStatusBlock->Information = Length;
+  IoStatusBlock->Information = length_done;
   return IoStatusBlock->Status;
 }
 
