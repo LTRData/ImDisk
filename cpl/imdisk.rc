@@ -20,8 +20,8 @@ STRINGTABLE
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,7,0,42
-PRODUCTVERSION 1,7,0,42
+FILEVERSION 1,7,2,44
+PRODUCTVERSION 1,7,2,44
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -38,12 +38,12 @@ FILESUBTYPE    0
         {
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "Control Panel Applet for the ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", "1.7.0.42\0"
+            VALUE "FileVersion", "1.7.2.44\0"
             VALUE "InternalName", "imdisk\0"
-            VALUE "LegalCopyright", "Copyright © 2004-2012 Olof Lagerkvist.\0"
+            VALUE "LegalCopyright", "Copyright © 2004-2013 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "imdisk.cpl\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", "1.7.0.42\0"
+            VALUE "ProductVersion", "1.7.2.44\0"
         }
     }
     BLOCK "VarFileInfo"
@@ -66,17 +66,17 @@ CAPTION "ImDisk Virtual Disk Driver"
 MENU IDM_MENU_CPL_APPLET
 FONT 8, "MS Sans Serif"
 {
- CONTROL "Currently mounted &virtual disks", IDC_STATICTEXT1, "static", SS_LEFT | WS_CHILD | WS_VISIBLE, 4, 2, 108, 9
+ CONTROL "C&urrently mounted virtual disks", IDC_STATICTEXT1, "static", SS_LEFT | WS_CHILD | WS_VISIBLE, 4, 2, 108, 9
  CONTROL "Current virtual devices", IDC_LISTVIEW, "SysListView32", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_SORTASCENDING | LVS_NOSORTHEADER | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 2, 12, 383, 180
  CONTROL "Mount &new...", CM_CPL_APPLET_FILE_MOUNT_NEW, "button", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 4, 196, 60, 16
- CONTROL "&Unmount", CM_CPL_APPLET_SELECTED_UNMOUNT, "button", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 68, 196, 60, 16
+ CONTROL "Remo&ve", CM_CPL_APPLET_SELECTED_UNMOUNT, "button", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 68, 196, 60, 16
  CONTROL "&Extend size...", CM_CPL_APPLET_SELECTED_EXTEND_SIZE, "button", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 132, 196, 60, 16
  CONTROL "F&ormat...", CM_CPL_APPLET_SELECTED_FORMAT, "button", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 196, 196, 60, 16
  CONTROL "Save &image...", CM_CPL_APPLET_SELECTED_SAVE_IMAGE, "button", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 260, 196, 60, 16
  CONTROL "&Refresh list", CM_CPL_APPLET_WINDOW_REFRESH, "button", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 324, 196, 60, 16
 }
 
-IDD_NEWDIALOG DIALOG 109, 6, 229, 257
+IDD_NEWDIALOG DIALOG 110, 6, 403, 165
 EXSTYLE WS_EX_DLGMODALFRAME | WS_EX_CONTROLPARENT
 STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
 CAPTION "Mount new virtual disk"
@@ -107,13 +107,16 @@ FONT 8, "MS Sans Serif"
  CONTROL "&Harddisk volume", IDC_DT_HD, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 44, 146, 72, 13
  CONTROL "&Floppy", IDC_DT_FD, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 116, 146, 36, 13
  CONTROL "&CD/DVD-ROM", IDC_DT_CD, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 156, 146, 64, 13
- CONTROL "If you check the 'Copy image file to memory' checkbox the driver will work with a memory copy of the image file. The original image file will not change. Any changes are lost when the drive is dismounted.", IDC_STATICTEXT5, "static", SS_LEFT | WS_CHILD | WS_VISIBLE, 4, 168, 220, 24
- CONTROL "Copy image file &to memory", IDC_CHK_VM, "button", BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 4, 196, 96, 9
- CONTROL "If you check the 'Removable media' checkbox the virtual device will be created with removable and hot-plug characteristics. This affects for example how filesystems cache write operations on the device.", IDC_STATICTEXT6, "static", SS_LEFT | WS_CHILD | WS_VISIBLE, 4, 208, 172, 32
- CONTROL "Remo&vable media", IDC_CHK_REMOVABLE, "button", BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 4, 244, 84, 9
- CONTROL "&Read-only media", IDC_CHK_READONLY, "button", BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 92, 244, 76, 9
- CONTROL "OK", IDOK, "BUTTON", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_DISABLED | WS_TABSTOP, 180, 224, 46, 14
- CONTROL "Cancel", IDCANCEL, "BUTTON", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 180, 240, 46, 14
+ CONTROL "If you select 'Copy image file to virtual memory' or 'Copy image file to physical memory', the driver will work with a memory copy of the image file. The original image file will not change. Any changes are lost when the drive is dismounted.", IDC_STATICTEXT5, "static", SS_LEFT | WS_CHILD | WS_VISIBLE, 228, 4, 168, 40
+ CONTROL "If you check the 'Removable media' checkbox the virtual device will be created with removable and hot-plug characteristics. This affects for example how filesystems cache write operations on the device.", IDC_STATICTEXT6, "static", SS_LEFT | WS_CHILD | WS_VISIBLE, 228, 100, 172, 32
+ CONTROL "Remo&vable media", IDC_CHK_REMOVABLE, "button", BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 228, 136, 84, 9
+ CONTROL "&Read-only media", IDC_CHK_READONLY, "button", BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 316, 136, 76, 9
+ CONTROL "OK", IDOK, "BUTTON", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_DISABLED | WS_TABSTOP, 300, 148, 46, 14
+ CONTROL "Cancel", IDCANCEL, "BUTTON", BS_PUSHBUTTON | BS_CENTER | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 352, 148, 46, 14
+ CONTROL "Image file access", IDC_GRP_FILE_OPTIONS, "button", BS_GROUPBOX | WS_CHILD | WS_VISIBLE | WS_GROUP, 228, 44, 172, 48
+ CONTROL "Copy image file to virtual &memory", IDC_CHK_VM, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 232, 64, 160, 13
+ CONTROL "Virtual disk drive accesses image file dir&ectly", IDC_CHK_DIRECT, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 232, 52, 160, 13
+ CONTROL "Copy image file to &physical memory", IDC_CHK_AWEALLOC, "button", BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE, 232, 76, 160, 13
 }
 
 IDD_DLG_STATUS DIALOG 21, 11, 247, 28

@@ -413,8 +413,6 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
   OBJECT_ATTRIBUTES object_attributes;
   ULONG n;
 
-  MmPageEntireDriver((PVOID)(ULONG_PTR) DriverEntry);
-
   KeInitializeSpinLock(&DeviceListLock);
 
   // First open and read registry settings to find out if we should load and
@@ -2946,11 +2944,6 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   device_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
 
   RtlInitUnicodeString(&device_name, device_name_buffer);
-
-  // Driver can no longer be completely paged.
-  KdPrint(("ImDisk: Resetting driver paging.\n"));
-
-  MmResetDriverPaging((PVOID)(ULONG_PTR) DriverEntry);
 
   KdPrint
     (("ImDisk: Creating device '%ws'. Device type %#x, characteristics %#x.\n",

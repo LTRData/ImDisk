@@ -647,6 +647,59 @@ Namespace ImDisk
 
         End Sub
 
+        Public Enum MemoryType
+
+            ''' <summary>
+            ''' Virtual memory, allocated directly by ImDisk driver.
+            ''' </summary>
+            VirtualMemory
+
+            ''' <summary>
+            ''' Physical memory, allocated through AWEAlloc driver.
+            ''' </summary>
+            PhysicalMemory
+
+        End Enum
+
+        ''' <summary>
+        ''' Creates a new memory backed ImDisk virtual disk with the specified size in bytes, or with disk volume data from an
+        ''' image file. Memory could be either virtual memory allocated directly by ImDisk driver, or physical memory allocated
+        ''' by AWEAlloc driver.
+        ''' </summary>
+        ''' <param name="DiskSize">Size of virtual disk. This parameter can be zero if ImageFile parameter specifies an image
+        ''' file, in which case the size of the existing image file will be used as size of the newly created virtual disk
+        ''' volume.</param>
+        ''' <param name="MountPoint">Mount point in the form of a drive letter and colon to create for newly created virtual
+        ''' disk. If this parameter is Nothing/null the virtual disk will be created without a drive letter.</param>
+        ''' <param name="DeviceNumber">In: Device number for device to create. Device number must not be in use by an existing
+        ''' virtual disk. For automatic allocation of device number, pass UInt32.MaxValue.
+        '''
+        ''' Out: Device number for created device.</param>
+        ''' <param name="ImageFile">Optional name of image file that will be loaded onto the newly created memory disk.</param>
+        ''' <param name="MemoryType">Specifies whether to use virtual or physical memory for the virtual disk.</param>
+        Public Shared Sub CreateDevice(DiskSize As Int64,
+                                       ImageFile As String,
+                                       MemoryType As MemoryType,
+                                       MountPoint As String,
+                                       ByRef DeviceNumber As UInt32)
+
+            Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY With {
+              .Cylinders = DiskSize
+            }
+
+            NativeFileIO.Win32Try(DLL.ImDiskCreateDeviceEx(IntPtr.Zero,
+                                                           DeviceNumber,
+                                                           DiskGeometry,
+                                                           0,
+                                                           If(MemoryType = ImDiskAPI.MemoryType.PhysicalMemory,
+                                                              ImDiskFlags.TypeFile Or ImDiskFlags.FileTypeAwe,
+                                                              ImDiskFlags.TypeVM),
+                                                           ImageFile,
+                                                           Nothing,
+                                                           MountPoint))
+
+        End Sub
+
         ''' <summary>
         ''' Creates a new ImDisk virtual disk.
         ''' </summary>

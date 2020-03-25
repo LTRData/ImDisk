@@ -1225,7 +1225,6 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
   DWORD dw;
   PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
     _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
-  char message_buffer[MAX_PATH];
 
   if (create_data == NULL)
     {
@@ -1335,42 +1334,51 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 
   CloseHandle(device);
 
-  _snprintf(message_buffer, sizeof message_buffer,
-	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s%s%s.",
-	    create_data->DriveLetter == 0 ?
-	    L' ' : create_data->DriveLetter,
-	    create_data->DriveLetter != 0 ?
-	    L":" : MountPoint != NULL ? MountPoint : L"",
-	    create_data->FileNameLength > 0 ?
-	    " = " : "",
-	    (int)(create_data->FileNameLength /
-		  sizeof(*create_data->FileName)),
-	    create_data->FileName,
-	    create_data->DiskGeometry.Cylinders.QuadPart,
-	    _h(create_data->DiskGeometry.Cylinders.QuadPart),
-	    _p(create_data->DiskGeometry.Cylinders.QuadPart),
-	    IMDISK_READONLY(create_data->Flags) ?
-	    ", ReadOnly" : "",
-	    IMDISK_REMOVABLE(create_data->Flags) ?
-	    ", Removable" : "",
-	    IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM ?
-	    ", Virtual Memory Disk" :
-	    IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_PROXY ?
-	    ", Proxy Virtual Disk" :
-	    IMDISK_FILE_TYPE(create_data->Flags) == IMDISK_FILE_TYPE_AWEALLOC ?
-	    ", Physical Memory Disk" : ", File Type Virtual Disk",
-	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
-	    IMDISK_DEVICE_TYPE_CD ? ", CD-ROM" :
-	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
-	    IMDISK_DEVICE_TYPE_RAW ? ", RAW" :
-	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
-	    IMDISK_DEVICE_TYPE_FD ? ", Floppy" : ", HDD",
-	    create_data->Flags & IMDISK_IMAGE_MODIFIED ? ", Modified" : "");
+  if (MountPoint != NULL)
+    ImDiskOemPrintF(stdout,
+		    "Mount point: %1!ws!",
+		    MountPoint);
+  else if (create_data->DriveLetter != 0)
+    ImDiskOemPrintF(stdout,
+		    "Drive letter: %1!wc!",
+		    create_data->DriveLetter);
+  else
+    puts("No drive letter.");
 
-  message_buffer[sizeof(message_buffer)-1] = 0;
+  if (create_data->FileNameLength != 0)
+    ImDiskOemPrintF(stdout,
+		    "Image file: %1!.*ws!",
+		    (int)(create_data->FileNameLength /
+			  sizeof(*create_data->FileName)),
+		    create_data->FileName);
+  else
+    puts("No image file.");
 
-  CharToOemA(message_buffer, message_buffer);
-  puts(message_buffer);
+  if (create_data->ImageOffset.QuadPart > 0)
+    printf("Image file offset: %I64i bytes\n",
+	   create_data->ImageOffset.QuadPart);
+
+  printf("Size: %I64i bytes (%.4g %s)%s%s%s%s%s.\n",
+	 create_data->DiskGeometry.Cylinders.QuadPart,
+	 _h(create_data->DiskGeometry.Cylinders.QuadPart),
+	 _p(create_data->DiskGeometry.Cylinders.QuadPart),
+	 IMDISK_READONLY(create_data->Flags) ?
+	 ", ReadOnly" : "",
+	 IMDISK_REMOVABLE(create_data->Flags) ?
+	 ", Removable" : "",
+	 IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM ?
+	 ", Virtual Memory Disk" :
+	 IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_PROXY ?
+	 ", Proxy Virtual Disk" :
+	 IMDISK_FILE_TYPE(create_data->Flags) == IMDISK_FILE_TYPE_AWEALLOC ?
+	 ", Physical Memory Disk" : ", File Type Virtual Disk",
+	 IMDISK_DEVICE_TYPE(create_data->Flags) ==
+	 IMDISK_DEVICE_TYPE_CD ? ", CD-ROM" :
+	 IMDISK_DEVICE_TYPE(create_data->Flags) ==
+	 IMDISK_DEVICE_TYPE_RAW ? ", RAW" :
+	 IMDISK_DEVICE_TYPE(create_data->Flags) ==
+	 IMDISK_DEVICE_TYPE_FD ? ", Floppy" : ", HDD",
+	 create_data->Flags & IMDISK_IMAGE_MODIFIED ? ", Modified" : "");
 
   return 0;
 }

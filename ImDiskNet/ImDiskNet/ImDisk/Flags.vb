@@ -87,11 +87,7 @@
         ''' back to image file.
         ''' </summary>
         FileTypeAwe = &H1000UI
-        ''' <summary>
-        ''' Specifies that proxy application will be contacted through a TCP/IP port. The Filename parameter specifies host
-        ''' name or IP address optionally followed by colon and port number. If port number is omitted a default value of 9000
-        ''' is used.
-        ''' </summary>
+
         ''' <summary>
         ''' This flag can only be set by the driver and may be included in the response Flags field from QueryDevice method.
         ''' It indicates that virtual disk contents have changed since created or since flag was last cleared. This flag can be

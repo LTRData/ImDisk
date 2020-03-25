@@ -794,51 +794,50 @@ ImDiskSaveImageFileInteractive(IN HANDLE hDev,
 
   SetDlgItemText(hWndStatus, IDC_STATUS_MSG, L"Saving image file...");
 
-  if (ImDiskSaveImageFile(hDev, hImage, BufferSize, &bCancelFlag))
+  if (!ImDiskSaveImageFile(hDev, hImage, BufferSize, &bCancelFlag))
     {
+      MsgBoxLastError(hWnd, L"Error saving image:");
+
       DestroyWindow(hWndStatus);
       EnableWindow(hWnd, TRUE);
 
-      if (!use_original_file_name)
-	{
-	  save_offset.QuadPart += disk_size->QuadPart;
-
-	  if (!ImDiskAdjustImageFileSize(hImage, &save_offset))
-	    {
-	      DWORD dwLastError = GetLastError();
-
-	      DeleteFile(ofn.lpstrFile);
-	      CloseHandle(hImage);
-
-	      SetLastError(dwLastError);
-
-	      MsgBoxLastError(hWnd,
-			      L"Drive contents could not be saved. Check that "
-			      L"it contains a supported filesystem.");
-
-	      return;
-	    }
-	}
+      if (GetFileSize(hImage, NULL) == 0)
+	DeleteFile(ofn.lpstrFile);
 
       CloseHandle(hImage);
-      MsgBoxPrintF(hWnd, MB_ICONINFORMATION,
-		   L"ImDisk Virtual Disk Driver",
-		   L"Successfully saved the contents of drive '%1!c!:' to "
-		   L"image file '%2'.",
-		   create_data->DriveLetter ? create_data->DriveLetter : L' ',
-		   ofn.lpstrFile);
-      return;
     }
-
-  MsgBoxLastError(hWnd, L"Error saving image:");
 
   DestroyWindow(hWndStatus);
   EnableWindow(hWnd, TRUE);
 
-  if (GetFileSize(hImage, NULL) == 0)
-    DeleteFile(ofn.lpstrFile);
+  if (!use_original_file_name)
+    {
+      save_offset.QuadPart += disk_size->QuadPart;
+
+      if (!ImDiskAdjustImageFileSize(hImage, &save_offset))
+	{
+	  DWORD dwLastError = GetLastError();
+
+	  DeleteFile(ofn.lpstrFile);
+	  CloseHandle(hImage);
+
+	  SetLastError(dwLastError);
+
+	  MsgBoxLastError(hWnd,
+			  L"Drive contents could not be saved. Check that "
+			  L"it contains a supported filesystem.");
+
+	  return;
+	}
+    }
 
   CloseHandle(hImage);
+  MsgBoxPrintF(hWnd, MB_ICONINFORMATION,
+	       L"ImDisk Virtual Disk Driver",
+	       L"Successfully saved the contents of drive '%1!c!:' to "
+	       L"image file '%2'.",
+	       create_data->DriveLetter ? create_data->DriveLetter : L' ',
+	       ofn.lpstrFile);
 }
 
 INT_PTR
@@ -1095,9 +1094,23 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	  EnableWindow(GetDlgItem(hWnd, IDOK), FALSE);
 
 	if (GetWindowTextLength(GetDlgItem(hWnd, IDC_EDT_IMAGEFILE)) > 0)
-	  EnableWindow(GetDlgItem(hWnd, IDC_CHK_VM), TRUE);
+	  {
+	    EnableWindow(GetDlgItem(hWnd, IDC_CHK_DIRECT), TRUE);
+	    SetDlgItemText(hWnd, IDC_CHK_VM,
+			   L"Copy image file to virtual &memory");
+	    SetDlgItemText(hWnd, IDC_CHK_AWEALLOC,
+			   L"Copy image file to &physical memory");
+	  }
 	else
-	  EnableWindow(GetDlgItem(hWnd, IDC_CHK_VM), FALSE);
+	  {
+	    EnableWindow(GetDlgItem(hWnd, IDC_CHK_DIRECT), FALSE);
+
+	    CheckDlgButton(hWnd, IDC_CHK_DIRECT, BST_UNCHECKED);
+	    SetDlgItemText(hWnd, IDC_CHK_VM,
+			   L"Create virtual disk in virtual &memory");
+	    SetDlgItemText(hWnd, IDC_CHK_AWEALLOC,
+			   L"Create virtual disk in &physical memory");
+	  }
 
 	switch (LOWORD(wParam))
 	  {
@@ -1180,6 +1193,8 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	      if (IsDlgButtonChecked(hWnd, IDC_CHK_VM))
 		flags |= IMDISK_TYPE_VM;
+	      else if (IsDlgButtonChecked(hWnd, IDC_CHK_AWEALLOC))
+		flags |= IMDISK_TYPE_FILE | IMDISK_FILE_TYPE_AWEALLOC;
 	      
 	      WCHAR file_name[MAX_PATH+1] = L"";
 	      UINT uLen = GetDlgItemText(hWnd, IDC_EDT_IMAGEFILE, file_name,
@@ -1187,29 +1202,33 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	      file_name[uLen] = 0;
 
 	      WCHAR drive_letter[3];
-	      GetDlgItemText(hWnd, IDC_EDT_DRIVE, drive_letter, 3);
+	      if (GetDlgItemText(hWnd, IDC_EDT_DRIVE, drive_letter, 3) > 0)
+		{
+		  drive_letter[0] = towupper(drive_letter[0]);
+		  drive_letter[1] = L':';
+		  drive_letter[2] = 0;
 
-	      drive_letter[0] = towupper(drive_letter[0]);
-	      drive_letter[1] = L':';
-	      drive_letter[2] = 0;
-
-	      WCHAR buffer[MAX_PATH << 1];
-	      if (QueryDosDevice(drive_letter, buffer, sizeof(buffer) >> 1))
-		if (MessageBox(hWnd, L"Specified drive letter is already in "
-			       L"use on this system. Are you sure you want "
-			       L"to use it for the virtual disk drive you are "
-			       L"about to create anyway?\r\n"
-			       L"\r\n"
-			       L"Existing drive will not be accessible until "
-			       L"it has been assigned a new drive letter.",
-			       L"ImDisk Virtual Disk Driver",
-			       MB_ICONEXCLAMATION | MB_YESNO |
-			       MB_DEFBUTTON2) == IDNO)
-		  {
-		    EnableWindow(hWnd, TRUE);
-		    DestroyWindow(hWndStatus);
-		    return TRUE;
-		  }
+		  WCHAR buffer[MAX_PATH << 1];
+		  if (QueryDosDevice(drive_letter, buffer,
+				     sizeof(buffer) >> 1))
+		    if (MessageBox(hWnd,
+				   L"Specified drive letter is already in use "
+				   L"use on this system. Are you sure you "
+				   L"want to use it for the virtual disk "
+				   L"drive you are about to create anyway?\r\n"
+				   L"\r\n"
+				   L"Existing drive will not be accessible "
+				   L"until it has been assigned a new drive "
+				   L"letter.",
+				   L"ImDisk Virtual Disk Driver",
+				   MB_ICONEXCLAMATION | MB_YESNO |
+				   MB_DEFBUTTON2) == IDNO)
+		      {
+			EnableWindow(hWnd, TRUE);
+			DestroyWindow(hWndStatus);
+			return TRUE;
+		      }
+		}
 
 	      DWORD device_number = IMDISK_AUTO_DEVICE_NUMBER;
 
@@ -1992,7 +2011,7 @@ ImDiskInteractiveCheckSave(HWND hWnd, HANDLE device)
 
   switch (MessageBox(hWnd,
 		     L"The virtual disk has been modified. Do you "
-		     L"want to save it as an image file before unmounting "
+		     L"want to save it as an image file before removing "
 		     L"it?", L"ImDisk Virtual Disk Driver",
 		     MB_ICONINFORMATION | MB_YESNOCANCEL))
     {

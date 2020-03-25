@@ -226,7 +226,7 @@ ImDiskGetPartitionTypeName(IN BYTE PartitionType,
 
 	default:
 	  {
-	    wsprintf(other_type, L"Type %.2Xh", PartitionType);
+	    swprintf(other_type, L"Type %.2Xh", PartitionType);
 	    name = other_type;
 	    break;
 	  }
