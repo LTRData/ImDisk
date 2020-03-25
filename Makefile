@@ -13,6 +13,9 @@ BUILD_DEFAULT=-cegiw -nmake -i
 
 INCLUDE=$(INCLUDE);$(MAKEDIR)\inc
 
+README_TXT_FILES=gpl.txt readme.txt
+
+DIST_DIR=p:\utils
 UPLOAD_DIR=z:\ltr-website\ltr-data.se\files\
 
 STAMPINF_VERSION=$(IMDISK_VERSION)
@@ -22,23 +25,23 @@ all: cli\$(ARCHDIR)\imdisk.exe svc\$(ARCHDIR)\imdsksvc.exe cpl\$(ARCHDIR)\imdisk
 clean:
 	del /s *~ *.obj *.log *.wrn *.err *.mac *.o
 
-publish: p:\utils\imdiskinst.exe p:\utils\imdisk_source.7z
+publish: $(DIST_DIR)\imdiskinst.exe $(DIST_DIR)\imdisk_source.7z
 	start $(UPLOAD_DIR)
 
-p:\utils\imdiskinst.exe: p:\utils\imdisk.7z p:\utils\7zSD.sfx 7zSDcfg.txt
-	copy /y /b p:\utils\7zSD.sfx + 7zSDcfg.txt + p:\utils\imdisk.7z p:\utils\imdiskinst.exe
-	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "ImDisk Virtual Disk Driver" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "$(TIMESTAMP_WEBSERVICE)" p:\utils\imdiskinst.exe
-	xcopy /d /y p:\utils\imdiskinst.exe $(UPLOAD_DIR)
+$(DIST_DIR)\imdiskinst.exe: $(DIST_DIR)\imdisk.7z $(DIST_DIR)\7zSD.sfx 7zSDcfg.txt
+	copy /y /b $(DIST_DIR)\7zSD.sfx + 7zSDcfg.txt + $(DIST_DIR)\imdisk.7z $(DIST_DIR)\imdiskinst.exe
+	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "ImDisk Virtual Disk Driver" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "$(TIMESTAMP_WEBSERVICE)" $(DIST_DIR)\imdiskinst.exe
+	xcopy /d /y $(DIST_DIR)\imdiskinst.exe $(UPLOAD_DIR)
 
-p:\utils\imdisk_source.7z: p:\utils\imdisk.7z 7zSDcfg.txt gpl.txt readme.txt runwaitw.exe install.cmd msgboxw.exe inc\imdiskver.h devio\*.c devio\*.cpp devio\*.h devio\Makefile* uninstall_imdisk.cmd *.sln *.props ImDiskNet\*.sln ImDiskNet\ImDiskNet\*.vb ImDiskNet\ImDiskNet\*.*proj ImDiskNet\DiscUtilsDevio\*.vb ImDiskNet\DiscUtilsDevio\*.*proj ImDiskNet\DevioNet\*.vb ImDiskNet\DevioNet\*.*proj Makefile
-	del p:\utils\imdisk_source.7z
-	7z a -r p:\utils\imdisk_source.7z -x!*~ -m0=PPMd 7zSDcfg.txt gpl.txt readme.txt *.def *.src *.ico *.c *.h *.cpp *.hpp *.cxx *.hxx *.rc *.lib *.sln *.vb *.cs *.*proj *.snk *.resx *.resources *.myapp *.settings *.props Sources dirs imdisk.inf runwaitw.exe install.cmd msgboxw.exe uninstall_imdisk.cmd Makefile*
-	xcopy /d /y p:\utils\imdisk_source.7z $(UPLOAD_DIR)
+$(DIST_DIR)\imdisk_source.7z: $(DIST_DIR)\imdisk.7z 7zSDcfg.txt $(README_TXT_FILES) runwaitw.exe install.cmd msgboxw.exe inc\imdiskver.h devio\*.c devio\*.cpp devio\*.h devio\Makefile* uninstall_imdisk.cmd *.sln *.props ImDiskNet\*.sln ImDiskNet\ImDiskNet\*.vb ImDiskNet\ImDiskNet\*.*proj ImDiskNet\DiscUtilsDevio\*.vb ImDiskNet\DiscUtilsDevio\*.*proj ImDiskNet\DevioNet\*.vb ImDiskNet\DevioNet\*.*proj Makefile
+	del $(DIST_DIR)\imdisk_source.7z
+	7z a -r $(DIST_DIR)\imdisk_source.7z -x!*~ -m0=PPMd 7zSDcfg.txt $(README_TXT_FILES) *.def *.src *.ico *.c *.h *.cpp *.hpp *.cxx *.hxx *.rc *.lib *.sln *.vb *.cs *.*proj *.snk *.resx *.resources *.myapp *.settings *.props Sources dirs imdisk.inf runwaitw.exe install.cmd msgboxw.exe uninstall_imdisk.cmd Makefile*
+	xcopy /d /y $(DIST_DIR)\imdisk_source.7z $(UPLOAD_DIR)
 
-p:\utils\imdisk.7z: readme.txt gpl.txt imdisk.inf runwaitw.exe install.cmd uninstall_imdisk.cmd msgboxw.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
-	del p:\utils\imdisk.7z
+$(DIST_DIR)\imdisk.7z: $(README_TXT_FILES) imdisk.inf runwaitw.exe install.cmd uninstall_imdisk.cmd msgboxw.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
+	del $(DIST_DIR)\imdisk.7z
 	stampinf -f imdisk.inf -a NTx86,NTia64,NTamd64
-	7z a p:\utils\imdisk.7z -m0=LZMA:a=2 readme.txt gpl.txt imdisk.inf runwaitw.exe install.cmd uninstall_imdisk.cmd msgboxw.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
+	7z a $(DIST_DIR)\imdisk.7z -m0=LZMA:a=2 $(README_TXT_FILES) imdisk.inf runwaitw.exe install.cmd uninstall_imdisk.cmd msgboxw.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys
 
 cli\$(ARCHDIR)\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\$(ARCHDIR)\imdisk.lib cplcore\$(ARCHDIR)\imdisk.lib
 	cd cli

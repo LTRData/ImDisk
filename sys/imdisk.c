@@ -817,7 +817,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
 		InitializeObjectAttributes(&object_attributes,
 			&refresh_event_name,
-			OBJ_CASE_INSENSITIVE | OBJ_OPENIF,
+			OBJ_CASE_INSENSITIVE | OBJ_PERMANENT | OBJ_OPENIF,
 			NULL,
 			event_security_descriptor);
 
@@ -850,7 +850,7 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 				KernelMode,
 				&RefreshEvent,
 				NULL);
-
+            
 			ZwClose(refresh_event_handle);
 		}
 
@@ -7881,33 +7881,33 @@ ImDiskCloseProxy(IN PPROXY_CONNECTION Proxy)
 
 NTSTATUS
 ImDiskCallProxy(IN PPROXY_CONNECTION Proxy,
-	OUT PIO_STATUS_BLOCK IoStatusBlock,
-	IN PKEVENT CancelEvent OPTIONAL,
-	IN PVOID RequestHeader,
-	IN ULONG RequestHeaderSize,
-	IN PVOID RequestData,
-	IN ULONG RequestDataSize,
-	IN OUT PVOID ResponseHeader,
-	IN ULONG ResponseHeaderSize,
-	IN OUT PVOID ResponseData,
-	IN ULONG ResponseDataBufferSize,
-	IN ULONG *ResponseDataSize)
+    OUT PIO_STATUS_BLOCK IoStatusBlock,
+    IN PKEVENT CancelEvent OPTIONAL,
+    IN PVOID RequestHeader,
+    IN ULONG RequestHeaderSize,
+    IN PVOID RequestData,
+    IN ULONG RequestDataSize,
+    IN OUT PVOID ResponseHeader,
+    IN ULONG ResponseHeaderSize,
+    IN OUT PVOID ResponseData,
+    IN ULONG ResponseDataBufferSize,
+    IN ULONG *ResponseDataSize)
 {
-	NTSTATUS status;
+    NTSTATUS status;
 
-	ASSERT(Proxy != NULL);
+    ASSERT(Proxy != NULL);
 
-	switch (Proxy->connection_type)
-	{
-	case PROXY_CONNECTION_DEVICE:
-	{
+    switch (Proxy->connection_type)
+    {
+    case PROXY_CONNECTION_DEVICE:
+    {
         PUCHAR io_buffer = NULL;
         PUCHAR temp_buffer = NULL;
         ULONG io_size = RequestHeaderSize + RequestDataSize;
 
         if ((RequestHeaderSize > 0) &&
             (RequestDataSize > 0))
-        {            
+        {
             temp_buffer = ExAllocatePoolWithTag(NonPagedPool, io_size, POOL_TAG);
 
             if (temp_buffer == NULL)
@@ -7941,34 +7941,34 @@ ImDiskCallProxy(IN PPROXY_CONNECTION Proxy,
         }
 
         if (io_size > 0)
-		{
-			if (CancelEvent != NULL ?
-				KeReadStateEvent(CancelEvent) != 0 :
-				FALSE)
-			{
-				KdPrint(("ImDisk Proxy Client: Request cancelled.\n."));
+        {
+            if (CancelEvent != NULL ?
+                KeReadStateEvent(CancelEvent) != 0 :
+                FALSE)
+            {
+                KdPrint(("ImDisk Proxy Client: Request cancelled.\n."));
 
                 if (temp_buffer != NULL)
                 {
                     ExFreePoolWithTag(temp_buffer, POOL_TAG);
                 }
 
-				IoStatusBlock->Status = STATUS_CANCELLED;
-				IoStatusBlock->Information = 0;
-				return IoStatusBlock->Status;
-			}
+                IoStatusBlock->Status = STATUS_CANCELLED;
+                IoStatusBlock->Information = 0;
+                return IoStatusBlock->Status;
+            }
 
-			status = ImDiskSafeIOStream(Proxy->device,
-				IRP_MJ_WRITE,
-				IoStatusBlock,
-				CancelEvent,
-				io_buffer,
-				io_size);
+            status = ImDiskSafeIOStream(Proxy->device,
+                IRP_MJ_WRITE,
+                IoStatusBlock,
+                CancelEvent,
+                io_buffer,
+                io_size);
 
-			if (!NT_SUCCESS(status))
-			{
-				KdPrint(("ImDisk Proxy Client: Request error %#x\n.",
-					status));
+            if (!NT_SUCCESS(status))
+            {
+                KdPrint(("ImDisk Proxy Client: Request error %#x\n.",
+                    status));
 
                 if (temp_buffer != NULL)
                 {
@@ -7976,102 +7976,102 @@ ImDiskCallProxy(IN PPROXY_CONNECTION Proxy,
                 }
 
                 IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-				IoStatusBlock->Information = 0;
-				return IoStatusBlock->Status;
-			}
-		}
+                IoStatusBlock->Information = 0;
+                return IoStatusBlock->Status;
+            }
+        }
 
         if (temp_buffer != NULL)
         {
             ExFreePoolWithTag(temp_buffer, POOL_TAG);
         }
 
-		if (ResponseHeaderSize > 0)
-		{
-			if (CancelEvent != NULL ?
-				KeReadStateEvent(CancelEvent) != 0 :
-				FALSE)
-			{
-				KdPrint(("ImDisk Proxy Client: Request cancelled.\n."));
+        if (ResponseHeaderSize > 0)
+        {
+            if (CancelEvent != NULL ?
+                KeReadStateEvent(CancelEvent) != 0 :
+                FALSE)
+            {
+                KdPrint(("ImDisk Proxy Client: Request cancelled.\n."));
 
-				IoStatusBlock->Status = STATUS_CANCELLED;
-				IoStatusBlock->Information = 0;
-				return IoStatusBlock->Status;
-			}
+                IoStatusBlock->Status = STATUS_CANCELLED;
+                IoStatusBlock->Information = 0;
+                return IoStatusBlock->Status;
+            }
 
-			status = ImDiskSafeIOStream(Proxy->device,
-				IRP_MJ_READ,
-				IoStatusBlock,
-				CancelEvent,
-				ResponseHeader,
-				ResponseHeaderSize);
+            status = ImDiskSafeIOStream(Proxy->device,
+                IRP_MJ_READ,
+                IoStatusBlock,
+                CancelEvent,
+                ResponseHeader,
+                ResponseHeaderSize);
 
-			if (!NT_SUCCESS(status))
-			{
-				KdPrint(("ImDisk Proxy Client: Response header error %#x\n.",
-					status));
+            if (!NT_SUCCESS(status))
+            {
+                KdPrint(("ImDisk Proxy Client: Response header error %#x\n.",
+                    status));
 
-				IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-				IoStatusBlock->Information = 0;
-				return IoStatusBlock->Status;
-			}
-		}
+                IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+                IoStatusBlock->Information = 0;
+                return IoStatusBlock->Status;
+            }
+        }
 
-		if (ResponseDataSize != NULL && *ResponseDataSize > 0)
-		{
-			if (*ResponseDataSize > ResponseDataBufferSize)
-			{
-				KdPrint(("ImDisk Proxy Client: Fatal: Request %u bytes, "
-					"receiving %u bytes.\n",
-					ResponseDataBufferSize, *ResponseDataSize));
+        if (ResponseDataSize != NULL && *ResponseDataSize > 0)
+        {
+            if (*ResponseDataSize > ResponseDataBufferSize)
+            {
+                KdPrint(("ImDisk Proxy Client: Fatal: Request %u bytes, "
+                    "receiving %u bytes.\n",
+                    ResponseDataBufferSize, *ResponseDataSize));
 
-				IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-				IoStatusBlock->Information = 0;
-				return IoStatusBlock->Status;
-			}
+                IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+                IoStatusBlock->Information = 0;
+                return IoStatusBlock->Status;
+            }
 
-			if (CancelEvent != NULL ?
-				KeReadStateEvent(CancelEvent) != 0 :
-				FALSE)
-			{
-				KdPrint(("ImDisk Proxy Client: Request cancelled.\n."));
+            if (CancelEvent != NULL ?
+                KeReadStateEvent(CancelEvent) != 0 :
+                FALSE)
+            {
+                KdPrint(("ImDisk Proxy Client: Request cancelled.\n."));
 
-				IoStatusBlock->Status = STATUS_CANCELLED;
-				IoStatusBlock->Information = 0;
-				return IoStatusBlock->Status;
-			}
+                IoStatusBlock->Status = STATUS_CANCELLED;
+                IoStatusBlock->Information = 0;
+                return IoStatusBlock->Status;
+            }
 
-			KdPrint2
-				(("ImDisk Proxy Client: Got ok resp. Waiting for data.\n"));
+            KdPrint2
+                (("ImDisk Proxy Client: Got ok resp. Waiting for data.\n"));
 
-			status = ImDiskSafeIOStream(Proxy->device,
-				IRP_MJ_READ,
-				IoStatusBlock,
-				CancelEvent,
-				ResponseData,
-				*ResponseDataSize);
+            status = ImDiskSafeIOStream(Proxy->device,
+                IRP_MJ_READ,
+                IoStatusBlock,
+                CancelEvent,
+                ResponseData,
+                *ResponseDataSize);
 
-			if (!NT_SUCCESS(status))
-			{
-				KdPrint(("ImDisk Proxy Client: Response data error %#x\n.",
-					status));
+            if (!NT_SUCCESS(status))
+            {
+                KdPrint(("ImDisk Proxy Client: Response data error %#x\n.",
+                    status));
 
-				KdPrint(("ImDisk Proxy Client: Response data %u bytes, "
-					"got %u bytes.\n",
-					*ResponseDataSize,
-					(ULONG)IoStatusBlock->Information));
+                KdPrint(("ImDisk Proxy Client: Response data %u bytes, "
+                    "got %u bytes.\n",
+                    *ResponseDataSize,
+                    (ULONG)IoStatusBlock->Information));
 
-				IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-				IoStatusBlock->Information = 0;
-				return IoStatusBlock->Status;
-			}
+                IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+                IoStatusBlock->Information = 0;
+                return IoStatusBlock->Status;
+            }
 
-			KdPrint2
-				(("ImDisk Proxy Client: Received %u byte data stream.\n",
-					IoStatusBlock->Information));
-		}
+            KdPrint2
+                (("ImDisk Proxy Client: Received %u byte data stream.\n",
+                    IoStatusBlock->Information));
+        }
 
-		IoStatusBlock->Status = STATUS_SUCCESS;
+        IoStatusBlock->Status = STATUS_SUCCESS;
 
         IoStatusBlock->Information = RequestDataSize;
 
@@ -8081,101 +8081,101 @@ ImDiskCallProxy(IN PPROXY_CONNECTION Proxy,
         }
 
         return IoStatusBlock->Status;
-	}
+    }
 
-	case PROXY_CONNECTION_SHM:
-	{
-		PKEVENT wait_objects[] = {
-			Proxy->response_event,
-			CancelEvent
-		};
+    case PROXY_CONNECTION_SHM:
+    {
+        PKEVENT wait_objects[] = {
+            Proxy->response_event,
+            CancelEvent
+        };
 
-		ULONG number_of_wait_objects = CancelEvent != NULL ? 2 : 1;
+        ULONG number_of_wait_objects = CancelEvent != NULL ? 2 : 1;
 
-		// Some parameter sanity checks
-		if ((RequestHeaderSize > IMDPROXY_HEADER_SIZE) |
-			(ResponseHeaderSize > IMDPROXY_HEADER_SIZE) |
-			((RequestDataSize + IMDPROXY_HEADER_SIZE) >
-				Proxy->shared_memory_size))
-		{
-			KdPrint(("ImDisk Proxy Client: "
-				"Parameter values not supported.\n."));
+        // Some parameter sanity checks
+        if ((RequestHeaderSize > IMDPROXY_HEADER_SIZE) |
+            (ResponseHeaderSize > IMDPROXY_HEADER_SIZE) |
+            ((RequestDataSize + IMDPROXY_HEADER_SIZE) >
+                Proxy->shared_memory_size))
+        {
+            KdPrint(("ImDisk Proxy Client: "
+                "Parameter values not supported.\n."));
 
-			IoStatusBlock->Status = STATUS_INVALID_BUFFER_SIZE;
-			IoStatusBlock->Information = 0;
-			return IoStatusBlock->Status;
-		}
+            IoStatusBlock->Status = STATUS_INVALID_BUFFER_SIZE;
+            IoStatusBlock->Information = 0;
+            return IoStatusBlock->Status;
+        }
 
-		IoStatusBlock->Information = 0;
+        IoStatusBlock->Information = 0;
 
-		if (RequestHeaderSize > 0)
-			RtlCopyMemory(Proxy->shared_memory,
-				RequestHeader,
-				RequestHeaderSize);
+        if (RequestHeaderSize > 0)
+            RtlCopyMemory(Proxy->shared_memory,
+                RequestHeader,
+                RequestHeaderSize);
 
-		if (RequestDataSize > 0)
-			RtlCopyMemory(Proxy->shared_memory + IMDPROXY_HEADER_SIZE,
-				RequestData,
-				RequestDataSize);
+        if (RequestDataSize > 0)
+            RtlCopyMemory(Proxy->shared_memory + IMDPROXY_HEADER_SIZE,
+                RequestData,
+                RequestDataSize);
 
 #pragma warning(suppress: 28160)
-		KeSetEvent(Proxy->request_event, (KPRIORITY)0, TRUE);
+        KeSetEvent(Proxy->request_event, (KPRIORITY)0, TRUE);
 
-		status = KeWaitForMultipleObjects(number_of_wait_objects,
-			wait_objects,
-			WaitAny,
-			Executive,
-			KernelMode,
-			FALSE,
-			NULL,
-			NULL);
+        status = KeWaitForMultipleObjects(number_of_wait_objects,
+            wait_objects,
+            WaitAny,
+            Executive,
+            KernelMode,
+            FALSE,
+            NULL,
+            NULL);
 
-		if (status == STATUS_WAIT_1)
-		{
-			KdPrint(("ImDisk Proxy Client: Incomplete wait %#x.\n.", status));
+        if (status == STATUS_WAIT_1)
+        {
+            KdPrint(("ImDisk Proxy Client: Incomplete wait %#x.\n.", status));
 
-			IoStatusBlock->Status = STATUS_CANCELLED;
-			IoStatusBlock->Information = 0;
-			return IoStatusBlock->Status;
-		}
+            IoStatusBlock->Status = STATUS_CANCELLED;
+            IoStatusBlock->Information = 0;
+            return IoStatusBlock->Status;
+        }
 
-		if (ResponseHeaderSize > 0)
-			RtlCopyMemory(ResponseHeader,
-				Proxy->shared_memory,
-				ResponseHeaderSize);
+        if (ResponseHeaderSize > 0)
+            RtlCopyMemory(ResponseHeader,
+                Proxy->shared_memory,
+                ResponseHeaderSize);
 
-		// If server end requests to send more data than we requested, we
-		// treat that as an unrecoverable device error and exit.
-		if (ResponseDataSize != NULL ? *ResponseDataSize > 0 : FALSE)
-			if ((*ResponseDataSize > ResponseDataBufferSize) |
-				((*ResponseDataSize + IMDPROXY_HEADER_SIZE) >
-					Proxy->shared_memory_size))
-			{
-				KdPrint(("ImDisk Proxy Client: Invalid response size %u.\n.",
-					*ResponseDataSize));
+        // If server end requests to send more data than we requested, we
+        // treat that as an unrecoverable device error and exit.
+        if (ResponseDataSize != NULL ? *ResponseDataSize > 0 : FALSE)
+            if ((*ResponseDataSize > ResponseDataBufferSize) |
+                ((*ResponseDataSize + IMDPROXY_HEADER_SIZE) >
+                    Proxy->shared_memory_size))
+            {
+                KdPrint(("ImDisk Proxy Client: Invalid response size %u.\n.",
+                    *ResponseDataSize));
 
-				IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
-				IoStatusBlock->Information = 0;
-				return IoStatusBlock->Status;
-			}
-			else
-			{
-				RtlCopyMemory(ResponseData,
-					Proxy->shared_memory + IMDPROXY_HEADER_SIZE,
-					*ResponseDataSize);
+                IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
+                IoStatusBlock->Information = 0;
+                return IoStatusBlock->Status;
+            }
+            else
+            {
+                RtlCopyMemory(ResponseData,
+                    Proxy->shared_memory + IMDPROXY_HEADER_SIZE,
+                    *ResponseDataSize);
 
-				IoStatusBlock->Information = *ResponseDataSize;
-			}
+                IoStatusBlock->Information = *ResponseDataSize;
+            }
 
-		IoStatusBlock->Status = STATUS_SUCCESS;
-		if ((RequestDataSize > 0) & (IoStatusBlock->Information == 0))
-			IoStatusBlock->Information = RequestDataSize;
-		return IoStatusBlock->Status;
-	}
+        IoStatusBlock->Status = STATUS_SUCCESS;
+        if ((RequestDataSize > 0) & (IoStatusBlock->Information == 0))
+            IoStatusBlock->Information = RequestDataSize;
+        return IoStatusBlock->Status;
+    }
 
-	default:
-		return STATUS_DRIVER_INTERNAL_ERROR;
-	}
+    default:
+        return STATUS_DRIVER_INTERNAL_ERROR;
+    }
 }
 
 #pragma code_seg("PAGE")

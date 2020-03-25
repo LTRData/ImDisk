@@ -342,7 +342,7 @@ extern "C" {
 	/**
 	An interactive rundll32.exe-compatible function to show the Add New Virtual
 	Disk dialog box with a file name already filled in. It is used by the
-	Windows Explorer context menues.
+	Windows Explorer context menus.
 
 	hWnd         Specifies a window that will be the owner window of any
 	MessageBox:es or similar.
@@ -371,7 +371,7 @@ extern "C" {
 
 	hInst        Ignored.
 
-	lpszCmdLine  An ANSI string specifying the the virtual disk to remove. This
+	lpszCmdLine  An ANSI string specifying the virtual disk to remove. This
 	can be on the form "F:" or "F:\" (without the quotes).
 
 	nCmdShow     Ignored.
@@ -394,7 +394,7 @@ extern "C" {
 
 	hInst        Ignored.
 
-	lpszCmdLine  An ANSI string specifying the the disk to save. This can be on
+	lpszCmdLine  An ANSI string specifying the disk to save. This can be on
 	the form "F:" or "F:\" (without the quotes).
 
 	nCmdShow     Ignored.
@@ -624,7 +624,7 @@ extern "C" {
 		ImDiskStartService(IN LPWSTR ServiceName);
 
 	/**
-	An easy way to turn an empty NTFS directory to a reparsepoint that redirects
+	An easy way to turn an empty NTFS directory to a reparse point that redirects
 	requests to a mounted device. Acts quite like mount points or symbolic links
 	in *nix. If MountPoint specifies a character followed by a colon, a drive
 	letter is instead created to point to Target.
@@ -641,7 +641,7 @@ extern "C" {
 		IN LPCWSTR Target);
 
 	/**
-	Restores a reparsepoint to be an ordinary empty directory, or removes a
+	Restores a reparse point to be an ordinary empty directory, or removes a
 	drive letter mount point. When removing a drive letter mount point, this
 	function notifies shell components that drive letter is gone unless API
 	flags are set to turn off shell notifications.
@@ -742,7 +742,7 @@ extern "C" {
 	This parameter must be at least 3 for this function to work
 	correctly.
 
-	DeviceList      Pointer to memory location where one ULONG, conatining a
+	DeviceList      Pointer to memory location where one ULONG, containing a
 	device number, will be stored for each currently existing
 	ImDisk device. First element in list is used to store number
 	of devices.
@@ -772,7 +772,7 @@ extern "C" {
 	/**
 	This function sends an IOCTL_IMDISK_QUERY_DEVICE control code to an existing
 	device and returns information about the device in an IMDISK_CREATE_DATA
-	structue.
+	structure.
 
 	DeviceNumber    Number of the ImDisk device to query.
 
@@ -1014,7 +1014,7 @@ extern "C" {
 
 	BufferSize      I/O buffer size to use when reading source disk. This
 	parameter is optional, if it is zero the buffer size to use
-	will automatically choosen.
+	will automatically chosen.
 
 	CancelFlag      Optional pointer to a BOOL value. If this BOOL value is set
 	to TRUE during the function call the operation is cancelled,
@@ -1060,7 +1060,7 @@ extern "C" {
 	single volume.
 
 	DiskGeometry Pointer to DISK_GEOMETRY structure that receives information
-	about formatted geometry. This function zeroes the Cylinders
+	about formatted geometry. This function zeros the Cylinders
 	member.
 	*/
 	IMDISK_API BOOL
@@ -1088,7 +1088,7 @@ extern "C" {
 	single volume.
 
 	DiskGeometry Pointer to DISK_GEOMETRY structure that receives information
-	about formatted geometry. This function zeroes the Cylinders
+	about formatted geometry. This function zeros the Cylinders
 	member.
 	*/
 	IMDISK_API BOOL
@@ -1227,7 +1227,7 @@ extern "C" {
 
 	BufferSize      I/O buffer size to use when reading source disk. This
 	parameter is optional, if it is zero the buffer size to use
-	will automatically choosen.
+	will automatically chosen.
 
 	IsCdRomType     If this parameter is TRUE and the source device type cannot
 	be automatically determined this function will ask user for
@@ -1245,7 +1245,7 @@ extern "C" {
 	ImDisk driver and will be pulsed when an ImDisk device is created, removed
 	or have settings changed in some other way.
 
-	This is particularily useful for user interface components that need to be
+	This is particularly useful for user interface components that need to be
 	notified when device lists and similar need to be updated.
 
 	If successful, this function returns a handle to an event that can be used
