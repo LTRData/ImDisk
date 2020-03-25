@@ -7,7 +7,7 @@ UMTYPE=windows
 USE_MSVCRT=1
 MSC_OPTIMIZATION=/Ox /GF
 MSC_WARNING_LEVEL=/W4 /WX /wd4201
-SOURCES=drvio.c mbr.c dummy.c
+SOURCES=drvio.c mbr.c dummy.c imdisk.rc
 DLLDEF=$O\imdisk.def
 
 !IF "$(_BUILDARCH)" == "x86"

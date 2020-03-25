@@ -50,7 +50,7 @@ cpl\$(ARCHDIR)\imdisk.cpl cpl\$(ARCHDIR)\imdisk.lib: cpl\sources cpl\*.c cpl\*.c
 	cd $(MAKEDIR)
 	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "ImDisk Virtual Disk Driver Control Panel Applet" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "$(TIMESTAMP_WEBSERVICE)" cpl\$(ARCHDIR)\imdisk.cpl
 
-cplcore\$(ARCHDIR)\imdisk.cpl cplcore\$(ARCHDIR)\imdisk.lib: cplcore\sources cplcore\*.c cpl\*.c cplcore\*.src cplcore\*.h cpl\*.h inc\*.h
+cplcore\$(ARCHDIR)\imdisk.cpl cplcore\$(ARCHDIR)\imdisk.lib: cplcore\sources cplcore\*.c cpl\*.c cpl\*.cpp cpl\*.rc cplcore\*.src cplcore\*.h cpl\*.h inc\*.h
 	cd cplcore
 	nmake refresh
 	build

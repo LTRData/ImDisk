@@ -23,3 +23,6 @@ mbr.c: ..\cpl\$@
 mbr.h: ..\cpl\$@
 	copy ..\cpl\$@ $@
 
+imdisk.rc: ..\cpl\$@
+	copy ..\cpl\$@ $@
+

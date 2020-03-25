@@ -1446,7 +1446,7 @@ LPWSTR MountPoint)
 
 	// Build device path, e.g. \Device\ImDisk2
 	_snwprintf(device_path, sizeof(device_path) / sizeof(*device_path),
-	    IMDISK_DEVICE_BASE_NAME L"%u", DeviceNumber);
+	    IMDISK_DEVICE_BASE_NAME L"%u", create_data->DeviceNumber);
 	device_path[sizeof(device_path) / sizeof(*device_path) - 1] = 0;
 
 	if ((wcslen(MountPoint) == 2) &&
