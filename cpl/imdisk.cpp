@@ -1041,7 +1041,7 @@ AutoFindOffsetAndSize(LPCWSTR lpwszFileName, HWND hWnd)
   else
     {
       SetDlgItemText(hWnd, IDC_EDT_SIZE, TXT_CURRENT_IMAGE_FILE_SIZE);
-      CheckDlgButton(hWnd, IDC_UNIT_B, BST_CHECKED);
+      CheckDlgButton(hWnd, IDC_UNIT_MB, BST_CHECKED);
     }
 }
 
@@ -1063,7 +1063,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	SendDlgItemMessage(hWnd, IDC_EDT_DRIVE, EM_SETLIMITTEXT, (WPARAM) 1,
 			   0);
 
-	CheckDlgButton(hWnd, IDC_UNIT_B, BST_CHECKED);
+	CheckDlgButton(hWnd, IDC_UNIT_MB, BST_CHECKED);
 	CheckDlgButton(hWnd, IDC_OFFSET_UNIT_B, BST_CHECKED);
 	CheckDlgButton(hWnd, IDC_DT_AUTO, BST_CHECKED);
 
@@ -1440,6 +1440,10 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	  SetProp(hWnd, PROP_NAME_HKEY_MOUNTPOINTS2, hKeyMountPoints2);
 
 	HWND hWndListView = GetDlgItem(hWnd, IDC_LISTVIEW);
+
+	ListView_SetExtendedListViewStyleEx(hWndListView,
+					    LVS_EX_FULLROWSELECT,
+					    LVS_EX_FULLROWSELECT);
 
 	LVCOLUMN lvc = { 0 };
 	lvc.mask = LVCF_WIDTH | LVCF_TEXT;

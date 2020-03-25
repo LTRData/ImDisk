@@ -257,6 +257,10 @@ VOID
 ImDiskUnload(IN PDRIVER_OBJECT DriverObject);
 
 VOID
+ImDiskFindFreeDeviceNumber(PDRIVER_OBJECT DriverObject,
+			   PULONG DeviceNumber);
+
+VOID
 ImDiskLogDbgError(IN PVOID Object,
 		  IN UCHAR MajorFunctionCode,
 		  IN UCHAR RetryCount,
@@ -1206,7 +1210,9 @@ ImDiskCreateDriveLetter(IN WCHAR DriveLetter,
 			IN ULONG DeviceNumber)
 {
   WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
+#ifndef _WIN64
   WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
+#endif
   UNICODE_STRING sym_link;
   PWCHAR device_name_buffer;
   UNICODE_STRING device_name;
@@ -1230,6 +1236,7 @@ ImDiskCreateDriveLetter(IN WCHAR DriveLetter,
   device_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
   RtlInitUnicodeString(&device_name, device_name_buffer);
 
+#ifndef _WIN64
   sym_link_wchar[12] = DriveLetter;
 
   KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",
@@ -1243,6 +1250,7 @@ ImDiskCreateDriveLetter(IN WCHAR DriveLetter,
       KdPrint(("ImDisk: Cannot symlink '%ws' to '%ws'. (%#x)\n",
 	       sym_link_global_wchar, device_name_buffer, status));
     }
+#endif
 
   sym_link_global_wchar[19] = DriveLetter;
 
@@ -1529,32 +1537,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   // Auto-find first free device number
   if (CreateData->DeviceNumber == IMDISK_AUTO_DEVICE_NUMBER)
     {
-      KIRQL old_irql;
-      PDEVICE_OBJECT device_object;
-
-      KeAcquireSpinLock(&DeviceListLock, &old_irql);
-
-      CreateData->DeviceNumber = 0;
-      for (device_object = DriverObject->DeviceObject;
-	   device_object != NULL;
-	   device_object = device_object->NextDevice)
-	{
-	  PDEVICE_EXTENSION device_extension = (PDEVICE_EXTENSION)
-	    device_object->DeviceExtension;
-
-	  // Skip over control device
-	  if (device_extension->device_number == -1)
-	    continue;
-
-	  KdPrint2(("ImDisk: Found device %i.\n",
-		    device_extension->device_number));
-
-	  // Result will be one number above highest existing
-	  if (device_extension->device_number >= CreateData->DeviceNumber)
-	    CreateData->DeviceNumber = device_extension->device_number + 1;
-	}
-
-      KeReleaseSpinLock(&DeviceListLock, old_irql);
+      ImDiskFindFreeDeviceNumber(DriverObject, &CreateData->DeviceNumber);
 
       KdPrint(("ImDisk: Free device number %i.\n", CreateData->DeviceNumber));
     }
@@ -3180,6 +3163,38 @@ ImDiskUnload(IN PDRIVER_OBJECT DriverObject)
 
 #pragma code_seg()
 
+VOID
+ImDiskFindFreeDeviceNumber(PDRIVER_OBJECT DriverObject,
+			   PULONG DeviceNumber)
+{
+  KIRQL old_irql;
+  PDEVICE_OBJECT device_object;
+
+  KeAcquireSpinLock(&DeviceListLock, &old_irql);
+
+  *DeviceNumber = 0;
+  for (device_object = DriverObject->DeviceObject;
+       device_object != NULL;
+       device_object = device_object->NextDevice)
+    {
+      PDEVICE_EXTENSION device_extension = (PDEVICE_EXTENSION)
+	device_object->DeviceExtension;
+
+      // Skip over control device
+      if (device_extension->device_number == -1)
+	continue;
+
+      KdPrint2(("ImDisk: Found device %i.\n",
+		device_extension->device_number));
+
+      // Result will be one number above highest existing
+      if (device_extension->device_number >= *DeviceNumber)
+	*DeviceNumber = device_extension->device_number + 1;
+    }
+
+  KeReleaseSpinLock(&DeviceListLock, old_irql);
+}
+
 #if DEBUG_LEVEL >= 1
 VOID
 ImDiskLogDbgError(IN PVOID Object,
@@ -4698,77 +4713,75 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	break;
       }
 
-    case IOCTL_MOUNTDEV_QUERY_DEVICE_NAME:
-      {
-	PMOUNTDEV_NAME mountdev_name = Irp->AssociatedIrp.SystemBuffer;
-	int chars;
+/*     case IOCTL_MOUNTDEV_QUERY_DEVICE_NAME: */
+/*       { */
+/* 	PMOUNTDEV_NAME mountdev_name = Irp->AssociatedIrp.SystemBuffer; */
+/* 	int chars; */
 
-	KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME for device %i.\n",
-		 device_extension->device_number));
+/* 	KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME for device %i.\n", */
+/* 		 device_extension->device_number)); */
 
-	if ((io_stack->Parameters.DeviceIoControl.OutputBufferLength == 4) &
-	    (device_extension->drive_letter != 0))
-	  {
-	    mountdev_name->Name[0] = device_extension->drive_letter;
-	    mountdev_name->Name[1] = L':';
-	    chars = 2;
-	  }
-	else
-	  chars =
-	    _snwprintf(mountdev_name->Name,
-		       (io_stack->
-			Parameters.DeviceIoControl.OutputBufferLength -
-			FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1,
-		       IMDISK_DEVICE_BASE_NAME L"%u",
-		       device_extension->device_number);
-	/*
-	  else
-	  chars =
-	  _snwprintf(mountdev_name->Name,
-	  (io_stack->
-	  Parameters.DeviceIoControl.OutputBufferLength -
-	  FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1,
-	  L"\\DosDevices\\%wc:",
-	  device_extension->drive_letter);
-	*/
+/* 	if ((io_stack->Parameters.DeviceIoControl.OutputBufferLength == 4) & */
+/* 	    (device_extension->drive_letter != 0)) */
+/* 	  { */
+/* 	    mountdev_name->Name[0] = device_extension->drive_letter; */
+/* 	    mountdev_name->Name[1] = L':'; */
+/* 	    chars = 2; */
+/* 	  } */
+/* 	else */
+/* 	  chars = */
+/* 	    _snwprintf(mountdev_name->Name, */
+/* 		       (io_stack-> */
+/* 			Parameters.DeviceIoControl.OutputBufferLength - */
+/* 			FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1, */
+/* 		       IMDISK_DEVICE_BASE_NAME L"%u", */
+/* 		       device_extension->device_number); */
+/* // 	  else */
+/* // 	  chars = */
+/* // 	  _snwprintf(mountdev_name->Name, */
+/* // 	  (io_stack-> */
+/* // 	  Parameters.DeviceIoControl.OutputBufferLength - */
+/* // 	  FIELD_OFFSET(MOUNTDEV_NAME, Name)) >> 1, */
+/* // 	  L"\\DosDevices\\%wc:", */
+/* // 	  device_extension->drive_letter); */
 
-	if (chars < 0)
-	  {
-	    if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
-		FIELD_OFFSET(MOUNTDEV_NAME, Name) +
-		sizeof(mountdev_name->NameLength))
-	      mountdev_name->NameLength = sizeof(IMDISK_DEVICE_BASE_NAME) +
-		20;
+/* 	if (chars < 0) */
+/* 	  { */
+/* 	    if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >= */
+/* 		FIELD_OFFSET(MOUNTDEV_NAME, Name) + */
+/* 		sizeof(mountdev_name->NameLength)) */
+/* 	      mountdev_name->NameLength = sizeof(IMDISK_DEVICE_BASE_NAME) + */
+/* 		20; */
 
-	    KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME overflow, "
-		     "buffer length %u, returned %i.\n",
-		     io_stack->Parameters.DeviceIoControl.OutputBufferLength,
-		     chars));
+/* 	    KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME overflow, " */
+/* 		     "buffer length %u, returned %i.\n", */
+/* 		     io_stack->Parameters.DeviceIoControl.OutputBufferLength, */
+/* 		     chars)); */
 
-	    status = STATUS_BUFFER_OVERFLOW;
+/* 	    status = STATUS_BUFFER_OVERFLOW; */
 
-	    if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >=
-		sizeof(MOUNTDEV_NAME))
-	      Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
-	    else
-	      Irp->IoStatus.Information = 0;
+/* 	    if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >= */
+/* 		sizeof(MOUNTDEV_NAME)) */
+/* 	      Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME); */
+/* 	    else */
+/* 	      Irp->IoStatus.Information = 0; */
 
-	    break;
-	  }
+/* 	    break; */
+/* 	  } */
 
-	mountdev_name->NameLength = (USHORT) chars << 1;
+/* 	mountdev_name->NameLength = (USHORT) chars << 1; */
 
-	status = STATUS_SUCCESS;
-	Irp->IoStatus.Information =
-	  FIELD_OFFSET(MOUNTDEV_NAME, Name) + mountdev_name->NameLength;
+/* 	status = STATUS_SUCCESS; */
+/* 	Irp->IoStatus.Information = */
+/* 	  FIELD_OFFSET(MOUNTDEV_NAME, Name) + mountdev_name->NameLength; */
 
-	KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME returning %ws, "
-		 "length %u total %u.\n",
-		 mountdev_name->Name, mountdev_name->NameLength,
-		 Irp->IoStatus.Information));
+/* 	KdPrint(("ImDisk: IOCTL_MOUNTDEV_QUERY_DEVICE_NAME returning %ws, " */
+/* 		 "length %u total %u.\n", */
+/* 		 mountdev_name->Name, mountdev_name->NameLength, */
+/* 		 Irp->IoStatus.Information)); */
 
-	break;
-      }
+/* 	break; */
+/*       } */
 
     default:
       {

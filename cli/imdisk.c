@@ -28,6 +28,7 @@
 #include <windows.h>
 #include <winioctl.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <dbt.h>
 
 #include <stdio.h>
@@ -732,9 +733,11 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 	      MountPoint[0] = 0;
 	    }
 	}
+#ifndef _WIN64
       else
 	if (!DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
 	  PrintLastError(L"Error creating mount point:");
+#endif
     }
 
   return 0;
@@ -1070,6 +1073,10 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	  FALSE)
 	{
 	  DWORD_PTR dwp;
+	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	    sizeof(DEV_BROADCAST_VOLUME),
+	    DBT_DEVTYP_VOLUME
+	  };
 
 	  WCHAR drive_mount_point[3] = L" :";
 	  WCHAR reg_key[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints\\ ";
@@ -1077,6 +1084,9 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 
 	  drive_mount_point[0] = MountPoint[0];
 
+#ifdef _WIN64
+	  SHChangeNotify(SHCNE_DRIVEREMOVED, SHCNF_PATH, MountPoint, NULL);
+#endif
 	  if (!DefineDosDevice(DDD_REMOVE_DEFINITION, drive_mount_point, NULL))
 	    PrintLastError(MountPoint);
 
@@ -1085,6 +1095,18 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 
 	  RegDeleteKey(HKEY_CURRENT_USER, reg_key);
 	  RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
+
+	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+
+	  DbgOemPrintF((stdout, "Sending DBT_DEVICEREMOVECOMPLETE...\n"));
+
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVICEREMOVECOMPLETE,
+			     (LPARAM)&dev_broadcast_volume,
+			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
+			     4000,
+			     &dwp);
 
 	  DbgOemPrintF((stdout, "Sending DBT_DEVNODES_CHANGED...\n"));
 
@@ -2339,6 +2361,10 @@ wmain(int argc, LPWSTR argv[])
 	      };
 
 	      puts("Notifying applications...");
+
+#ifdef _WIN64
+	      SHChangeNotify(SHCNE_DRIVEADD, SHCNF_PATH, mount_point, NULL);
+#endif
 
 	      dev_broadcast_volume.dbcv_unitmask =
 		1 << (mount_point[0] - L'A');

@@ -177,7 +177,7 @@ ServiceBinary = %12%\imdisk.sys
 DisplayName = "AWE Memory Allocation Driver"
 Description = "Driver for physical memory allocation through AWE"
 ServiceType = 1
-StartType = 3
+StartType = 2
 ErrorControl = 0
 ServiceBinary = %12%\awealloc.sys
 

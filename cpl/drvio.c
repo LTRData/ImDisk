@@ -28,6 +28,7 @@
 #include <windows.h>
 #include <winioctl.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <dbt.h>
 
 #include <stdio.h>
@@ -551,8 +552,15 @@ ImDiskCreateMountPoint(LPCWSTR MountPoint, LPCWSTR Target)
       {
 	WCHAR GlobalMountPoint[] = L"Global\\ :";
 	GlobalMountPoint[7] = MountPoint[0];
+#ifdef _WIN64
+	if (DefineDosDevice(DDD_RAW_TARGET_PATH, GlobalMountPoint, Target))
+	  return TRUE;
+	else
+	  return DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, Target);
+#else
 	DefineDosDevice(DDD_RAW_TARGET_PATH, GlobalMountPoint, Target);
 	return DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, Target);
+#endif
       }
 
   hDir = CreateFile(MountPoint, GENERIC_READ | GENERIC_WRITE,
@@ -608,8 +616,9 @@ ImDiskRemoveMountPoint(LPCWSTR MountPoint)
       {
 	WCHAR GlobalMountPoint[] = L"Global\\ :";
 	GlobalMountPoint[7] = MountPoint[0];
-	DefineDosDevice(DDD_REMOVE_DEFINITION, GlobalMountPoint, NULL);
-	return DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL);
+	return
+	  DefineDosDevice(DDD_REMOVE_DEFINITION, GlobalMountPoint, NULL) |
+	  DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL);
       }
 
   hDir = CreateFile(MountPoint, GENERIC_READ | GENERIC_WRITE,
@@ -1323,9 +1332,11 @@ ImDiskCreateDeviceEx(HWND hWnd,
 		 IMDISK_DEVICE_BASE_NAME L"%u", create_data->DeviceNumber);
       device_path[sizeof(device_path)/sizeof(*device_path) - 1] = 0;
 
+#ifndef _WIN64
       if (!DefineDosDevice(DDD_RAW_TARGET_PATH, MountPoint, device_path))
 	if (hWnd != NULL)
 	  MsgBoxLastError(hWnd, L"Error creating mount point:");
+#endif
 
       // Notify processes that new device has arrived.
       if (((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0) &
@@ -1341,6 +1352,10 @@ ImDiskCreateDeviceEx(HWND hWnd,
 	    SetWindowText
 	      (hWnd,
 	       L"Notifying applications that device has been created...");
+
+#ifdef _WIN64
+	  SHChangeNotify(SHCNE_DRIVEADD, SHCNF_PATH, MountPoint, NULL);
+#endif
 
 	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
 
@@ -1613,6 +1628,10 @@ ImDiskRemoveDevice(HWND hWnd,
       if (hWnd != NULL)
 	SetWindowText(hWnd, L"Removing drive letter...");
 
+#ifdef _WIN64
+      if ((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0)
+	SHChangeNotify(SHCNE_DRIVEREMOVED, SHCNF_PATH, MountPoint, NULL);
+#endif
       if (!DefineDosDevice(DDD_REMOVE_DEFINITION, MountPoint, NULL))
 	if (hWnd != NULL)
 	  MsgBoxLastError(hWnd, L"Error removing drive letter:");
@@ -1623,14 +1642,32 @@ ImDiskRemoveDevice(HWND hWnd,
       RegDeleteKey(HKEY_CURRENT_USER, reg_key);
       RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
 
-      if ((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0)
-	SendMessageTimeout(HWND_BROADCAST,
-			   WM_DEVICECHANGE,
-			   DBT_DEVNODES_CHANGED,
-			   (LPARAM)0,
-			   SMTO_BLOCK | SMTO_ABORTIFHUNG,
-			   4000,
-			   &dwp);
+      if (((APIFlags & IMDISK_API_NO_BROADCAST_NOTIFY) == 0) &
+	  (MountPoint[0] >= L'A') & (MountPoint[0] <= L'Z'))
+	{
+	  DEV_BROADCAST_VOLUME dev_broadcast_volume = {
+	    sizeof(DEV_BROADCAST_VOLUME),
+	    DBT_DEVTYP_VOLUME
+	  };
+
+	  dev_broadcast_volume.dbcv_unitmask = 1 << (MountPoint[0] - L'A');
+
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVICEREMOVECOMPLETE,
+			     (LPARAM)&dev_broadcast_volume,
+			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
+			     4000,
+			     &dwp);
+
+	  SendMessageTimeout(HWND_BROADCAST,
+			     WM_DEVICECHANGE,
+			     DBT_DEVNODES_CHANGED,
+			     (LPARAM)0,
+			     SMTO_BLOCK | SMTO_ABORTIFHUNG,
+			     4000,
+			     &dwp);
+	}
     }
 
   if (hWnd != NULL)

@@ -7,6 +7,7 @@
 #define _UNICODE
 #endif
 #include <windows.h>
+#include <commctrl.h>
 
 STRINGTABLE 
 {
@@ -20,8 +21,8 @@ STRINGTABLE
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,7,2,44
-PRODUCTVERSION 1,7,2,44
+FILEVERSION 1,7,4,45
+PRODUCTVERSION 1,7,4,45
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -38,12 +39,12 @@ FILESUBTYPE    0
         {
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "Control Panel Applet for the ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", "1.7.2.44\0"
+            VALUE "FileVersion", "1.7.4.45\0"
             VALUE "InternalName", "imdisk\0"
             VALUE "LegalCopyright", "Copyright © 2004-2013 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "imdisk.cpl\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", "1.7.2.44\0"
+            VALUE "ProductVersion", "1.7.4.45\0"
         }
     }
     BLOCK "VarFileInfo"
@@ -158,7 +159,7 @@ IDM_MENU_CPL_APPLET MENUEX
  POPUP "&Selected", CM_CPL_APPLET_SELECTED
  {
   MENUITEM "&Open\tReturn", CM_CPL_APPLET_SELECTED_OPEN
-  MENUITEM "&Unmount\tDelete", CM_CPL_APPLET_SELECTED_UNMOUNT
+  MENUITEM "Re&move\tDelete", CM_CPL_APPLET_SELECTED_UNMOUNT
   MENUITEM "&Save to image file...\tAlt+I", CM_CPL_APPLET_SELECTED_SAVE_IMAGE
   MENUITEM "&Extend size...\tAlt+E", CM_CPL_APPLET_SELECTED_EXTEND_SIZE
   MENUITEM "F&ormat...\tAlt+O", CM_CPL_APPLET_SELECTED_FORMAT

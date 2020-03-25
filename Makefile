@@ -1,3 +1,6 @@
+TIMESTAMP_WEBSERVICE=http://timestamp.comodoca.com/authenticode
+#TIMESTAMP_WEBSERVICE=http://timestamp.verisign.com/scripts/timestamp.dll
+
 !IF "$(_BUILDARCH)" == "x86"
 ARCHDIR=i386
 !ELSEIF "$(_BUILDARCH)" == "AMD64"
@@ -19,7 +22,7 @@ publish: p:\utils\imdiskinst.exe p:\utils\imdisk_source.7z
 
 p:\utils\imdiskinst.exe: p:\utils\imdisk.7z p:\utils\7zSD.sfx 7zSDcfg.txt
 	copy /y /b p:\utils\7zSD.sfx + 7zSDcfg.txt + p:\utils\imdisk.7z p:\utils\imdiskinst.exe
-	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "ImDisk Virtual Disk Driver" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "http://timestamp.verisign.com/scripts/timestamp.dll" p:\utils\imdiskinst.exe
+	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "ImDisk Virtual Disk Driver" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "$(TIMESTAMP_WEBSERVICE)" p:\utils\imdiskinst.exe
 	xcopy /d /y p:\utils\imdiskinst.exe z:\ltr-website\ltr-data.se\files\
 
 p:\utils\imdisk_source.7z: p:\utils\imdisk.7z 7zSDcfg.txt gpl.txt readme.txt runwait.exe install.cmd msgbox.exe devio\*.c devio\*.cpp devio\*.h devio\Makefile* uninstall.cmd ImDiskNet\*.sln ImDiskNet\ImDiskNet\*.vb ImDiskNet\ImDiskNet\*.snk ImDiskNet\ImDiskNet\*.vbproj Makefile
@@ -57,8 +60,8 @@ sys\$(ARCHDIR)\imdisk.sys: sys\sources sys\*.c sys\*.rc inc\*.h
 	build
 	cd $(MAKEDIR)
 #!IF "$(_BUILDARCH)" != "x86"
-#	signtool sign /v /s PrivateCertStore /n ltr-data.se(Test) /d "ImDisk Virtual Disk Driver" /du "http://www.ltr-data.se" /t "http://timestamp.verisign.com/scripts/timestamp.dll" sys\$(ARCHDIR)\imdisk.sys
-	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "ImDisk Virtual Disk Driver" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "http://timestamp.verisign.com/scripts/timestamp.dll" sys\$(ARCHDIR)\imdisk.sys
+#	signtool sign /v /s PrivateCertStore /n ltr-data.se(Test) /d "ImDisk Virtual Disk Driver" /du "http://www.ltr-data.se" /t "$(TIMESTAMP_WEBSERVICE)" sys\$(ARCHDIR)\imdisk.sys
+	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "ImDisk Virtual Disk Driver" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "$(TIMESTAMP_WEBSERVICE)" sys\$(ARCHDIR)\imdisk.sys
 #!ENDIF
 
 awealloc\$(ARCHDIR)\awealloc.sys: awealloc\sources awealloc\*.c awealloc\*.rc
@@ -66,8 +69,8 @@ awealloc\$(ARCHDIR)\awealloc.sys: awealloc\sources awealloc\*.c awealloc\*.rc
 	build
 	cd $(MAKEDIR)
 #!IF "$(_BUILDARCH)" != "x86"
-#	signtool sign /v /s PrivateCertStore /n ltr-data.se(Test) /d "AWE Allocation Driver" /du "http://www.ltr-data.se" /t "http://timestamp.verisign.com/scripts/timestamp.dll" awealloc\$(ARCHDIR)\awealloc.sys
-	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "AWE Allocation Driver" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "http://timestamp.verisign.com/scripts/timestamp.dll" awealloc\$(ARCHDIR)\awealloc.sys
+#	signtool sign /v /s PrivateCertStore /n ltr-data.se(Test) /d "AWE Allocation Driver" /du "http://www.ltr-data.se" /t "$(TIMESTAMP_WEBSERVICE)" awealloc\$(ARCHDIR)\awealloc.sys
+	signtool sign /a /v /n "Lagerkvist Teknisk Radgivning i Boras HB" /d "AWE Allocation Driver" /du "http://www.ltr-data.se" /ac Z:\Kod\cert\MSCV-GlobalSign.cer /t "$(TIMESTAMP_WEBSERVICE)" awealloc\$(ARCHDIR)\awealloc.sys
 #!ENDIF
 
 deviotst\$(ARCHDIR)\deviotst.exe: deviotst\sources deviotst\deviotst.cpp inc\*.h inc\*.hpp
