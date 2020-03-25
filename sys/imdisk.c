@@ -94,6 +94,8 @@
 #define SECTORS_PER_TRACK_CD_ROM         32
 #define TRACKS_PER_CYLINDER_CD_ROM       64
 
+#ifdef INCLUDE_VFD_ORIGIN
+
 // For floppy devices. Based on Virtual Floppy Driver, VFD, by Ken Kato.
 #define SECTOR_SIZE_FDD                  512
 #define TRACKS_PER_CYLINDER_FDD          12
@@ -163,6 +165,8 @@ DISK_GEOMETRY media_table[] = {
 
 #define SET_MEDIA_TYPE(geometry, media_index) \
   (geometry.MediaType = media_table[media_index].MediaType)
+
+#endif // INCLUDE_VFD_ORIGIN
 
 //
 //	TOC Data Track returned for virtual CD/DVD
@@ -359,9 +363,13 @@ ImDiskSafeReadFile(IN HANDLE FileHandle,
 		   IN SIZE_T Length,
 		   IN PLARGE_INTEGER Offset);
 
+#ifdef INCLUDE_VFD_ORIGIN
+
 NTSTATUS
 ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
 		   IN PIRP Irp);
+
+#endif // INCLUDE_VFD_ORIGIN
 
 //
 // Pointer to the controller device object.
@@ -695,6 +703,7 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
   PKEY_VALUE_PARTIAL_INFORMATION value_info_size;
   PKEY_VALUE_PARTIAL_INFORMATION value_info_flags;
   PKEY_VALUE_PARTIAL_INFORMATION value_info_drive_letter;
+  PKEY_VALUE_PARTIAL_INFORMATION value_info_image_offset;
   ULONG required_size;
   PIMDISK_CREATE_DATA create_data;
   PWSTR value_name_buffer;
@@ -707,6 +716,8 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   wait_time.QuadPart = -1;
   KeDelayExecutionThread(KernelMode, FALSE, &wait_time);
+
+  // First, allocate all necessary value_info structures
 
   value_info_image_file =
     ExAllocatePoolWithTag(PagedPool,
@@ -829,6 +840,41 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       return STATUS_INSUFFICIENT_RESOURCES;
     }
 
+  value_info_image_offset =
+    ExAllocatePoolWithTag(PagedPool,
+			  sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
+			  sizeof(LARGE_INTEGER),
+			  POOL_TAG);
+
+  if (value_info_image_offset == NULL)
+    {
+      ExFreePoolWithTag(value_info_image_file, POOL_TAG);
+      ExFreePoolWithTag(value_info_size, POOL_TAG);
+      ExFreePoolWithTag(value_info_flags, POOL_TAG);
+      ExFreePoolWithTag(value_info_drive_letter, POOL_TAG);
+
+      KdPrint(("ImDisk: Error creating device %u. (ExAllocatePoolWithTag)\n",
+	       DeviceNumber));
+
+      ImDiskLogError((DriverObject,
+		      0,
+		      0,
+		      NULL,
+		      0,
+		      1000,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      101,
+		      STATUS_INSUFFICIENT_RESOURCES,
+		      0,
+		      0,
+		      NULL,
+		      L"Error creating disk device."));
+
+      return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+  // Allocate a buffer for used for value names
+
   value_name_buffer =
     ExAllocatePoolWithTag(PagedPool,
 			  MAXIMUM_FILENAME_LENGTH * sizeof(WCHAR),
@@ -840,6 +886,7 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       ExFreePoolWithTag(value_info_size, POOL_TAG);
       ExFreePoolWithTag(value_info_flags, POOL_TAG);
       ExFreePoolWithTag(value_info_drive_letter, POOL_TAG);
+      ExFreePoolWithTag(value_info_image_offset, POOL_TAG);
 
       KdPrint(("ImDisk: Error creating device %u. (ExAllocatePoolWithTag)\n",
 	       DeviceNumber));
@@ -860,6 +907,8 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
       return STATUS_INSUFFICIENT_RESOURCES;
     }
+
+  // Query each value
 
   _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
 	     IMDISK_CFG_IMAGE_FILE_PREFIX L"%u", DeviceNumber);
@@ -1003,7 +1052,37 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       *(PWCHAR) value_info_drive_letter->Data = 0;
     }
 
+  _snwprintf(value_name_buffer, MAXIMUM_FILENAME_LENGTH - 1,
+	     IMDISK_CFG_OFFSET_PREFIX L"%u", DeviceNumber);
+  value_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
+  
+  RtlInitUnicodeString(&value_name, value_name_buffer);
+
+  status = ZwQueryValueKey(ParameterKey,
+			   &value_name,
+			   KeyValuePartialInformation,
+			   value_info_image_offset,
+			   sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
+			   sizeof(LARGE_INTEGER),
+			   &required_size);
+
+  if ((!NT_SUCCESS(status)) |
+      ((value_info_image_offset->Type != REG_BINARY) &
+       (value_info_image_offset->Type != REG_QWORD)) |
+      (value_info_image_offset->DataLength != sizeof(LARGE_INTEGER)))
+    {
+      KdPrint(("ImDisk: Missing or bad '%ws' for device %i.\n",
+	       value_name_buffer, DeviceNumber));
+
+      ((PLARGE_INTEGER) value_info_image_offset->Data)->QuadPart = 0;
+    }
+
+  // Free the value name buffer
+
   ExFreePoolWithTag(value_name_buffer, POOL_TAG);
+
+  // Allocate IMDISK_CREATE_DATA structure to use in later calls to create
+  // functions
   
   create_data =
     ExAllocatePoolWithTag(PagedPool,
@@ -1017,6 +1096,7 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
       ExFreePoolWithTag(value_info_size, POOL_TAG);
       ExFreePoolWithTag(value_info_flags, POOL_TAG);
       ExFreePoolWithTag(value_info_drive_letter, POOL_TAG);
+      ExFreePoolWithTag(value_info_image_offset, POOL_TAG);
 
       KdPrint(("ImDisk: Error creating device %u. (ExAllocatePoolWithTag)\n",
 	       DeviceNumber));
@@ -1040,15 +1120,17 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
 
   RtlZeroMemory(create_data, sizeof(IMDISK_CREATE_DATA));
 
-  wcscpy(create_data->FileName, (PCWSTR) value_info_image_file->Data);
-
   create_data->FileNameLength = (USHORT)
     value_info_image_file->DataLength - sizeof(WCHAR);
 
+  memcpy(create_data->FileName,
+	 value_info_image_file->Data,
+	 create_data->FileNameLength);
+
   ExFreePoolWithTag(value_info_image_file, POOL_TAG);
 
-  create_data->DiskGeometry.Cylinders.QuadPart =
-    ((PLARGE_INTEGER) value_info_size->Data)->QuadPart;
+  create_data->DiskGeometry.Cylinders =
+    *(PLARGE_INTEGER) value_info_size->Data;
 
   ExFreePoolWithTag(value_info_size, POOL_TAG);
 
@@ -1059,6 +1141,10 @@ ImDiskAddVirtualDiskAfterInitialization(IN PDRIVER_OBJECT DriverObject,
   create_data->DriveLetter = *(PWCHAR) value_info_drive_letter->Data;
 
   ExFreePoolWithTag(value_info_drive_letter, POOL_TAG);
+
+  create_data->ImageOffset = *(PLARGE_INTEGER) value_info_image_offset->Data;
+
+  ExFreePoolWithTag(value_info_image_offset, POOL_TAG);
 
   create_data->DeviceNumber = DeviceNumber;
 
@@ -1328,6 +1414,8 @@ ImDiskReadFormattedGeometry(IN OUT PIMDISK_CREATE_DATA CreateData,
   if (CreateData->DiskGeometry.BytesPerSector == 0)
     CreateData->DiskGeometry.BytesPerSector = BPB->BytesPerSector;
 
+#ifdef INCLUDE_VFD_ORIGIN
+
   if (((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) |
        (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)) &
       (CreateData->DiskGeometry.MediaType == Unknown))
@@ -1405,6 +1493,8 @@ ImDiskReadFormattedGeometry(IN OUT PIMDISK_CREATE_DATA CreateData,
 	SET_MEDIA_TYPE(CreateData->DiskGeometry, MEDIA_TYPE_160K);
 	break;
       }
+
+#endif // INCLUDE_VFD_ORIGIN
 
   KdPrint
     (("ImDisk: Values after BPB geometry detection:\n"
@@ -2677,6 +2767,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   KdPrint(("ImDisk: Done with file/memory checks.\n"));
 
+#ifdef INCLUDE_VFD_ORIGIN
+
   // If no device-type specified and size matches common floppy sizes,
   // auto-select FILE_DEVICE_DISK with FILE_FLOPPY_DISKETTE and
   // FILE_REMOVABLE_MEDIA.
@@ -2707,6 +2799,13 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       }
 	  
   KdPrint(("ImDisk: Done with device type selection for floppy sizes.\n"));
+
+#else // INCLUDE_VFD_ORIGIN
+
+  if (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)
+    CreateData->Flags |= IMDISK_DEVICE_TYPE_HD;
+
+#endif // INCLUDE_VFD_ORIGIN
 
   // If some parts of the DISK_GEOMETRY structure are zero, auto-fill with
   // typical values for this type of disk.
@@ -2749,6 +2848,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   else
     {
       LONGLONG calccyl = CreateData->DiskGeometry.Cylinders.QuadPart;
+
+#ifdef INCLUDE_VFD_ORIGIN
 
       if ((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) &
 	  (CreateData->DiskGeometry.BytesPerSector == 0) &
@@ -2820,6 +2921,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       // the virtual disk so restore that in case overwritten by the pre-
       // defined floppy geometries above.
       CreateData->DiskGeometry.Cylinders.QuadPart = calccyl;
+
+#endif // INCLUDE_VFD_ORIGIN
 
       if (CreateData->DiskGeometry.BytesPerSector == 0)
 	CreateData->DiskGeometry.BytesPerSector = SECTOR_SIZE_HDD;
@@ -5717,6 +5820,8 @@ ImDiskDeviceThread(IN PVOID Context)
 		break;
 	      }
 
+#ifdef INCLUDE_VFD_ORIGIN
+
 	    case IOCTL_DISK_FORMAT_TRACKS:
 	    case IOCTL_DISK_FORMAT_TRACKS_EX:
 	      {
@@ -5739,6 +5844,8 @@ ImDiskDeviceThread(IN PVOID Context)
 		irp->IoStatus.Status = status;
 		break;
 	      }
+
+#endif // INCLUDE_VFD_ORIGIN
 
 	    case IOCTL_DISK_GROW_PARTITION:
 	      {
@@ -6049,11 +6156,12 @@ ImDiskSafeIOStream(IN PFILE_OBJECT FileObject,
       do
 	{
 	  PIRP irp;
+	  PDEVICE_OBJECT device_object = IoGetRelatedDeviceObject(FileObject);
 
 	  KdPrint2(("ImDiskSafeIOStream: Building IRP...\n"));
 
 	  irp = IoBuildSynchronousFsdRequest(MajorFunction,
-					     FileObject->DeviceObject,
+					     device_object,
 					     (PUCHAR) Buffer + length_done,
 					     RequestLength,
 					     &offset,
@@ -6073,7 +6181,6 @@ ImDiskSafeIOStream(IN PFILE_OBJECT FileObject,
 
 	  io_stack = IoGetNextIrpStackLocation(irp);
 	  io_stack->FileObject = FileObject;
-	  io_stack->DeviceObject = FileObject->DeviceObject;
 
 	  KdPrint2(("ImDiskSafeIOStream: MajorFunction=%#x, Length=%#x\n",
 		    io_stack->MajorFunction,
@@ -6081,7 +6188,7 @@ ImDiskSafeIOStream(IN PFILE_OBJECT FileObject,
 
 	  KeResetEvent(&io_complete_event);
 
-	  status = IoCallDriver(io_stack->FileObject->DeviceObject, irp);
+	  status = IoCallDriver(device_object, irp);
 
 	  if (status == STATUS_PENDING)
 	    {
@@ -6917,6 +7024,8 @@ ImDiskWriteProxy(IN PPROXY_CONNECTION Proxy,
   return IoStatusBlock->Status;
 }
 
+#ifdef INCLUDE_VFD_ORIGIN
+
 //
 //	Format tracks
 //	Actually, just fills specified range of tracks with fill characters
@@ -7017,3 +7126,5 @@ ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
 
   return status;
 }
+
+#endif // INCLUDE_VFD_ORIGIN

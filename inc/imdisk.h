@@ -1,7 +1,7 @@
 /*
     ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2005-2007 Olof Lagerkvist.
+    Copyright (C) 2005-2014 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0180
+#define IMDISK_VERSION                 0x0181
 #define IMDISK_DRIVER_VERSION          0x0103
 
 #ifndef ZERO_STRUCT
@@ -86,6 +86,7 @@
 #define IMDISK_CFG_SIZE_PREFIX                    _T("Size")
 #define IMDISK_CFG_FLAGS_PREFIX                   _T("Flags")
 #define IMDISK_CFG_DRIVE_LETTER_PREFIX            _T("DriveLetter")
+#define IMDISK_CFG_OFFSET_PREFIX                  _T("ImageOffset")
 
 #define KEY_NAME_HKEY_MOUNTPOINTS  \
   _T("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints")
@@ -1210,6 +1211,28 @@ ImDiskSaveImageFileInteractive(IN HANDLE DeviceHandle,
 HANDLE
 WINAPI
 ImDiskOpenRefreshEvent(BOOL InheritHandle);
+
+/*
+   Adds registry settings for creating a virtual disk at system startup (or
+   when driver is loaded).
+
+   CreateData      Pointer to IMDISK_CREATE_DATA structure that contains
+                   device creation settings to save.
+
+*/
+BOOL
+WINAPI
+ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData);
+
+/*
+   Remove registry settings for creating a virtual disk at system startup (or
+   when driver is loaded).
+
+   DeviceNumber    Device number specified in registry settings.
+*/
+BOOL
+WINAPI
+ImDiskRemoveRegistrySettings(DWORD DeviceNumber);
 
 #ifdef __cplusplus
 }

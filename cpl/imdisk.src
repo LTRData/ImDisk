@@ -52,6 +52,8 @@ EXPORTS
 	_ImDiskNativePathToWin32@4
 	_ImDiskSaveImageFileInteractive@16
 	_ImDiskOpenRefreshEvent@4
+	_ImDiskSaveRegistrySettings@4
+	_ImDiskRemoveRegistrySettings@4
 
 	MsgBoxLastError=_MsgBoxLastError@8
 	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
@@ -92,6 +94,8 @@ EXPORTS
 	ImDiskNativePathToWin32=_ImDiskNativePathToWin32@4
 	ImDiskSaveImageFileInteractive=_ImDiskSaveImageFileInteractive@16
 	ImDiskOpenRefreshEvent=_ImDiskOpenRefreshEvent@4
+	ImDiskSaveRegistrySettings=_ImDiskSaveRegistrySettings@4
+	ImDiskRemoveRegistrySettings=_ImDiskRemoveRegistrySettings@4
 
 #else
 
@@ -143,5 +147,7 @@ EXPORTS
 	ImDiskNativePathToWin32
 	ImDiskSaveImageFileInteractive
 	ImDiskOpenRefreshEvent
+	ImDiskSaveRegistrySettings
+	ImDiskRemoveRegistrySettings
 
 #endif

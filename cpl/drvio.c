@@ -144,6 +144,23 @@ MsgBoxPrintF(HWND hWnd, UINT uStyle, LPCWSTR lpTitle, LPCWSTR lpMessage, ...)
   return msg_result;
 }
 
+LPWSTR
+CDECL
+AllocPrintF(LPCWSTR lpMessage, ...)
+{
+  va_list param_list;
+  LPWSTR lpBuf = NULL;
+
+  va_start(param_list, lpMessage);
+
+  if (!FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		     FORMAT_MESSAGE_FROM_STRING, lpMessage, 0, 0,
+		     (LPWSTR) &lpBuf, 0, &param_list))
+    return 0;
+
+  return lpBuf;
+}
+
 VOID
 WINAPI
 MsgBoxLastError(HWND hWnd, LPCWSTR Prefix)
@@ -2478,4 +2495,353 @@ ImDiskOpenRefreshEvent(BOOL InheritHandle)
   LocalFree(sec_descr);
 
   return hEvent;
+}
+
+BOOL
+WINAPI
+ImDiskSaveRegistrySettings(PIMDISK_CREATE_DATA CreateData)
+{
+  LONG err_code;
+  HKEY hkey;
+  DWORD load_devices;
+  DWORD value_size;
+  LPWSTR value_name;
+
+  err_code = RegCreateKey(HKEY_LOCAL_MACHINE,
+			  L"SYSTEM\\CurrentControlSet\\Services\\ImDisk"
+			  IMDISK_CFG_PARAMETER_KEY,
+			  &hkey);
+
+  if (err_code != ERROR_SUCCESS)
+    {
+      SetLastError(err_code);
+      return FALSE;
+    }
+
+  load_devices = 0;
+  value_size = sizeof(load_devices);
+  err_code = RegQueryValueEx(hkey,
+			     IMDISK_CFG_LOAD_DEVICES_VALUE,
+			     NULL,
+			     NULL,
+			     (LPBYTE) &load_devices,
+			     &value_size);
+
+  if (err_code == ERROR_SUCCESS)
+    if (CreateData->DeviceNumber == IMDISK_AUTO_DEVICE_NUMBER)
+      {
+	CreateData->DeviceNumber = load_devices;
+	++load_devices;
+      }
+    else
+      load_devices = max(load_devices, CreateData->DeviceNumber + 1);
+  else
+    if (CreateData->DeviceNumber == IMDISK_AUTO_DEVICE_NUMBER)
+      {
+	CreateData->DeviceNumber = 0;
+	load_devices = 1;
+      }
+    else
+      load_devices = CreateData->DeviceNumber + 1;
+
+  err_code = RegSetValueEx(hkey,
+			   IMDISK_CFG_LOAD_DEVICES_VALUE,
+			   0,
+			   REG_DWORD,
+			   (LPBYTE) &load_devices,
+			   sizeof(load_devices));
+
+  if (err_code != ERROR_SUCCESS)
+    {
+      RegCloseKey(hkey);
+      SetLastError(err_code);
+      return FALSE;
+    }
+
+  value_name = AllocPrintF(IMDISK_CFG_IMAGE_FILE_PREFIX L"%1!u!",
+			   CreateData->DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  if (CreateData->FileNameLength > 0)
+    {
+      LPWSTR value_data =
+	AllocPrintF(L"%1!.*ws!",
+		    (int)(CreateData->FileNameLength /
+			  sizeof(*CreateData->FileName)),
+		    CreateData->FileName);
+
+      if (value_data == NULL)
+	{
+	  RegCloseKey(hkey);
+	  return FALSE;
+	}
+
+      err_code = RegSetValueEx(hkey,
+			       value_name,
+			       0,
+			       REG_SZ,
+			       (LPBYTE) value_data,
+			       (DWORD)((wcslen(value_data) + 1) << 1));
+
+      LocalFree(value_data);
+
+      if (err_code != ERROR_SUCCESS)
+	{
+	  RegCloseKey(hkey);
+	  SetLastError(err_code);
+	  return FALSE;
+	}
+    }
+  else
+    RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+  
+  value_name = AllocPrintF(IMDISK_CFG_SIZE_PREFIX L"%1!u!",
+			   CreateData->DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  if (CreateData->DiskGeometry.Cylinders.QuadPart > 0)
+    {
+      err_code = RegSetValueEx(hkey,
+			       value_name,
+			       0,
+			       REG_QWORD,
+			       (LPBYTE) &CreateData->DiskGeometry.Cylinders,
+			       sizeof(CreateData->DiskGeometry.Cylinders));
+
+      if (err_code != ERROR_SUCCESS)
+	{
+	  RegCloseKey(hkey);
+	  SetLastError(err_code);
+	  return FALSE;
+	}
+    }
+  else
+    RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+  
+  value_name = AllocPrintF(IMDISK_CFG_FLAGS_PREFIX L"%1!u!",
+			   CreateData->DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  if (CreateData->Flags != 0)
+    {
+      err_code = RegSetValueEx(hkey,
+			       value_name,
+			       0,
+			       REG_DWORD,
+			       (LPBYTE) &CreateData->Flags,
+			       sizeof(CreateData->Flags));
+
+      if (err_code != ERROR_SUCCESS)
+	{
+	  RegCloseKey(hkey);
+	  SetLastError(err_code);
+	  return FALSE;
+	}
+    }
+  else
+    RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+  
+  value_name = AllocPrintF(IMDISK_CFG_DRIVE_LETTER_PREFIX L"%1!u!",
+			   CreateData->DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  if (CreateData->DriveLetter != 0)
+    {
+      WCHAR drive_letter_value[] = { 0, 0 };
+      drive_letter_value[0] = CreateData->DriveLetter;
+
+      err_code = RegSetValueEx(hkey,
+			       value_name,
+			       0,
+			       REG_SZ,
+			       (LPBYTE) &drive_letter_value,
+			       sizeof(drive_letter_value));
+
+      if (err_code != ERROR_SUCCESS)
+	{
+	  RegCloseKey(hkey);
+	  SetLastError(err_code);
+	  return FALSE;
+	}
+    }
+  else
+    RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+
+  value_name = AllocPrintF(IMDISK_CFG_OFFSET_PREFIX L"%1!u!",
+			   CreateData->DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  if (CreateData->ImageOffset.QuadPart > 0)
+    {
+      err_code = RegSetValueEx(hkey,
+			       value_name,
+			       0,
+			       REG_QWORD,
+			       (LPBYTE) &CreateData->ImageOffset,
+			       sizeof(CreateData->ImageOffset));
+
+      if (err_code != ERROR_SUCCESS)
+	{
+	  RegCloseKey(hkey);
+	  SetLastError(err_code);
+	  return FALSE;
+	}
+    }
+  else
+    RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+  
+  RegCloseKey(hkey);
+
+  return TRUE;
+}
+
+BOOL
+WINAPI
+ImDiskRemoveRegistrySettings(DWORD DeviceNumber)
+{
+  LONG err_code;
+  HKEY hkey;
+  DWORD load_devices;
+  DWORD value_size;
+  LPWSTR value_name;
+
+  err_code = RegOpenKey(HKEY_LOCAL_MACHINE,
+			L"SYSTEM\\CurrentControlSet\\Services\\ImDisk"
+			IMDISK_CFG_PARAMETER_KEY,
+			&hkey);
+
+  if (err_code != ERROR_SUCCESS)
+    {
+      SetLastError(err_code);
+      return FALSE;
+    }
+
+  load_devices = 0;
+  value_size = sizeof(load_devices);
+  err_code = RegQueryValueEx(hkey,
+			     IMDISK_CFG_LOAD_DEVICES_VALUE,
+			     NULL,
+			     NULL,
+			     (LPBYTE) &load_devices,
+			     &value_size);
+
+  if (err_code != ERROR_SUCCESS)
+    {
+      RegCloseKey(hkey);
+      SetLastError(err_code);
+      return FALSE;
+    }
+
+  if (load_devices == DeviceNumber + 1)
+    {
+      --load_devices;
+
+      err_code = RegSetValueEx(hkey,
+			       IMDISK_CFG_LOAD_DEVICES_VALUE,
+			       0,
+			       REG_DWORD,
+			       (LPBYTE) &load_devices,
+			       sizeof(load_devices));
+
+      if (err_code != ERROR_SUCCESS)
+	{
+	  RegCloseKey(hkey);
+	  SetLastError(err_code);
+	  return FALSE;
+	}
+    }
+
+  value_name = AllocPrintF(IMDISK_CFG_IMAGE_FILE_PREFIX L"%1!u!",
+			   DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+  
+  value_name = AllocPrintF(IMDISK_CFG_SIZE_PREFIX L"%1!u!",
+			   DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+  
+  value_name = AllocPrintF(IMDISK_CFG_FLAGS_PREFIX L"%1!u!",
+			   DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+  
+  value_name = AllocPrintF(IMDISK_CFG_DRIVE_LETTER_PREFIX L"%1!u!",
+			   DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+
+  value_name = AllocPrintF(IMDISK_CFG_OFFSET_PREFIX L"%1!u!",
+			   DeviceNumber);
+  if (value_name == NULL)
+    {
+      RegCloseKey(hkey);
+      return FALSE;
+    }
+
+  RegDeleteValue(hkey, value_name);
+
+  LocalFree(value_name);
+
+  RegCloseKey(hkey);
+
+  return TRUE;
 }

@@ -1,7 +1,7 @@
 /*
     AWE Allocation Driver for Windows 2000/XP and later.
 
-    Copyright (C) 2005-2011 Olof Lagerkvist.
+    Copyright (C) 2005-2014 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -24,17 +24,6 @@
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
     OTHER DEALINGS IN THE SOFTWARE.
 
-    This source file contains some GNU GPL licensed code:
-    - Parts related to floppy emulation based on VFD by Ken Kato.
-      http://chitchat.at.infoseek.co.jp/vmware/vfd.html
-    Copyright (C) Free Software Foundation, Inc.
-    Read gpl.txt for the full GNU GPL license.
-
-    This source file may contain BSD licensed code:
-    - Some code ported to NT from the FreeBSD md driver by Olof Lagerkvist.
-      http://www.ltr-data.se
-    Copyright (C) The FreeBSD Project.
-    Copyright (C) The Regents of the University of California.
 */
 
 #include <ntifs.h>
@@ -92,6 +81,12 @@ typedef struct _OBJECT_CONTEXT
   LONGLONG CurrentPageBase;
 
   PUCHAR CurrentPtr;
+
+  KSPIN_LOCK IOLock;
+
+  LONG ActiveReaders;
+
+  LONG ActiveWriters;
 
 } OBJECT_CONTEXT, *POBJECT_CONTEXT;
 
@@ -234,6 +229,79 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
 #pragma code_seg()
 
 NTSTATUS
+AWEAllocTryAcquireProtection(IN POBJECT_CONTEXT Context,
+			     IN BOOLEAN ForWriteOperation)
+{
+  NTSTATUS status;
+  KIRQL irql;
+
+  KeAcquireSpinLock(&Context->IOLock, &irql);
+  if (ForWriteOperation)
+    {
+      if ((Context->ActiveWriters >= 1) | (Context->ActiveReaders >= 2))
+	{
+	  status = STATUS_DEVICE_BUSY;
+	}
+      else
+	{
+	  Context->ActiveWriters++;
+	  if (Context->ActiveWriters <= 0)
+	    {
+	      DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
+	      DbgBreakPoint();
+	    }
+	  status = STATUS_SUCCESS;
+	}
+    }
+  else
+    {
+      if ((Context->ActiveWriters >= 1) | (Context->ActiveReaders >= LONG_MAX))
+	{
+	  status = STATUS_DEVICE_BUSY;
+	}
+      else
+	{
+	  Context->ActiveReaders++;
+	  if (Context->ActiveReaders <= 0)
+	    {
+	      DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
+	      DbgBreakPoint();
+	    }
+	  status = STATUS_SUCCESS;
+	}
+    }
+  KeReleaseSpinLock(&Context->IOLock, irql);
+  return status;
+}
+
+void
+AWEAllocReleaseProtection(IN POBJECT_CONTEXT Context,
+			  IN BOOLEAN ForWriteOperation)
+{
+  KIRQL irql;
+  KeAcquireSpinLock(&Context->IOLock, &irql);
+  if (ForWriteOperation)
+    {
+      Context->ActiveWriters--;
+      if (Context->ActiveWriters < 0)
+	{
+	  DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
+	  DbgBreakPoint();
+	}
+    }
+  else
+    {
+      Context->ActiveReaders--;
+      if (Context->ActiveReaders < 0)
+	{
+	  DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
+	  DbgBreakPoint();
+	}
+    }
+  KeReleaseSpinLock(&Context->IOLock, irql);
+}
+
+NTSTATUS
 AWEAllocMapPage(IN POBJECT_CONTEXT Context,
 		IN LONGLONG Offset)
 {
@@ -241,8 +309,9 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
   LONGLONG page_base_within_block;
   ULONG size_to_map = ALLOC_PAGE_SIZE;
   PBLOCK_DESCRIPTOR block;
+  NTSTATUS status;
 
-  KdPrint2(("AWEAlloc: MapPage request Offset=%p%p BaseAddress=%p%p.\n",
+  KdPrint2(("AWEAlloc: MapPage request Offset=%#I64x BaseAddress=%#I64x.\n",
 	    Offset,
 	    page_base));
 
@@ -269,78 +338,95 @@ AWEAllocMapPage(IN POBJECT_CONTEXT Context,
 
   page_base_within_block = page_base - block->Offset;
 
-  KdPrint2(("AWEAlloc: MapPage found block Offset=%p%p BaseAddress=%p%p.\n",
+  KdPrint2(("AWEAlloc: MapPage found blk Offset=%#I64x BaseAddress=%#I64x.\n",
 	    block->Offset,
 	    page_base_within_block));
+
+  status = AWEAllocTryAcquireProtection(Context, TRUE);
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint(("AWEAlloc: Block table busy.\n"));
+      return status;
+    }
 
   Context->CurrentPtr = NULL;
   Context->CurrentPageBase = (ULONG_PTR)-1;
 
   try
     {
-      if (Context->CurrentMdl != NULL)
-	IoFreeMdl(Context->CurrentMdl);
-
-      Context->CurrentMdl = NULL;
-
-      Context->CurrentMdl =
-	IoAllocateMdl(MmGetMdlVirtualAddress(block->Mdl),
-		      size_to_map,
-		      FALSE,
-		      FALSE,
-		      NULL);
-
-      if (Context->CurrentMdl == NULL)
+      try
 	{
-	  KdPrint(("AWEAlloc: IoAllocateMdl() FAILED.\n"));
-	  return STATUS_INSUFFICIENT_RESOURCES;
-	}
+	  if (Context->CurrentMdl != NULL)
+	    IoFreeMdl(Context->CurrentMdl);
 
-      if ((MmGetMdlByteCount(block->Mdl) - page_base_within_block) <
-	  size_to_map)
-	{
-	  KdPrint(("AWEAlloc: Incomplete page size! Shrinking page size.\n"));
-	  size_to_map = 0;  // This will map remaining bytes
-	}
-
-      IoBuildPartialMdl(block->Mdl,
-			Context->CurrentMdl,
-			(PUCHAR) MmGetMdlVirtualAddress(block->Mdl) +
-			page_base_within_block,
-			size_to_map);
-
-      Context->CurrentPtr =
-	MmGetSystemAddressForMdlSafe(Context->CurrentMdl, HighPagePriority);
-
-      if (Context->CurrentPtr == NULL)
-	{
-	  KdPrint(("AWEAlloc: MmGetSystemAddressForMdlSafe() FAILED.\n"));
-
-	  AWEAllocLogError(AWEAllocDriverObject,
-			   0,
-			   0,
-			   NULL,
-			   0,
-			   1000,
-			   STATUS_INSUFFICIENT_RESOURCES,
-			   101,
-			   STATUS_INSUFFICIENT_RESOURCES,
-			   0,
-			   0,
-			   NULL,
-			   L"MmGetSystemAddressForMdlSafe() failed during "
-			   L"page mapping.");
-
-	  IoFreeMdl(Context->CurrentMdl);
 	  Context->CurrentMdl = NULL;
-	  return STATUS_INSUFFICIENT_RESOURCES;
+
+	  Context->CurrentMdl =
+	    IoAllocateMdl(MmGetMdlVirtualAddress(block->Mdl),
+			  size_to_map,
+			  FALSE,
+			  FALSE,
+			  NULL);
+
+	  if (Context->CurrentMdl == NULL)
+	    {
+	      KdPrint(("AWEAlloc: IoAllocateMdl() FAILED.\n"));
+	      return STATUS_INSUFFICIENT_RESOURCES;
+	    }
+
+	  if ((MmGetMdlByteCount(block->Mdl) - page_base_within_block) <
+	      size_to_map)
+	    {
+	      KdPrint
+		(("AWEAlloc: Incomplete page size! Shrinking page size.\n"));
+	      size_to_map = 0;  // This will map remaining bytes
+	    }
+
+	  IoBuildPartialMdl(block->Mdl,
+			    Context->CurrentMdl,
+			    (PUCHAR) MmGetMdlVirtualAddress(block->Mdl) +
+			    page_base_within_block,
+			    size_to_map);
+
+	  Context->CurrentPtr =
+	    MmGetSystemAddressForMdlSafe(Context->CurrentMdl,
+					 HighPagePriority);
+
+	  if (Context->CurrentPtr == NULL)
+	    {
+	      KdPrint(("AWEAlloc: MmGetSystemAddressForMdlSafe() FAILED.\n"));
+	      
+	      AWEAllocLogError(AWEAllocDriverObject,
+			       0,
+			       0,
+			       NULL,
+			       0,
+			       1000,
+			       STATUS_INSUFFICIENT_RESOURCES,
+			       101,
+			       STATUS_INSUFFICIENT_RESOURCES,
+			       0,
+			       0,
+			       NULL,
+			       L"MmGetSystemAddressForMdlSafe() failed during "
+			       L"page mapping.");
+
+	      IoFreeMdl(Context->CurrentMdl);
+	      Context->CurrentMdl = NULL;
+	      return STATUS_INSUFFICIENT_RESOURCES;
+	    }
+
+	  Context->CurrentPageBase = page_base;
+
+	  KdPrint2(("AWEAlloc: MapPage success BaseAddress=%#I64x.\n",
+		    page_base));
+
+	  return STATUS_SUCCESS;
 	}
-
-      Context->CurrentPageBase = page_base;
-
-      KdPrint2(("AWEAlloc: MapPage success BaseAddress=%p%p.\n", page_base));
-
-      return STATUS_SUCCESS;
+      finally
+	{
+	  AWEAllocReleaseProtection(Context, TRUE);
+	}
     }
   except (EXCEPTION_EXECUTE_HANDLER)
     {
@@ -372,7 +458,7 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
   NTSTATUS status;
   PUCHAR system_buffer;
 
-  KdPrint2(("AWEAlloc: Read/write request Offset=%p%p Len=%x.\n",
+  KdPrint2(("AWEAlloc: Read/write request Offset=%#I64x Len=%#x.\n",
 	    io_stack->Parameters.Read.ByteOffset.HighPart,
 	    io_stack->Parameters.Read.ByteOffset.LowPart,
 	    io_stack->Parameters.Read.Length));
@@ -450,6 +536,17 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
   KdPrint2(("AWEAlloc: System buffer: %p\n", system_buffer));
 
+  status = AWEAllocTryAcquireProtection(context, FALSE);
+  if (!NT_SUCCESS(status))
+    {
+      KdPrint(("AWEAlloc: Page table is busy.\n"));
+
+      Irp->IoStatus.Status = status;
+      Irp->IoStatus.Information = 0;
+      IoCompleteRequest(Irp, IO_NO_INCREMENT);
+      return status;
+    }      
+
   for (;;)
     {
       LONGLONG abs_offset_this_iter =
@@ -461,6 +558,8 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
       if (length_done >= io_stack->Parameters.Read.Length)
 	{
 	  KdPrint2(("AWEAlloc: Nothing left to do.\n"));
+
+	  AWEAllocReleaseProtection(context, FALSE);
 
 	  Irp->IoStatus.Status = STATUS_SUCCESS;
 	  Irp->IoStatus.Information = length_done;
@@ -479,9 +578,13 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 	{
 	  KdPrint(("AWEAlloc: Failed mapping current image page.\n"));
 
+	  AWEAllocReleaseProtection(context, FALSE);
+
 	  Irp->IoStatus.Status = status;
 	  Irp->IoStatus.Information = 0;
+
 	  IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
 	  return status;
 	}
 
@@ -653,6 +756,9 @@ AWEAllocCreate(IN PDEVICE_OBJECT DeviceObject,
     }
 
   RtlZeroMemory(io_stack->FileObject->FsContext, sizeof(OBJECT_CONTEXT));
+
+  KeInitializeSpinLock
+    (&((POBJECT_CONTEXT)io_stack->FileObject->FsContext)->IOLock);
 
   MmResetDriverPaging((PVOID)(ULONG_PTR)DriverEntry);
 
@@ -1113,9 +1219,21 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 	    return STATUS_BUFFER_TOO_SMALL;
 	  }
 
+	status = AWEAllocTryAcquireProtection(context, TRUE);
+	if (!NT_SUCCESS(status))
+	  {
+	    KdPrint(("AWEAlloc: Page table busy.\n"));
+	    Irp->IoStatus.Status = status;
+	    Irp->IoStatus.Information = 0;
+	    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	    return status;
+	  }
+
 	status = AWEAllocSetSize(context,
 				 &Irp->IoStatus,
 				 &feof_info->EndOfFile);
+
+	AWEAllocReleaseProtection(context, TRUE);
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 

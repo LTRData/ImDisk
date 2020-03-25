@@ -87,8 +87,8 @@ ImDiskSyntaxHelp()
      "Syntax:\r\n"
      "imdisk -a -t type -m mountpoint [-n] [-o opt1[,opt2 ...]] [-f|-F file]\r\n"
      "       [-s size] [-b offset] [-v partition] [-S sectorsize] [-u unit]\r\n"
-     "       [-x sectors/track] [-y tracks/cylinder] [-p \"format-parameters\"]\r\n"
-     "imdisk -d|-D [-u unit | -m mountpoint]\r\n"
+     "       [-x sectors/track] [-y tracks/cylinder] [-p \"format-parameters\"] [-P]\r\n"
+     "imdisk -d|-D [-u unit | -m mountpoint] [-P]\r\n"
      "imdisk -R -u unit\r\n"
      "imdisk -l [-u unit | -m mountpoint]\r\n"
      "imdisk -e [-s size] [-o opt1[,opt2 ...]] [-u unit | -m mountpoint]\r\n"
@@ -306,7 +306,16 @@ ImDiskSyntaxHelp()
      "        Specifies a drive letter or mount point for the new virtual disk, the\r\n"
      "        virtual disk to query or the virtual disk to remove. When creating a\r\n"
      "        new virtual disk you can specify #: as mountpoint in which case the\r\n"
-     "        first unused drive letter is automatically used.\r\n",
+     "        first unused drive letter is automatically used.\r\n"
+     "\n"
+     "-P      Persistent. Along with -a, saves registry settings for re-creating the\r\n"
+     "        same virtual disk automatically when driver is loaded, which usually\r\n"
+     "        occurs during system startup. Along with -d or -D, existing such\r\n"
+     "        settings for the removed virtual disk are also removed from registry.\r\n"
+     "        There are some limitations to what settings could be saved in this way.\r\n"
+     "        Only features directly implemented in the kernel level driver are\r\n"
+     "        saved, so for example the -p switch to format a virtual disk will not\r\n"
+     "        be saved.\r\n",
      stderr);
 
   if (rc > 0)
@@ -554,7 +563,8 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 		      BOOL NativePath,
 		      LPWSTR MountPoint,
 		      BOOL NumericPrint,
-		      LPWSTR FormatOptions)
+		      LPWSTR FormatOptions,
+		      BOOL SaveSettings)
 {
   PIMDISK_CREATE_DATA create_data;
   HANDLE driver;
@@ -892,6 +902,13 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 		    MountPoint == NULL ? L"No mountpoint" : MountPoint,
 		    FileName == NULL ? L"Image in memory" : FileName);
 
+  if (SaveSettings)
+    {
+      puts("Saving registry settings...");
+      if (!ImDiskSaveRegistrySettings(create_data))
+	PrintLastError(L"Registry edit failed");
+    }
+
   if (FormatOptions != NULL)
     return ImDiskCliFormatDisk(device_path,
 			       create_data->DriveLetter,
@@ -911,7 +928,8 @@ int
 ImDiskCliRemoveDevice(DWORD DeviceNumber,
 		      LPCWSTR MountPoint,
 		      BOOL ForceDismount,
-		      BOOL EmergencyRemove)
+		      BOOL EmergencyRemove,
+		      BOOL RemoveSettings)
 {
   WCHAR drive_letter_mount_point[] = L" :";
   DWORD dw;
@@ -1101,6 +1119,14 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	{
 	  drive_letter_mount_point[0] = create_data->DriveLetter;
 	  MountPoint = drive_letter_mount_point;
+	}
+
+      if (RemoveSettings)
+	{
+	  printf("Removing registry settings for device %u...\n",
+		 create_data->DeviceNumber);
+	  if (!ImDiskRemoveRegistrySettings(create_data->DeviceNumber))
+	    PrintLastError(L"Registry edit failed");
 	}
 
       puts("Flushing file buffers...");
@@ -1884,6 +1910,7 @@ wmain(int argc, LPWSTR argv[])
   LPWSTR file_name = NULL;
   LPWSTR mount_point = NULL;
   LPWSTR format_options = NULL;
+  BOOL save_settings = FALSE;
   DWORD device_number = IMDISK_AUTO_DEVICE_NUMBER;
   DISK_GEOMETRY disk_geometry = { 0 };
   LARGE_INTEGER image_offset = { 0 };
@@ -2352,6 +2379,15 @@ wmain(int argc, LPWSTR argv[])
 	    argv++;
 	    break;
 
+	  case L'P':
+	    if ((op_mode != OP_MODE_CREATE) &
+		(op_mode != OP_MODE_REMOVE))
+	      ImDiskSyntaxHelp();
+
+	    save_settings = TRUE;
+
+	    break;
+
 	  case L'u':
 	    if ((argc < 2) |
 		((mount_point != NULL) & (op_mode != OP_MODE_CREATE)) |
@@ -2461,7 +2497,8 @@ wmain(int argc, LPWSTR argv[])
 				    native_path,
 				    mount_point,
 				    numeric_print,
-				    format_options);
+				    format_options,
+				    save_settings);
 
 	if (ret != 0)
 	  return ret;
@@ -2538,7 +2575,7 @@ wmain(int argc, LPWSTR argv[])
 	ImDiskSyntaxHelp();
       
       return ImDiskCliRemoveDevice(device_number, mount_point, force_dismount,
-				   emergency_remove);
+				   emergency_remove, save_settings);
 
     case OP_MODE_QUERY:
       if ((device_number == IMDISK_AUTO_DEVICE_NUMBER) &
