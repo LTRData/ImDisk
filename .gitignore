@@ -351,6 +351,10 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+devio_with_options/
+cab/
+ImDiskNet/Help/
+private/
 */obj*
 *.exe
 *.dll
@@ -365,4 +369,35 @@ devio/devio
 devio/devio.FreeBSD
 devio/devio.Interix
 devio/devio.static.FreeBSD
+devio/devio.CYGWIN_NT-6.2-WOW64_i686
+devio/devio.FreeBSD_amd64
+devio/devio.FreeBSD_i386
+devio/devio.Linux_i686
+devio/devio.Linux_x86_64
+devio/devio.static.CYGWIN_NT-6.2-WOW64_i686
+devio/devio.static.FreeBSD_amd64
+devio/devio.static.FreeBSD_i386
+devio/devio.static.Interix
+devio/devio.static.Linux_i686
+devio/devio.static.Linux_x86_64
 *.7z
+*.db
+7zSD.sfx
+*.bk
+*.diff
+*.cat
+*.old
+*.err
+*.zip
+*.cab
+changes.txt
+*.lastcodeanalysissucceeded
+*.bi
+*.lastbuildstate
+*.unsuccessfulbuild
+*.bin
+*.bz2
+*.gz
+*.xz
+*.cer
+devio/iobridge/Release64/Bridge.asm

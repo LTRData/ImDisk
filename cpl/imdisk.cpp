@@ -2,7 +2,7 @@
     Control Panel Applet for the ImDisk Virtual Disk Driver for
     Windows NT/2000/XP.
 
-    Copyright (C) 2007-2010 Olof Lagerkvist.
+    Copyright (C) 2007-2012 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -98,8 +98,8 @@ DbgPrintF(LPCSTR Message, ...)
 }
 #endif
 
-void
-LoadDeviceToList(HWND hWnd, int iDeviceNumber)
+int
+LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
 {
   PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
     _alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
@@ -107,12 +107,12 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
   if (create_data == NULL)
     {
       MessageBox(hWnd, L"Memory allocation error.", L"ImDisk", MB_ICONSTOP);
-      return;
+      return -1;
     }
 
   if (!ImDiskQueryDevice(iDeviceNumber, create_data,
 			 sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2)))
-    return;
+    return -1;
 
   WCHAR wcMountPoint[3] = L"";
   if (create_data->DriveLetter != 0)
@@ -122,10 +122,15 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
     }
 
   LVITEM lvi;
-  lvi.mask = LVIF_IMAGE | LVIF_TEXT | LVIF_PARAM;
+  lvi.mask = LVIF_IMAGE | LVIF_TEXT | LVIF_PARAM | LVIF_STATE;
   lvi.iItem = 0;
   lvi.iSubItem = 0;
   lvi.pszText = wcMountPoint;
+
+  if (SelectItem)
+    lvi.state = LVIS_SELECTED;
+  else
+    lvi.state = 0;
 
   switch (IMDISK_DEVICE_TYPE(create_data->Flags))
     {
@@ -159,7 +164,7 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
       lvi.pszText = (LPWSTR) _alloca(create_data->FileNameLength +
 				     sizeof(*create_data->FileName));
       if (lvi.pszText == NULL)
-	return;
+	return lvi.iItem;
 
       wcsncpy(lvi.pszText, create_data->FileName,
 	      create_data->FileNameLength >> 1);
@@ -175,7 +180,7 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
 	  lvi.pszText = (LPWSTR) _alloca(sizeof(Text) +
 					 (wcslen(lvi.pszText) << 1) + 2);
 	  if (lvi.pszText == NULL)
-	    return;
+	    return lvi.iItem;
 
 	  wcscpy(lvi.pszText, Text);
 	  wcscat(lvi.pszText, filename_part);
@@ -189,7 +194,7 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
 				       sizeof(*create_data->FileName) +
 				       sizeof(Text));
 	if (lvi.pszText == NULL)
-	  return;
+	  return lvi.iItem;
 	wcsncpy(lvi.pszText, Text, sizeof(Text) >> 1);
 	lvi.pszText[sizeof(Text) >> 1] = 0;
 	wcsncat(lvi.pszText, create_data->FileName,
@@ -265,10 +270,12 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber)
   else
     lvi.pszText = L"";
   ListView_SetItem(hWnd, &lvi);
+
+  return lvi.iItem;
 }
 
 bool
-RefreshList(HWND hWnd)
+RefreshList(HWND hWnd, DWORD SelectDeviceNumber)
 {
   ListView_DeleteAllItems(hWnd);
 
@@ -290,7 +297,7 @@ RefreshList(HWND hWnd)
 
   for (DWORD counter = 0; device_list != 0; device_list >>= 1, counter++)
     if (device_list & 1)
-      LoadDeviceToList(hWnd, counter);
+      LoadDeviceToList(hWnd, counter, counter == SelectDeviceNumber);
 
   return true;
 }
@@ -1114,26 +1121,30 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		    return TRUE;
 		  }
 
+	      DWORD device_number = IMDISK_AUTO_DEVICE_NUMBER;
+
 	      BOOL status =
-		ImDiskCreateDevice(GetDlgItem(hWndStatus, IDC_STATUS_MSG),
-				   &disk_geometry,
-				   &image_offset,
-				   flags,
-				   file_name[0] == 0 ? NULL : file_name,
-				   FALSE,
-				   drive_letter[0] == 0 ? NULL : drive_letter);
+		ImDiskCreateDeviceEx(GetDlgItem(hWndStatus, IDC_STATUS_MSG),
+				     &device_number,
+				     &disk_geometry,
+				     &image_offset,
+				     flags,
+				     file_name[0] == 0 ? NULL : file_name,
+				     FALSE,
+				     drive_letter[0] == 0 ?
+				     NULL : drive_letter);
 
 	      EnableWindow(hWnd, TRUE);
 	      DestroyWindow(hWndStatus);
 	      if (status)
-		EndDialog(hWnd, IDOK);
+		EndDialog(hWnd, device_number);
 	      else
-		EndDialog(hWnd, IDCANCEL);
+		EndDialog(hWnd, IMDISK_AUTO_DEVICE_NUMBER);
 	    }
 	    return TRUE;
 
 	  case IDCANCEL:
-	    EndDialog(hWnd, IDCANCEL);
+	    EndDialog(hWnd, IMDISK_AUTO_DEVICE_NUMBER);
 	    return TRUE;
 
 	  case IDC_EDT_SIZE:
@@ -1168,7 +1179,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       }
 
     case WM_CLOSE:
-      EndDialog(hWnd, IDCANCEL);
+      EndDialog(hWnd, IMDISK_AUTO_DEVICE_NUMBER);
       return TRUE;
     }
 
@@ -1323,7 +1334,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	ListView_SetImageList(hWndListView, hImageList, LVSIL_SMALL);
 
-	RefreshList(hWndListView);
+	RefreshList(hWndListView, IMDISK_AUTO_DEVICE_NUMBER);
 
 	return TRUE;
       }
@@ -1423,11 +1434,15 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       switch (LOWORD(wParam))
 	{
 	case CM_CPL_APPLET_FILE_MOUNT_NEW:
-	  if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_NEWDIALOG), hWnd,
-			NewDlgProc) == IDOK)
-	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+	  {
+	    DWORD device_number = (DWORD)
+	      DialogBox(hInstance, MAKEINTRESOURCE(IDD_NEWDIALOG), hWnd,
+			NewDlgProc);
+	    if (device_number != IMDISK_AUTO_DEVICE_NUMBER)
+	      RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW), device_number);
 
-	  return TRUE;
+	    return TRUE;
+	  }
 
 	case IDCANCEL:
 	case CM_CPL_APPLET_FILE_EXIT:
@@ -1457,9 +1472,9 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	    if (mount_point[0] == 0)
 	      return TRUE;
-	    
-	    if ((INT_PTR) ShellExecute(hWnd, L"open", mount_point, NULL, NULL,
-				       SW_SHOWNORMAL) <= 32)
+
+	    if ((INT_PTR) ShellExecute(hWnd, L"open", mount_point, NULL,
+					  NULL, SW_SHOWNORMAL) <= 32)
 	      MessageBox(hWnd,
 			 L"Cannot open the drive. Check that the drive is "
 			 L"formatted with a compatible filesystem and that it "
@@ -1504,7 +1519,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	    DoEvents(NULL);
 
-	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
+			IMDISK_AUTO_DEVICE_NUMBER);
 
 	    return TRUE;
 	  }
@@ -1565,7 +1581,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	    DoEvents(NULL);
 
-	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
+			IMDISK_AUTO_DEVICE_NUMBER);
 
 	    return TRUE;
 	  }
@@ -1573,7 +1590,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	case CM_CPL_APPLET_SELECTED_EXTEND_SIZE:
 	  if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_DLG_EXTEND), hWnd,
 			ExtendDlgProc) == IDOK)
-	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
+			IMDISK_AUTO_DEVICE_NUMBER);
 
 	  return TRUE;
 
@@ -1608,7 +1626,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	    SHFormatDrive(hWnd, (mount_point[0] & 0x1F) - 1, SHFMT_ID_DEFAULT,
 			  SHFMT_OPT_FULL);
 
-	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
+			IMDISK_AUTO_DEVICE_NUMBER);
 	  }
 
 	  return TRUE;
@@ -1619,7 +1638,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	  return TRUE;
 
 	case CM_CPL_APPLET_WINDOW_REFRESH:
-	  RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW));
+	  RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
+		      IMDISK_AUTO_DEVICE_NUMBER);
 
 	  return TRUE;
 
