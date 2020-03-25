@@ -231,6 +231,8 @@ typedef struct _DEVICE_EXTENSION
   ULONG media_change_count;
   BOOLEAN read_only;
   BOOLEAN vm_disk;             // TRUE if this device is a virtual memory disk
+  BOOLEAN awealloc_disk;       // TRUE if this device is a physical memory disk
+                               // through AWEAlloc driver
   BOOLEAN use_proxy;           // TRUE if this device uses proxy device for I/O
   BOOLEAN image_modified;      // TRUE if this device has been written to
   LONG special_file_count;     // Number of swapfiles/hiberfiles on device
@@ -1485,15 +1487,16 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
     else
       CreateData->Flags |= IMDISK_TYPE_FILE;
 
-  // Blank filenames only supported for non-zero VM disks.
-  if (((CreateData->FileNameLength == 0) &
-       (IMDISK_TYPE(CreateData->Flags) != IMDISK_TYPE_VM)) |
-      ((CreateData->FileNameLength == 0) &
-       (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
-       (CreateData->DiskGeometry.Cylinders.QuadPart == 0)))
+  // Blank filenames only supported for memory disks where size is specified.
+  if ((CreateData->FileNameLength == 0) &
+      !(((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
+	 (CreateData->DiskGeometry.Cylinders.QuadPart > 0)) |
+	((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+	 (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC) &
+	 (CreateData->DiskGeometry.Cylinders.QuadPart > 0))))
     {
-      KdPrint(("ImDisk: Blank filenames only supported for non-zero length "
-	       "vm type disks.\n"));
+      KdPrint(("ImDisk: Blank filenames only supported for memory disks where "
+	       "size is specified..\n"));
 
       ImDiskLogError((DriverObject,
 		      0,
@@ -1513,8 +1516,8 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       return STATUS_INVALID_PARAMETER;
     }
 
-  // Cannot create >= 2 GB VM disk in 32 bit version.
 #ifndef _WIN64
+  // Cannot create >= 2 GB VM disk in 32 bit version.
   if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
       ((CreateData->DiskGeometry.Cylinders.QuadPart & 0xFFFFFFFF80000000) !=
        0))
@@ -1589,7 +1592,9 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
   // If a file is to be opened or created, allocate name buffer and open that
   // file...
-  if (CreateData->FileNameLength > 0)
+  if ((CreateData->FileNameLength > 0) |
+      ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+       (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC)))
     {
       IO_STATUS_BLOCK io_status;
       OBJECT_ATTRIBUTES object_attributes;
@@ -1668,9 +1673,60 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       else
 	KdPrint(("ImDisk: No impersonation information.\n"));
 
-      if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) &
-	  ((IMDISK_PROXY_TYPE(CreateData->Flags) == IMDISK_PROXY_TYPE_TCP) |
-	   (IMDISK_PROXY_TYPE(CreateData->Flags) == IMDISK_PROXY_TYPE_COMM)))
+      if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+	  (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC))
+	{
+	  real_file_name.MaximumLength = file_name.Length +
+	    sizeof(AWEALLOC_DEVICE_NAME);
+
+	  real_file_name.Buffer =
+	    ExAllocatePoolWithTag(PagedPool,
+				  real_file_name.MaximumLength,
+				  POOL_TAG);
+
+	  if (real_file_name.Buffer == NULL)
+	    {
+	      KdPrint(("ImDisk: Out of memory while allocating %#x bytes\n",
+		       real_file_name.MaximumLength));
+
+	      ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
+	      return STATUS_INSUFFICIENT_RESOURCES;
+	    }
+
+	  real_file_name.Length = 0;
+
+	  status =
+	    RtlAppendUnicodeToString(&real_file_name,
+				     AWEALLOC_DEVICE_NAME);
+
+	  if (NT_SUCCESS(status))
+	    status =
+	      RtlAppendUnicodeStringToString(&real_file_name,
+					     &file_name);
+
+	  if (!NT_SUCCESS(status))
+	    {
+	      KdPrint(("ImDisk: Internal error: "
+		       "RtlAppendUnicodeStringToString failed with "
+		       "pre-allocated buffers.\n"));
+
+	      ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
+	      ExFreePoolWithTag(real_file_name.Buffer, POOL_TAG);
+	      return STATUS_DRIVER_INTERNAL_ERROR;
+	    }
+
+	  InitializeObjectAttributes(&object_attributes,
+				     &real_file_name,
+				     OBJ_CASE_INSENSITIVE |
+				     OBJ_FORCE_ACCESS_CHECK,
+				     NULL,
+				     NULL);
+	}
+      else if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) &
+	       ((IMDISK_PROXY_TYPE(CreateData->Flags) ==
+		 IMDISK_PROXY_TYPE_TCP) |
+		(IMDISK_PROXY_TYPE(CreateData->Flags) ==
+		 IMDISK_PROXY_TYPE_COMM)))
 	{
 	  RtlInitUnicodeString(&real_file_name, IMDPROXY_SVC_PIPE_NATIVE_NAME);
 
@@ -1805,14 +1861,21 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 #endif
 
       if (!NT_SUCCESS(status))
-	KdPrint(("ImDisk: Error opening file '%.*ws'. Status: %#x SpecSize: %i WritableFile: %i DevTypeFile: %i Flags: %#x\n",
+	KdPrint(("ImDisk: Error opening file '%.*ws'. "
+		 "Status: %#x "
+		 "SpecSize: %i "
+		 "WritableFile: %i "
+		 "DevTypeFile: %i "
+		 "Flags: %#x\n"
+		 "FileNameLength: %#x\n",
 		 (int)(real_file_name.Length / sizeof(WCHAR)),
 		 real_file_name.Buffer,
 		 status,
 		 CreateData->DiskGeometry.Cylinders.QuadPart != 0,
 		 !IMDISK_READONLY(CreateData->Flags),
 		 IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE,
-		 CreateData->Flags));
+		 CreateData->Flags,
+		 (int) real_file_name.Length));
 
       // If not found we will create the file if a new non-zero size is
       // specified, read-only virtual disk is not specified and we are
@@ -1862,6 +1925,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		       CreateData->FileName,
 		       status));
 	      
+	      if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+		  (IMDISK_FILE_TYPE(CreateData->Flags) ==
+		   IMDISK_FILE_TYPE_AWEALLOC))
+		ExFreePoolWithTag(real_file_name.Buffer, POOL_TAG);
+
 	      ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
 
 	      return status;
@@ -1888,6 +1956,11 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		   real_file_name.Buffer,
 		   status));
 
+	  if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+	      (IMDISK_FILE_TYPE(CreateData->Flags) ==
+	       IMDISK_FILE_TYPE_AWEALLOC))
+	    ExFreePoolWithTag(real_file_name.Buffer, POOL_TAG);
+
 	  ExFreePoolWithTag(file_name.Buffer, POOL_TAG);
 	  
 	  return status;
@@ -1896,6 +1969,10 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       KdPrint(("ImDisk: File '%.*ws' opened successfully.\n",
 	       (int)(real_file_name.Length / sizeof(WCHAR)),
 	       real_file_name.Buffer));
+
+      if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+	  (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC))
+	ExFreePoolWithTag(real_file_name.Buffer, POOL_TAG);
 
       if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
 	  (!IMDISK_READONLY(CreateData->Flags)))
@@ -2964,6 +3041,13 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
   else
     device_extension->vm_disk = FALSE;
 
+  // AWEAlloc disk.
+  if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+      (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC))
+    device_extension->awealloc_disk = TRUE;
+  else
+    device_extension->awealloc_disk = FALSE;
+
   device_extension->image_buffer = image_buffer;
   device_extension->file_handle = file_handle;
 
@@ -3976,6 +4060,9 @@ ImDiskDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	  create_data->Flags |= IMDISK_TYPE_PROXY;
 	else
 	  create_data->Flags |= IMDISK_TYPE_FILE;
+
+	if (device_extension->awealloc_disk)
+	  create_data->Flags |= IMDISK_FILE_TYPE_AWEALLOC;
 
 	if (device_extension->image_modified)
 	  create_data->Flags |= IMDISK_IMAGE_MODIFIED;

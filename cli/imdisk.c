@@ -283,6 +283,14 @@ ImDiskSyntaxHelp()
      "        driver communicates with a storage server on the same computer using\r\n"
      "        shared memory block to transfer I/O data.\r\n"
      "\n"
+     "awe     Can only be used with file-type virtual disks. With this option, the\r\n"
+     "        driver copies contents of image file to physical memory. No changes are\r\n"
+     "        written to image file. If this option is used in combination with  no\r\n"
+     "        image file name, a physical memory block will be used without loading\r\n"
+     "        an image file onto it. In that case, -s parameter is needed to specify\r\n"
+     "        size of memory block. This option requires awealloc driver, which\r\n"
+     "        requires Windows 2000 or later.\r\n"
+     "\n"
      "-u unit\r\n"
      "        Along with -a, request a specific unit number for the ImDisk device\r\n"
      "        instead of automatic allocation. Along with -d or -l specifies the\r\n"
@@ -457,10 +465,65 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
       return IMDISK_CLI_ERROR_DRIVER_WRONG_VERSION;
     }
 
+  // Physical memory allocation requires the AWEAlloc driver.
+  if (((IMDISK_TYPE(Flags) == IMDISK_TYPE_FILE) |
+       (IMDISK_TYPE(Flags) == 0)) &
+      (IMDISK_FILE_TYPE(Flags) == IMDISK_FILE_TYPE_AWEALLOC))
+    {
+      HANDLE awealloc;
+      UNICODE_STRING file_name;
+
+      RtlInitUnicodeString(&file_name, AWEALLOC_DEVICE_NAME);
+
+      for (;;)
+	{
+	  awealloc = ImDiskOpenDeviceByName(&file_name,
+					    GENERIC_READ | GENERIC_WRITE);
+
+	  if (awealloc != INVALID_HANDLE_VALUE)
+	    {
+	      NtClose(awealloc);
+	      break;
+	    }
+
+	  if (GetLastError() != ERROR_FILE_NOT_FOUND)
+	    break;
+
+	  if (ImDiskStartService(AWEALLOC_DRIVER_NAME))
+	    {
+	      puts("AWEAlloc driver was loaded into the kernel.");
+	      continue;
+	    }
+
+	  switch (GetLastError())
+	    {
+	    case ERROR_SERVICE_DOES_NOT_EXIST:
+	      fputs("The AWEAlloc driver is not installed.\r\n"
+		    "Please re-install ImDisk.\r\n", stderr);
+	      break;
+
+	    case ERROR_PATH_NOT_FOUND:
+	    case ERROR_FILE_NOT_FOUND:
+	      fputs("Cannot load AWEAlloc driver.\r\n"
+		    "Please re-install ImDisk.\r\n", stderr);
+	      break;
+
+	    case ERROR_SERVICE_DISABLED:
+	      fputs("The AWEAlloc driver is disabled.\r\n", stderr);
+	      break;
+
+	    default:
+	      PrintLastError(L"Error loading AWEAlloc driver:");
+	    }
+
+	  CloseHandle(driver);
+	  return IMDISK_CLI_ERROR_SERVICE_INACCESSIBLE;
+	}
+    }
   // Proxy reconnection types requires the user mode service.
-  if ((IMDISK_TYPE(Flags) == IMDISK_TYPE_PROXY) &
-      ((IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_TCP) |
-       (IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_COMM)))
+  else if ((IMDISK_TYPE(Flags) == IMDISK_TYPE_PROXY) &
+	   ((IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_TCP) |
+	    (IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_COMM)))
     {
       if (!WaitNamedPipe(IMDPROXY_SVC_PIPE_DOSDEV_NAME, 0))
 	if (GetLastError() == ERROR_FILE_NOT_FOUND)
@@ -1276,8 +1339,8 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 	    "%wc%ws%s%.*ws\nSize: %I64u bytes (%.4g %s)%s%s%s%s%s.",
 	    create_data->DriveLetter == 0 ?
 	    L' ' : create_data->DriveLetter,
-	    (MountPoint == NULL) | (create_data->DriveLetter != 0) ?
-	    L":" : MountPoint,
+	    create_data->DriveLetter != 0 ?
+	    L":" : MountPoint != NULL ? MountPoint : L"",
 	    create_data->FileNameLength > 0 ?
 	    " = " : "",
 	    (int)(create_data->FileNameLength /
@@ -1293,7 +1356,9 @@ ImDiskCliQueryStatusDevice(DWORD DeviceNumber, LPWSTR MountPoint)
 	    IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM ?
 	    ", Virtual Memory Disk" :
 	    IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_PROXY ?
-	    ", Proxy Virtual Disk" : ", File Type Virtual Disk",
+	    ", Proxy Virtual Disk" :
+	    IMDISK_FILE_TYPE(create_data->Flags) == IMDISK_FILE_TYPE_AWEALLOC ?
+	    ", Physical Memory Disk" : ", File Type Virtual Disk",
 	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
 	    IMDISK_DEVICE_TYPE_CD ? ", CD-ROM" :
 	    IMDISK_DEVICE_TYPE(create_data->Flags) ==
@@ -1877,6 +1942,15 @@ wmain(int argc, LPWSTR argv[])
 		      ImDiskSyntaxHelp();
 
 		    flags |= IMDISK_PROXY_TYPE_SHM;
+		  }
+		else if (wcscmp(opt, L"awe") == 0)
+		  {
+		    if (((IMDISK_TYPE(flags) != IMDISK_TYPE_FILE) &
+			 (IMDISK_TYPE(flags) != 0)) |
+			(IMDISK_FILE_TYPE(flags) != IMDISK_FILE_TYPE_DIRECT))
+		      ImDiskSyntaxHelp();
+
+		    flags |= IMDISK_TYPE_FILE | IMDISK_FILE_TYPE_AWEALLOC;
 		  }
 		else if (IMDISK_DEVICE_TYPE(flags) != 0)
 		  ImDiskSyntaxHelp();

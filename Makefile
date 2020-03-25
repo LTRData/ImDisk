@@ -8,7 +8,7 @@ ARCHDIR=ia64
 
 BUILD_DEFAULT=-cegiw -nmake -i
 
-all: cli\$(ARCHDIR)\imdisk.exe svc\$(ARCHDIR)\imdsksvc.exe cpl\$(ARCHDIR)\imdisk.cpl sys\$(ARCHDIR)\imdisk.sys awealloc\$(ARCHDIR)\awealloc.sys deviotst\$(ARCHDIR)\deviotst.exe
+all: cli\$(ARCHDIR)\imdisk.exe svc\$(ARCHDIR)\imdsksvc.exe cpl\$(ARCHDIR)\imdisk.cpl cplcore\$(ARCHDIR)\imdisk.cpl sys\$(ARCHDIR)\imdisk.sys awealloc\$(ARCHDIR)\awealloc.sys deviotst\$(ARCHDIR)\deviotst.exe
 
 clean:
 	del /s *~ *.obj *.log *.wrn *.err *.mac *.o
@@ -38,6 +38,12 @@ cli\$(ARCHDIR)\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\$(ARCHDIR)\i
 
 cpl\$(ARCHDIR)\imdisk.cpl cpl\$(ARCHDIR)\imdisk.lib: cpl\sources cpl\*.c cpl\*.cpp cpl\*.rc cpl\*.src cpl\*.ico cpl\*.h inc\*.h
 	cd cpl
+	build
+	cd $(MAKEDIR)
+
+cplcore\$(ARCHDIR)\imdisk.cpl cplcore\$(ARCHDIR)\imdisk.lib: cplcore\sources cplcore\*.c cpl\*.c cplcore\*.src cplcore\*.h cpl\*.h inc\*.h
+	cd cplcore
+	nmake refresh
 	build
 	cd $(MAKEDIR)
 

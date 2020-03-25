@@ -66,6 +66,8 @@
 ///
 #define IMDISK_DRIVER_NAME             _T("ImDisk")
 #define IMDISK_DRIVER_PATH             _T("system32\\drivers\\imdisk.sys")
+#define AWEALLOC_DRIVER_NAME           _T("AWEAlloc")
+#define AWEALLOC_DEVICE_NAME           IMDISK_DEVICE_DIR_NAME _T("\\AWEAlloc")
 
 ///
 /// Global refresh event name
@@ -114,7 +116,7 @@
 /// Check if flags specifies removable
 #define IMDISK_REMOVABLE(x)             ((ULONG)(x) & 0x00000002)
 
-/// Specifies that image files are created with sparse attribute.
+/// Specifies that image file is created with sparse attribute.
 #define IMDISK_OPTION_SPARSE_FILE       0x00000004
 
 /// Check if flags specifies sparse
@@ -142,6 +144,8 @@
 /// Extracts the IMDISK_TYPE_xxx from flags
 #define IMDISK_TYPE(x)                  ((ULONG)(x) & 0x00000F00)
 
+// Types with proxy mode
+
 /// Proxy connection is direct-type
 #define IMDISK_PROXY_TYPE_DIRECT        0x00000000
 /// Proxy connection is over serial line
@@ -154,8 +158,25 @@
 /// Extracts the IMDISK_PROXY_TYPE_xxx from flags
 #define IMDISK_PROXY_TYPE(x)            ((ULONG)(x) & 0x0000F000)
 
+// Types with file mode
+
+/// Proxy connection is direct-type
+#define IMDISK_FILE_TYPE_DIRECT         0x00000000
+/// Proxy connection is over serial line
+#define IMDISK_FILE_TYPE_AWEALLOC       0x00001000
+
+/// Extracts the IMDISK_PROXY_TYPE_xxx from flags
+#define IMDISK_FILE_TYPE(x)             ((ULONG)(x) & 0x0000F000)
+
 /// Extracts the IMDISK_PROXY_TYPE_xxx from flags
 #define IMDISK_IMAGE_MODIFIED           0x00010000
+
+/// Macro to determine if flags specify either virtual memory (type vm) or
+/// physical memory (type file with awealloc) virtual disk drive
+#define IMDISK_IS_MEMORY_DRIVE(x) \
+  ((IMDISK_TYPE(x) == IMDISK_TYPE_VM) | \
+   ((IMDISK_TYPE(x) == IMDISK_TYPE_FILE) & \
+    (IMDISK_FILE_TYPE(x) == IMDISK_FILE_TYPE_AWEALLOC)))
 
 /// Specify as device number to automatically select first free.
 #define IMDISK_AUTO_DEVICE_NUMBER       ((ULONG)-1)

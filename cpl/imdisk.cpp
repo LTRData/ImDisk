@@ -33,6 +33,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <cpl.h>
+#include <dbt.h>
 
 #include <stdio.h>
 #include <malloc.h>
@@ -64,7 +65,7 @@
 	       (n)>=_1MB ? L"MB" : (n)>=_1KB ? L"KB": \
 	       (n)==1 ? L"byte" : L"bytes")
 
-#define TXT_CURRENT_IMAGE_FILE_SIZE L"(current image file size)"
+#define TXT_CURRENT_IMAGE_FILE_SIZE L"(existing image file size)"
 
 #define PROP_NAME_HKEY_MOUNTPOINTS2 L"HKEY_MountPoints2"
 #define KEY_NAME_HKEY_MOUNTPOINTS2  \
@@ -183,10 +184,18 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
     case IMDISK_TYPE_FILE:
     case IMDISK_TYPE_VM:
       if (create_data->FileNameLength == 0)
-	{
-	  lvi.pszText = L"Virtual memory";
-	  break;
-	}
+	if ((IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_FILE) &
+	    (IMDISK_FILE_TYPE(create_data->Flags) ==
+	     IMDISK_FILE_TYPE_AWEALLOC))
+	  {
+	    lvi.pszText = L"Physical memory";
+	    break;
+	  }
+	else
+	  {
+	    lvi.pszText = L"Virtual memory";
+	    break;
+	  }
 
       lvi.pszText = (LPWSTR) _alloca(create_data->FileNameLength +
 				     sizeof(*create_data->FileName));
@@ -199,18 +208,24 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
 
       ImDiskNativePathToWin32(&lvi.pszText);
 
-      if (IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_VM)
+      if (IMDISK_IS_MEMORY_DRIVE(create_data->Flags))
 	{
-	  LPWSTR filename_part = lvi.pszText;
+	  LPCWSTR prefix;
+	  if (IMDISK_FILE_TYPE(create_data->Flags) ==
+	      IMDISK_FILE_TYPE_AWEALLOC)
+	    prefix = L"Physical memory, from ";
+	  else
+	    prefix = L"Virtual memory, from ";
 
-	  WCHAR Text[] = L"Virtual memory, from ";
-	  lvi.pszText = (LPWSTR) _alloca(sizeof(Text) +
-					 (wcslen(lvi.pszText) << 1) + 2);
+	  LPWSTR filename = lvi.pszText;
+
+	  lvi.pszText = (LPWSTR) _alloca((wcslen(prefix) + wcslen(filename)
+					  + 1) << 1);
 	  if (lvi.pszText == NULL)
 	    return lvi.iItem;
 
-	  wcscpy(lvi.pszText, Text);
-	  wcscat(lvi.pszText, filename_part);
+	  wcscpy(lvi.pszText, prefix);
+	  wcscat(lvi.pszText, filename);
 	}
       break;
 
@@ -1928,6 +1943,148 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     }
 
   return FALSE;
+}
+
+// If interactive mode, check if image has been modified and if so ask user
+// if it should be saved first. This is an interactive support routine for use
+// with ImDiskRemoveDevice().
+BOOL
+WINAPI
+ImDiskInteractiveCheckSave(HWND hWnd, HANDLE device)
+{
+  SetWindowText(hWnd, L"");
+
+  DWORD create_data_size = sizeof(IMDISK_CREATE_DATA) +
+    ((MAX_PATH + 2) << 2);
+  PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
+    _alloca(create_data_size);
+
+  if (create_data == NULL)
+    {
+      DWORD last_error = GetLastError();
+      MessageBox(hWnd, L"Memory allocation error.", L"ImDisk",
+		 MB_ICONSTOP);
+      SetLastError(last_error);
+      return FALSE;
+    }
+
+  DWORD dw;
+  if (!DeviceIoControl(device,
+		       IOCTL_IMDISK_QUERY_DEVICE,
+		       NULL,
+		       0,
+		       create_data,
+		       create_data_size,
+		       &dw, NULL))
+    {
+      DWORD last_error = GetLastError();
+      MsgBoxLastError(hWnd, L"Error communicating with device:");
+      SetLastError(last_error);
+      return FALSE;
+    }
+
+  create_data->FileName[create_data->FileNameLength /
+			sizeof(*create_data->FileName)] = 0;
+
+  if (!(IMDISK_IS_MEMORY_DRIVE(create_data->Flags) &&
+	(create_data->Flags & IMDISK_IMAGE_MODIFIED)))
+      return TRUE;
+
+  switch (MessageBox(hWnd,
+		     L"The virtual disk has been modified. Do you "
+		     L"want to save it as an image file before unmounting "
+		     L"it?", L"ImDisk Virtual Disk Driver",
+		     MB_ICONINFORMATION | MB_YESNOCANCEL))
+    {
+    case IDYES:
+      {
+	OPENFILENAME_NT4 ofn = { sizeof ofn };
+	HANDLE image = INVALID_HANDLE_VALUE;
+	ULARGE_INTEGER file_size = { 0 };
+
+	ofn.hwndOwner = hWnd;
+	ofn.lpstrFilter = L"Image files (*.img)\0*.img\0";
+	if (create_data->FileNameLength > 0)
+	  {
+	    ofn.lpstrFile = create_data->FileName;
+	    ImDiskNativePathToWin32(&ofn.lpstrFile);
+	  }
+	ofn.nMaxFile = MAX_PATH;
+	ofn.lpstrTitle = L"Save to image file";
+	ofn.Flags = OFN_EXPLORER | OFN_LONGNAMES | OFN_OVERWRITEPROMPT |
+	  OFN_PATHMUSTEXIST;
+	ofn.lpstrDefExt = L"img";
+
+	if (IMDISK_DEVICE_TYPE(create_data->Flags) ==
+	    IMDISK_DEVICE_TYPE_CD)
+	  {
+	    ofn.lpstrFilter = L"ISO image (*.iso)\0*.iso\0";
+	    ofn.lpstrDefExt = L"iso";
+	  }
+
+	if (!GetSaveFileName((LPOPENFILENAMEW) &ofn))
+	  {
+	    DWORD last_error = GetLastError();
+
+	    if (last_error != NO_ERROR)
+	      MsgBoxLastError(hWnd, L"Cannot show dialog':");
+
+	    SetLastError(last_error);
+	    return FALSE;
+	  }
+
+	SetWindowText(hWnd, L"Saving image file...");
+
+	image = CreateFile(ofn.lpstrFile,
+			   GENERIC_WRITE,
+			   FILE_SHARE_READ | FILE_SHARE_DELETE,
+			   NULL,
+			   CREATE_ALWAYS,
+			   FILE_ATTRIBUTE_NORMAL,
+			   NULL);
+
+	if (image == INVALID_HANDLE_VALUE)
+	  {
+	    MsgBoxLastError(hWnd, L"Cannot create image file:");
+	    return FALSE;
+	  }
+
+	if (!ImDiskSaveImageFile(device, image, 0, NULL))
+	  {
+	    MsgBoxLastError(hWnd, L"Error saving image:");
+
+	    file_size.LowPart = GetFileSize(image, &file_size.HighPart);
+	    if (file_size.QuadPart == 0)
+	      DeleteFile(ofn.lpstrFile);
+
+	    CloseHandle(image);
+	    return FALSE;
+	  }
+
+	file_size.LowPart = GetFileSize(image, &file_size.HighPart);
+	if (file_size.QuadPart == 0)
+	  {
+	    DeleteFile(ofn.lpstrFile);
+	    CloseHandle(image);
+
+	    MessageBox(hWnd,
+		       L"The drive contents could not be saved. "
+		       L"Check that the drive contains a supported "
+		       L"filesystem.", L"ImDisk Virtual Disk Driver",
+		       MB_ICONEXCLAMATION);
+
+	    return FALSE;
+	  }
+
+	CloseHandle(image);
+      }
+
+    case IDNO:
+      return TRUE;
+
+    default:
+      return FALSE;
+    }
 }
 
 EXTERN_C LONG APIENTRY

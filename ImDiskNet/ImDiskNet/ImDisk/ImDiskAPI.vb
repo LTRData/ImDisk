@@ -952,6 +952,30 @@ Namespace ImDisk
         End Function
 
         ''' <summary>
+        ''' Gets file type bits from a Flag field.
+        ''' </summary>
+        ''' <param name="Flags">Flag field to check.</param>
+        Public Shared Function GetFileType(Flags As ImDiskFlags) As ImDiskFlags
+
+            Return CType(Flags And &HF000UI, ImDiskFlags)
+
+        End Function
+
+        ''' <summary>
+        ''' Determines whether flags specify either a virtual memory drive, or an
+        ''' AWEAlloc (physical memory) drive.
+        ''' </summary>
+        ''' <param name="Flags">Flag field to check</param>
+        Public Shared Function IsMemoryDrive(Flags As ImDiskFlags) As Boolean
+
+            Return _
+                    GetDiskType(Flags) = ImDiskFlags.TypeVM OrElse
+                    (GetDiskType(Flags) = ImDiskFlags.TypeFile AndAlso
+                     GetFileType(Flags) = ImDiskFlags.FileTypeAwe)
+
+        End Function
+
+        ''' <summary>
         '''    This function builds a Master Boot Record, MBR, in memory. The MBR will
         '''    contain a default Initial Program Loader, IPL, which could be used to boot
         '''    an operating system partition when the MBR is written to a disk.

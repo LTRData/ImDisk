@@ -1,0 +1,130 @@
+LIBRARY imdisk.cpl
+
+EXPORTS
+
+#ifdef _X86_
+
+	MsgBoxPrintF
+
+	_MsgBoxLastError@8
+	_ImDiskGetAPIFlags@0
+	_ImDiskSetAPIFlags@8
+	_ImDiskGetPartitionTypeName@12
+	_ImDiskGetOffsetByFileExt@8
+	_ImDiskGetPartitionInformation@16
+	_ImDiskReadFileHandle@24
+	_ImDiskGetPartitionInfoIndirect@20
+	_ImDiskImageContainsISOFS@8
+	_ImDiskImageContainsISOFSIndirect@12
+	_ImDiskStartService@4
+	_ImDiskCreateMountPoint@8
+	_ImDiskRemoveMountPoint@4
+	_ImDiskOpenDeviceByName@8
+	_ImDiskOpenDeviceByNumber@8
+	_ImDiskOpenDeviceByMountPoint@8
+	_ImDiskCheckDriverVersion@4
+	_ImDiskGetVersion@8
+	_ImDiskFindFreeDriveLetter@0
+	_ImDiskGetDeviceList@0
+	_ImDiskGetDeviceListEx@8
+	_ImDiskQueryDevice@12
+	_ImDiskCreateDevice@28
+	_ImDiskCreateDeviceEx@32
+	_ImDiskForceRemoveDevice@8
+	_ImDiskRemoveDevice@12
+	_ImDiskChangeFlags@20
+	_ImDiskExtendDevice@12
+	_ImDiskSaveImageFile@16
+	_ImDiskGetVolumeSize@8
+	_ImDiskGetFormattedGeometry@12
+	_ImDiskGetFormattedGeometryIndirect@16
+	_ImDiskBuildMBR@20
+	_ImDiskConvertCHSToLBA@8
+	_ImDiskConvertLBAToCHS@8
+	_ImDiskAdjustImageFileSize@8
+	_ImDiskNativePathToWin32@4
+	_ImDiskOpenRefreshEvent@4
+
+	MsgBoxLastError=_MsgBoxLastError@8
+	ImDiskGetAPIFlags=_ImDiskGetAPIFlags@0
+	ImDiskSetAPIFlags=_ImDiskSetAPIFlags@8
+	ImDiskGetPartitionTypeName=_ImDiskGetPartitionTypeName@12
+	ImDiskGetOffsetByFileExt=_ImDiskGetOffsetByFileExt@8
+	ImDiskGetPartitionInformation=_ImDiskGetPartitionInformation@16
+	ImDiskReadFileHandle=_ImDiskReadFileHandle@24
+	ImDiskGetPartitionInfoIndirect=_ImDiskGetPartitionInfoIndirect@20
+	ImDiskImageContainsISOFS=_ImDiskImageContainsISOFS@8
+	ImDiskImageContainsISOFSIndirect=_ImDiskImageContainsISOFSIndirect@12
+	ImDiskStartService=_ImDiskStartService@4
+	ImDiskCreateMountPoint=_ImDiskCreateMountPoint@8
+	ImDiskRemoveMountPoint=_ImDiskRemoveMountPoint@4
+	ImDiskOpenDeviceByName=_ImDiskOpenDeviceByName@8
+	ImDiskOpenDeviceByNumber=_ImDiskOpenDeviceByNumber@8
+	ImDiskOpenDeviceByMountPoint=_ImDiskOpenDeviceByMountPoint@8
+	ImDiskCheckDriverVersion=_ImDiskCheckDriverVersion@4
+	ImDiskGetVersion=_ImDiskGetVersion@8
+	ImDiskFindFreeDriveLetter=_ImDiskFindFreeDriveLetter@0
+	ImDiskGetDeviceList=_ImDiskGetDeviceList@0
+	ImDiskGetDeviceListEx=_ImDiskGetDeviceListEx@8
+	ImDiskQueryDevice=_ImDiskQueryDevice@12
+	ImDiskCreateDevice=_ImDiskCreateDevice@28
+	ImDiskCreateDeviceEx=_ImDiskCreateDeviceEx@32
+	ImDiskForceRemoveDevice=_ImDiskForceRemoveDevice@8
+	ImDiskRemoveDevice=_ImDiskRemoveDevice@12
+	ImDiskChangeFlags=_ImDiskChangeFlags@20
+	ImDiskExtendDevice=_ImDiskExtendDevice@12
+	ImDiskSaveImageFile=_ImDiskSaveImageFile@16
+	ImDiskGetVolumeSize=_ImDiskGetVolumeSize@8
+	ImDiskGetFormattedGeometry=_ImDiskGetFormattedGeometry@12
+	ImDiskGetFormattedGeometryIndirect=_ImDiskGetFormattedGeometryIndirect@16
+	ImDiskBuildMBR=_ImDiskBuildMBR@20
+	ImDiskConvertCHSToLBA=_ImDiskConvertCHSToLBA@8
+	ImDiskConvertLBAToCHS=_ImDiskConvertLBAToCHS@8
+	ImDiskAdjustImageFileSize=_ImDiskAdjustImageFileSize@8
+	ImDiskNativePathToWin32=_ImDiskNativePathToWin32@4
+	ImDiskOpenRefreshEvent=_ImDiskOpenRefreshEvent@4
+
+#else
+
+	MsgBoxPrintF
+
+	MsgBoxLastError
+	ImDiskGetAPIFlags
+	ImDiskSetAPIFlags
+	ImDiskGetPartitionTypeName
+	ImDiskGetOffsetByFileExt
+	ImDiskGetPartitionInformation
+	ImDiskReadFileHandle
+	ImDiskGetPartitionInfoIndirect
+	ImDiskImageContainsISOFS
+	ImDiskImageContainsISOFSIndirect
+	ImDiskStartService
+	ImDiskCreateMountPoint
+	ImDiskRemoveMountPoint
+	ImDiskOpenDeviceByName
+	ImDiskOpenDeviceByNumber
+	ImDiskOpenDeviceByMountPoint
+	ImDiskCheckDriverVersion
+	ImDiskGetVersion
+	ImDiskFindFreeDriveLetter
+	ImDiskGetDeviceList
+	ImDiskGetDeviceListEx
+	ImDiskQueryDevice
+	ImDiskCreateDevice
+	ImDiskCreateDeviceEx
+	ImDiskForceRemoveDevice
+	ImDiskRemoveDevice
+	ImDiskChangeFlags
+	ImDiskExtendDevice
+	ImDiskSaveImageFile
+	ImDiskGetVolumeSize
+	ImDiskGetFormattedGeometry
+	ImDiskGetFormattedGeometryIndirect
+	ImDiskBuildMBR
+	ImDiskConvertCHSToLBA
+	ImDiskConvertLBAToCHS
+	ImDiskAdjustImageFileSize
+	ImDiskNativePathToWin32
+	ImDiskOpenRefreshEvent
+
+#endif
