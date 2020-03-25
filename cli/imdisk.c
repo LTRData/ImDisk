@@ -460,16 +460,15 @@ LPCWSTR ValidTargetPath)
     DWORD len = (DWORD)wcslen(ValidTargetPath) + 2;
     LPWSTR target = (LPWSTR)ImDiskCliAssertNotNull(_alloca(len << 1));
 
-    if (QueryDosDevice(DriveLetter, target, len))
-        if (wcscmp(target, ValidTargetPath) == 0)
-            return TRUE;
-        else
-            return FALSE;
+    if (QueryDosDevice(DriveLetter, target, len) &&
+        (wcscmp(target, ValidTargetPath) == 0))
+    {
+        return TRUE;
+    }
     else
-        if (GetLastError() == ERROR_FILE_NOT_FOUND)
-            return TRUE;
-        else
-            return FALSE;
+    {
+        return FALSE;
+    }
 }
 
 // Formats a new virtual disk device by calling system supplied format.com
@@ -517,19 +516,24 @@ LPCWSTR FormatOptions)
     }
 
     if (DriveLetter != 0)
+    {
         temporary_mount_point[0] = DriveLetter;
+    }
     else
-        if (!ImDiskCliValidateDriveLetterTarget(temporary_mount_point,
-            DevicePath))
-        {
-            fprintf
-                (stderr,
-                "Format failed. Temporary drive letter is already in use by another device.\r\n");
+    {
+        temporary_mount_point[0] = ImDiskFindFreeDriveLetter();
+    }
 
-            ReleaseMutex(hMutex);
-            CloseHandle(hMutex);
-            return IMDISK_CLI_ERROR_FORMAT;
-        }
+    if (temporary_mount_point[0] == 0)
+    {
+        fprintf
+            (stderr,
+            "Format failed. No free drive letters available.\r\n");
+
+        ReleaseMutex(hMutex);
+        CloseHandle(hMutex);
+        return IMDISK_CLI_ERROR_FORMAT;
+    }
 
     if (!DefineDosDevice(DDD_RAW_TARGET_PATH,
         temporary_mount_point,
@@ -538,6 +542,26 @@ LPCWSTR FormatOptions)
         PrintLastError(L"Error defining drive letter:");
         ReleaseMutex(hMutex);
         CloseHandle(hMutex);
+        return IMDISK_CLI_ERROR_FORMAT;
+    }
+
+    if (!ImDiskCliValidateDriveLetterTarget(temporary_mount_point,
+        DevicePath))
+    {
+        fprintf
+            (stderr,
+            "Format failed. Temporary drive letter points to another device.\r\n");
+
+        if (!DefineDosDevice(DDD_REMOVE_DEFINITION |
+            DDD_EXACT_MATCH_ON_REMOVE |
+            DDD_RAW_TARGET_PATH,
+            temporary_mount_point,
+            DevicePath))
+            PrintLastError(L"Error undefining temporary drive letter:");
+
+        ReleaseMutex(hMutex);
+        CloseHandle(hMutex);
+        
         return IMDISK_CLI_ERROR_FORMAT;
     }
 
@@ -2504,7 +2528,7 @@ wmain(int argc, LPWSTR argv[])
 
 #ifndef _DEBUG
 
-// We have our own EXE entry to be less dependant of
+// We have our own EXE entry to be less dependent on
 // specific MSVCRT code that may not be available in older Windows versions.
 // It also saves some EXE file size.
 __declspec(noreturn)
