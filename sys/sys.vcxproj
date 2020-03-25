@@ -191,7 +191,14 @@
   <ItemGroup Label="WrappedTaskItems" />
   <ItemGroup>
     <!-- We only add items (e.g. form ClSourceFiles) that do not already exist (e.g in the ClCompile list), this avoids duplication -->
+    <ClCompile Include="commonio.cpp" />
+    <ClCompile Include="createdev.cpp" />
+    <ClCompile Include="devthrd.cpp" />
+    <ClCompile Include="floppy.cpp" />
     <ClCompile Include="imdisk.cpp" Exclude="@(ClCompile)" />
+    <ClCompile Include="iodisp.cpp" />
+    <ClCompile Include="lowerdev.cpp" />
+    <ClCompile Include="proxy.cpp" />
     <ResourceCompile Include="@(RcSourceFiles)" Exclude="@(ResourceCompile)" />
     <Midl Include="@(IdlSourceFiles)" Exclude="@(Midl)" />
     <MessageCompile Include="@(McSourceFiles)" Exclude="@(MessageCompile)" />
@@ -223,6 +230,8 @@
     <ClInclude Include="..\inc\imdiskver.h" />
     <ClInclude Include="..\inc\imdproxy.h" />
     <ClInclude Include="..\inc\ntkmapi.h" />
+    <ClInclude Include="..\inc\wkmem.hpp" />
+    <ClInclude Include="imdsksys.h" />
   </ItemGroup>
   <!-- /Necessary to pick up propper files from local directory when in the IDE-->
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

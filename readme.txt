@@ -1,5 +1,5 @@
 
-  ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003/Vista/7/8/8.1.
+  ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
   This driver emulates harddisk partitions, floppy drives and CD/DVD-ROM
   drives from disk image files, in virtual memory or by redirecting I/O
@@ -21,7 +21,7 @@
   you want to use this product under NT 3.51 you have to manually add the
   registry entries for the driver and the service.
 
-    Copyright (c) 2005-2015 Olof Lagerkvist
+    Copyright (c) 2005-2009 Olof Lagerkvist
     http://www.ltr-data.se      olof@ltr-data.se
 
     Permission is hereby granted, free of charge, to any person

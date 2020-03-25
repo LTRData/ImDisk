@@ -1,7 +1,7 @@
 TARGETNAME=imdisk
 TARGETPATH=.
 TARGETTYPE=DRIVER
-SOURCES=imdisk.cpp imdisk.rc
+
 MSC_WARNING_LEVEL=/W4 /WX /wd4201 /wd4204 /wd4221
 !IF "$(NTDEBUG)" != "ntsd"
 MSC_OPTIMIZATION=/Ox /GF
@@ -12,3 +12,14 @@ C_DEFINES=$(C_DEFINES) /DINCLUDE_VFD_ORIGIN
 LINKER_FLAGS=llmath.lib
 BUFFER_OVERFLOW_CHECKS=0
 !ENDIF
+
+SOURCES=imdisk.cpp \
+  commonio.cpp \
+  createdev.cpp \
+  devthrd.cpp \
+  floppy.cpp \
+  iodisp.cpp \
+  lowerdev.cpp \
+  proxy.cpp \
+  imdisk.rc
+
