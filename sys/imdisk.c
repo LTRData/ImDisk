@@ -5627,7 +5627,7 @@ ImDiskDeviceThread(IN PVOID Context)
 
 			if (image_irp == NULL)
 			{
-				ObDereferenceObject(&image_file_object);
+				ObDereferenceObject(image_file_object);
 
 				KdPrint(("ImDisk: IoBuildSynchronousFsdRequest failed for image object.\n"));
 
@@ -5643,6 +5643,8 @@ ImDiskDeviceThread(IN PVOID Context)
 
 			if (status == STATUS_PENDING)
 			{
+				KdPrint(("ImDisk: Waiting for IoCallDriver to complete.\n"));
+
 				KeWaitForSingleObject(&io_complete_event,
 					Executive,
 					KernelMode,
@@ -5654,9 +5656,9 @@ ImDiskDeviceThread(IN PVOID Context)
 				irp->IoStatus.Status = status;
 			}
 
-			ObDereferenceObject(&image_file_object);
+			ObDereferenceObject(image_file_object);
 
-			KdPrint(("ImDisk: IoCallDriver failed on image object: %#x\n",
+			KdPrint(("ImDisk: IoCallDriver result for flush request: %#x\n",
 				status));
 
 			break;
