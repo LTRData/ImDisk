@@ -52,6 +52,8 @@ Module ServerModule
                 DiskAccess = FileAccess.Read
             ElseIf arg.Equals("/mount", StringComparison.InvariantCultureIgnoreCase) Then
                 Mount = True
+            ElseIf arg.Equals("/trace", StringComparison.InvariantCultureIgnoreCase) Then
+                Trace.Listeners.Add(New ConsoleTraceListener)
             ElseIf arg.StartsWith("/mount=", StringComparison.InvariantCultureIgnoreCase) Then
                 Mount = True
                 MountPoint = arg.Substring("/mount=".Length)
@@ -71,10 +73,13 @@ Module ServerModule
 
             Console.WriteLine("Syntax:" & Environment.NewLine &
                               "DiscUtilsDevio /name=objectname [/buffersize=bytes] [/partition=number]" & Environment.NewLine &
-                              "    /filename=imagefilename [/readonly] [/mount[=d:]]" & Environment.NewLine &
+                              "    /filename=imagefilename [/readonly] [/mount[=d:]] [/trace]" & Environment.NewLine &
+                              Environment.NewLine &
+                              "DiscUtilsDevio [/name=objectname] [/buffersize=bytes] [/partition=number]" & Environment.NewLine &
+                              "    /filename=imagefilename [/readonly] /mount[=d:] [/trace]" & Environment.NewLine &
                               Environment.NewLine &
                               "DiscUtilsDevio [/ipaddress=address] /port=tcpport [/partition=number]" & Environment.NewLine &
-                              "    /filename=imagefilename [/readonly] [/mount[=d:]]")
+                              "    /filename=imagefilename [/readonly] [/mount[=d:]] [/trace]")
 
             Return
 
@@ -184,12 +189,29 @@ Module ServerModule
         End If
 
         If Mount Then
+            Console.WriteLine("Opening image file and mounting as virtual disk...")
             Service.StartServiceThreadAndMountImDisk(ImDiskFlags.Auto, MountPoint)
+            Console.WriteLine("Virtual disk created. Press Ctrl+C to remove virtual disk and exit.")
         Else
+            Console.WriteLine("Opening image file...")
             Service.StartServiceThread()
+            Console.WriteLine("Image file opened, waiting for incoming connections. Press Ctrl+C to exit.")
         End If
 
+        AddHandler Console.CancelKeyPress,
+            Sub(sender, e)
+                Console.WriteLine("Stopping service...")
+                Service.Dispose()
+
+                Try
+                    e.Cancel = True
+                Catch
+                End Try
+            End Sub
+
         Service.WaitForServiceThreadExit()
+
+        Console.WriteLine("Service stopped.")
 
     End Sub
 

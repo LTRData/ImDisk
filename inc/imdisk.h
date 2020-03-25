@@ -40,7 +40,7 @@
 #define _T(x)   __T(x)
 #endif
 
-#define IMDISK_VERSION                 0x0176
+#define IMDISK_VERSION                 0x0180
 #define IMDISK_DRIVER_VERSION          0x0103
 
 #ifndef ZERO_STRUCT
@@ -87,6 +87,11 @@
 #define IMDISK_CFG_FLAGS_PREFIX                   _T("Flags")
 #define IMDISK_CFG_DRIVE_LETTER_PREFIX            _T("DriveLetter")
 
+#define KEY_NAME_HKEY_MOUNTPOINTS  \
+  _T("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints")
+#define KEY_NAME_HKEY_MOUNTPOINTS2  \
+  _T("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2")
+
 ///
 /// Base value for the IOCTL's.
 ///
@@ -121,6 +126,12 @@
 
 /// Check if flags specifies sparse
 #define IMDISK_SPARSE_FILE(x)           ((ULONG)(x) & 0x00000004)
+
+/// Swaps each byte pair in image file.
+#define IMDISK_OPTION_BYTE_SWAP         0x00000008
+
+/// Check if flags specifies byte swapping
+#define IMDISK_BYTE_SWAP(x)             ((ULONG)(x) & 0x00000008)
 
 /// Device type is virtual harddisk partition
 #define IMDISK_DEVICE_TYPE_HD           0x00000010
@@ -608,7 +619,7 @@ ImDiskOpenDeviceByName(IN PUNICODE_STRING FileName,
 /**
    Opens an ImDisk device by the device number.
 
-   FileName     Native path to ImDisk device, such as "\Device\ImDisk2".
+   DeviceNumber Number of the ImDisk device to open.
 
    AccessMode   Access mode to request.
 */

@@ -1,6 +1,6 @@
 ;!@Install@!UTF-8!
 Title="ImDisk Virtual Disk Driver"
 BeginPrompt="This will install ImDisk Virtual Disk Driver with the imdisk.exe command line tool and a Control Panel applet. Continue?"
-ExecuteFile="runwait.exe"
+ExecuteFile="runwaitw.exe"
 ExecuteParameters="/64 /hide .\install.cmd"
 ;!@InstallEnd@!

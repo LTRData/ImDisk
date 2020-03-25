@@ -68,8 +68,6 @@
 #define TXT_CURRENT_IMAGE_FILE_SIZE L"(existing image file size)"
 
 #define PROP_NAME_HKEY_MOUNTPOINTS2 L"HKEY_MountPoints2"
-#define KEY_NAME_HKEY_MOUNTPOINTS2  \
-  L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2"
 #define PROP_NAME_HANDLE_REFRESH_THREAD L"HANDLE_RefreshThread"
 #define PROP_NAME_HANDLE_EXIT_EVENT L"HANDLE_ExitEvent"
 
@@ -1659,6 +1657,8 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 		EnableWindow(GetDlgItem(hWnd, CM_CPL_APPLET_SELECTED_UNMOUNT),
 			     item_selected);
+		EnableWindow(GetDlgItem(hWnd, CM_CPL_APPLET_SELECTED_REMOVE),
+			     item_selected);
 		EnableWindow(GetDlgItem(hWnd,
 					CM_CPL_APPLET_SELECTED_EXTEND_SIZE),
 			     item_selected);
@@ -1704,10 +1704,14 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	      switch (((LV_KEYDOWN *) lParam)->wVKey)
 		{
 		  // The Delete and F5 keys in the listview translates into
-		  // buttons/menu items and then passed to the WM_COMMAND
+		  // buttons/menu items and then passed on to the WM_COMMAND
 		  // case handler following this WM_NOTIFY case handler.
 		case VK_DELETE:
-		  wParam = CM_CPL_APPLET_SELECTED_UNMOUNT;
+		  if (GetAsyncKeyState(VK_CONTROL) & (1 << 15))
+		    wParam = CM_CPL_APPLET_SELECTED_REMOVE;
+		  else
+		    wParam = CM_CPL_APPLET_SELECTED_UNMOUNT;
+
 		  break;
 
 		case VK_F5:
@@ -1872,6 +1876,64 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	    return TRUE;
 	  }
 
+	case CM_CPL_APPLET_SELECTED_REMOVE:
+	  {
+	    LVITEM lvi = { 0 };
+	    lvi.mask = LVIF_TEXT | LVIF_PARAM;
+	    lvi.iItem = (int)
+	      SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETNEXTITEM,
+				 (WPARAM) -1,
+				 MAKELPARAM((UINT) LVNI_SELECTED, 0));
+	    if (lvi.iItem == -1)
+	      return TRUE;
+
+	    if (MessageBox(hWnd,
+			   L"Warning! Emergency removal is intended for "
+			   L"scenarios where a virtual disk cannot be removed "
+			   L"in any other way. This could happen, for "
+			   L"instance, when a proxy-mode virtual disk has "
+			   L"lost connection with the proxy service "
+			   L"backend.\r\n"
+			   L"\r\n"
+			   L"Emergency removal may leave the virtual disk in "
+			   L"an inconsistent state and may corrupt the "
+			   L"filesystem on the virtual disk.\r\n"
+			   L"\r\n"
+			   L"Are you sure you want to emergency remove the "
+			   L"selected virtual disk?",
+			   L"Emergency removal",
+			   MB_ICONEXCLAMATION | MB_YESNO | MB_DEFBUTTON2) !=
+		IDYES)
+	      return TRUE;
+
+	    lvi.iSubItem = 0;
+	    WCHAR wcBuffer[3] = L"";
+	    lvi.pszText = wcBuffer;
+	    lvi.cchTextMax = sizeof(wcBuffer)/sizeof(*wcBuffer);
+	    SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETITEM, 0,
+			       (LPARAM) &lvi);
+
+	    EnableWindow(hWnd, FALSE);
+	    HWND hWndStatus =
+	      CreateDialog(hInstance, MAKEINTRESOURCE(IDD_DLG_STATUS), hWnd,
+			   StatusDlgProc);
+
+	    if (!ImDiskForceRemoveDevice(NULL, (DWORD) lvi.lParam))
+	      MsgBoxLastError(hWnd, L"Error removing device:");
+
+	    Sleep(100);
+
+	    EnableWindow(hWnd, TRUE);
+	    DestroyWindow(hWndStatus);
+
+	    DoEvents(NULL);
+
+	    RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW),
+			IMDISK_AUTO_DEVICE_NUMBER);
+
+	    return TRUE;
+	  }
+
 	case CM_CPL_APPLET_SELECTED_SET_RO:
 	case CM_CPL_APPLET_SELECTED_SET_RW:
 	case CM_CPL_APPLET_SELECTED_SET_REM:
@@ -1998,7 +2060,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	     L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
 	     L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
 	     L"\r\n"
-	     L"Copyright (C) 2004-2010 Olof Lagerkvist.\r\n"
+	     L"Copyright (C) 2004-2014 Olof Lagerkvist.\r\n"
 	     L"http://www.ltr-data.se     olof@ltr-data.se\r\n"
 	     L"\r\n"
 	     L"Permission is hereby granted, free of charge, to any person\r\n"

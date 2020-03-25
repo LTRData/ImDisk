@@ -81,8 +81,6 @@ typedef struct _BLOCK_DESCRIPTOR
 
 typedef struct _OBJECT_CONTEXT
 {
-  LONGLONG FilePosition;
-
   LONGLONG TotalSize;
 
   LONGLONG VirtualSize;
@@ -379,8 +377,6 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 	    io_stack->Parameters.Read.ByteOffset.LowPart,
 	    io_stack->Parameters.Read.Length));
 
-  context->FilePosition = io_stack->Parameters.Read.ByteOffset.QuadPart;
-
   if (context == NULL)
     {
       KdPrint2(("AWEAlloc: Read/write request on not initialized device.\n"));
@@ -518,7 +514,7 @@ AWEAllocReadWrite(IN PDEVICE_OBJECT DeviceObject,
 	  }
 	}
 
-      context->FilePosition += bytes_this_iter;
+      io_stack->FileObject->CurrentByteOffset.QuadPart += bytes_this_iter;
 
       KdPrint2(("AWEAlloc: Copy done.\n"));
 
@@ -857,7 +853,8 @@ AWEAllocQueryInformation(IN PDEVICE_OBJECT DeviceObject,
 	    return STATUS_INVALID_PARAMETER;
 	  }
 
-	position_info->CurrentByteOffset.QuadPart = context->FilePosition;
+	position_info->CurrentByteOffset =
+	  io_stack->FileObject->CurrentByteOffset;
 
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = sizeof(FILE_POSITION_INFORMATION);
@@ -1139,7 +1136,8 @@ AWEAllocSetInformation(IN PDEVICE_OBJECT DeviceObject,
 	    return STATUS_INVALID_PARAMETER;
 	  }
 
-	context->FilePosition = position_info->CurrentByteOffset.QuadPart;
+	io_stack->FileObject->CurrentByteOffset =
+	  position_info->CurrentByteOffset;
 
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;

@@ -523,6 +523,18 @@ ImDiskStartService(LPWSTR ServiceName)
   if (!StartService(hService, 0, NULL))
     {
       DWORD dwLastError = GetLastError();
+      if (dwLastError == ERROR_SERVICE_ALREADY_RUNNING)
+	{
+	  SERVICE_STATUS status;
+	  if (QueryServiceStatus(hService, &status))
+	    {
+	      if (status.dwCurrentState == SERVICE_STOP_PENDING)
+		dwLastError = ERROR_SERVICE_CANNOT_ACCEPT_CTRL;
+	    }
+	  else
+	    dwLastError = GetLastError();
+	}
+
       CloseServiceHandle(hService);
       CloseServiceHandle(hSCManager);
       SetLastError(dwLastError);

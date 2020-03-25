@@ -1,7 +1,7 @@
 /*
     Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-    Copyright (C) 2004-2011 Olof Lagerkvist.
+    Copyright (C) 2004-2014 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -40,6 +40,7 @@
 
 enum
   {
+    IMDISK_CLI_SUCCESS = 0,
     IMDISK_CLI_ERROR_DEVICE_NOT_FOUND = 1,
     IMDISK_CLI_ERROR_DEVICE_INACCESSIBLE = 2,
     IMDISK_CLI_ERROR_CREATE_DEVICE = 3,
@@ -292,6 +293,10 @@ ImDiskSyntaxHelp()
      "        size of memory block. This option requires awealloc driver, which\r\n"
      "        requires Windows 2000 or later.\r\n"
      "\n"
+     "bswap   Instructs driver to swap each pair of bytes read from or written to\r\n"
+     "        image file. Useful when examining images from some embedded systems\r\n"
+     "        and similar where data is stored in reverse byte order.\r\n"
+     "\n"
      "-u unit\r\n"
      "        Along with -a, request a specific unit number for the ImDisk device\r\n"
      "        instead of automatic allocation. Along with -d or -l specifies the\r\n"
@@ -351,6 +356,18 @@ PrintLastError(LPCWSTR Prefix)
     LocalFree(MsgBuf);
 }
 
+LPVOID
+ImDiskCliAssertNotNull(LPVOID Ptr)
+{
+  if (Ptr == NULL)
+    RaiseException(STATUS_NO_MEMORY,
+		   EXCEPTION_NONCONTINUABLE,
+		   0,
+		   NULL);
+
+  return Ptr;
+}
+
 // Checks current driver version for compatibility with this library and
 // returns TRUE if found compatible, FALSE otherwise. Device parameter is
 // either handle to driver control device or an existing ImDisk device.
@@ -402,6 +419,131 @@ ImDiskCliCheckDriverVersion(HANDLE Device)
   return TRUE;
 }
 
+BOOL
+ImDiskCliValidateDriveLetterTarget(LPCWSTR DriveLetter,
+				   LPCWSTR ValidTargetPath)
+{
+  DWORD len = (DWORD)wcslen(ValidTargetPath) + 2;
+  LPWSTR target = (LPWSTR)ImDiskCliAssertNotNull(_alloca(len << 1));
+
+  if (QueryDosDevice(DriveLetter, target, len))
+    if (wcscmp(target, ValidTargetPath) == 0)
+      return TRUE;
+    else
+      return FALSE;
+  else
+    if (GetLastError() == ERROR_FILE_NOT_FOUND)
+      return TRUE;
+    else
+      return FALSE;
+}
+
+// Formats a new virtual disk device by calling system supplied format.com
+// command line tool. MountPoint parameter should be a drive letter followed by
+// a colon, and FormatOptions parameter is passed to the format.com command
+// line.
+int
+ImDiskCliFormatDisk(LPCWSTR DevicePath,
+		    WCHAR DriveLetter,
+		    LPCWSTR FormatOptions)
+{
+  static const WCHAR format_mutex[] = L"ImDiskFormat";
+
+  static const WCHAR format_cmd_prefix[] = L"format.com ";
+
+  WCHAR temporary_mount_point[] = { 255, L':', 0 };
+
+  LPWSTR format_cmd = (LPWSTR)
+    ImDiskCliAssertNotNull(_alloca(sizeof(format_cmd_prefix) +
+				   ((wcslen(temporary_mount_point) + 1) << 1) +
+				   (wcslen(FormatOptions) << 1)));
+
+  STARTUPINFO startup_info = { sizeof(startup_info) };
+  PROCESS_INFORMATION process_info;
+
+  int iReturnCode;
+
+  HANDLE hMutex = CreateMutex(NULL, FALSE, format_mutex);
+  if (hMutex == NULL)
+    {
+      PrintLastError(L"Error creating mutex object:");
+      return IMDISK_CLI_ERROR_FORMAT;
+    }
+
+  switch (WaitForSingleObject(hMutex, INFINITE))
+    {
+    case WAIT_OBJECT_0:
+    case WAIT_ABANDONED:
+      break;
+
+    default:
+      PrintLastError(L"Error, mutex object failed:");
+      CloseHandle(hMutex);
+      return IMDISK_CLI_ERROR_FORMAT;
+    }
+
+  if (DriveLetter != 0)
+    temporary_mount_point[0] = DriveLetter;
+  else
+    if (!ImDiskCliValidateDriveLetterTarget(temporary_mount_point,
+					    DevicePath))
+      {
+	fprintf
+	  (stderr,
+	   "Format failed. Temporary drive letter is already in use by another device.\r\n");
+
+	ReleaseMutex(hMutex);
+	CloseHandle(hMutex);
+	return IMDISK_CLI_ERROR_FORMAT;
+      }
+
+  if (!DefineDosDevice(DDD_RAW_TARGET_PATH,
+		       temporary_mount_point,
+		       DevicePath))
+    {
+      PrintLastError(L"Error defining drive letter:");
+      ReleaseMutex(hMutex);
+      CloseHandle(hMutex);
+      return IMDISK_CLI_ERROR_FORMAT;
+    }
+
+  puts("Formatting disk...");
+
+  wcscpy(format_cmd, format_cmd_prefix);
+  wcscat(format_cmd, temporary_mount_point);
+  wcscat(format_cmd, L" ");
+  wcscat(format_cmd, FormatOptions);
+
+  if (CreateProcess(NULL, format_cmd, NULL, NULL, TRUE, 0, NULL, NULL,
+		    &startup_info, &process_info))
+    {
+      CloseHandle(process_info.hThread);
+      WaitForSingleObject(process_info.hProcess, INFINITE);
+      CloseHandle(process_info.hProcess);
+      iReturnCode = IMDISK_CLI_SUCCESS;
+    }
+  else
+    {
+      PrintLastError(L"Cannot format drive:");
+      iReturnCode = IMDISK_CLI_ERROR_FORMAT;
+    }
+
+  if (!DefineDosDevice(DDD_REMOVE_DEFINITION |
+		       DDD_EXACT_MATCH_ON_REMOVE |
+		       DDD_RAW_TARGET_PATH,
+		       temporary_mount_point,
+		       DevicePath))
+    PrintLastError(L"Error undefining temporary drive letter:");
+
+  if (!ReleaseMutex(hMutex))
+    PrintLastError(L"Error releasing mutex:");
+
+  if (!CloseHandle(hMutex))
+    PrintLastError(L"Error releasing mutex:");
+
+  return iReturnCode;
+}
+
 // Creates a new virtual disk device.
 int
 ImDiskCliCreateDevice(LPDWORD DeviceNumber,
@@ -410,12 +552,15 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 		      DWORD Flags,
 		      LPCWSTR FileName,
 		      BOOL NativePath,
-		      LPWSTR MountPoint)
+		      LPWSTR MountPoint,
+		      BOOL NumericPrint,
+		      LPWSTR FormatOptions)
 {
   PIMDISK_CREATE_DATA create_data;
   HANDLE driver;
   UNICODE_STRING file_name;
   DWORD dw;
+  WCHAR device_path[MAX_PATH];
 
   RtlInitUnicodeString(&file_name, IMDISK_CTL_DEVICE_NAME);
 
@@ -681,15 +826,13 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 
   *DeviceNumber = create_data->DeviceNumber;
 
+  // Build device path, e.g. \Device\ImDisk2
+  _snwprintf(device_path, sizeof(device_path) / sizeof(*device_path) - 1,
+	     IMDISK_DEVICE_BASE_NAME L"%u", create_data->DeviceNumber);
+  device_path[sizeof(device_path)/sizeof(*device_path) - 1] = 0;
+
   if (MountPoint != NULL)
     {
-      WCHAR device_path[MAX_PATH];
-
-      // Build device path, e.g. \Device\ImDisk2
-      _snwprintf(device_path, sizeof(device_path) / sizeof(*device_path) - 1,
-		 IMDISK_DEVICE_BASE_NAME L"%u", create_data->DeviceNumber);
-      device_path[sizeof(device_path)/sizeof(*device_path) - 1] = 0;
-
       if (create_data->DriveLetter == 0)
 	{
 	  if (!ImDiskCreateMountPoint(MountPoint, device_path))
@@ -718,7 +861,7 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 
 		case ERROR_DIRECTORY:
 		case ERROR_DIR_NOT_EMPTY:
-		  fputs("Mount points can only created on empty "
+		  fputs("Mount points can only be created on empty "
 			"directories.\r\n", stderr);
 		  break;
 
@@ -740,44 +883,21 @@ ImDiskCliCreateDevice(LPDWORD DeviceNumber,
 #endif
     }
 
-  return 0;
-}
+  if (NumericPrint)
+    printf("%u\n", *DeviceNumber);
+  else
+    ImDiskOemPrintF(stdout,
+		    "Created device %1!u!: %2!ws! -> %3!ws!",
+		    *DeviceNumber,
+		    MountPoint == NULL ? L"No mountpoint" : MountPoint,
+		    FileName == NULL ? L"Image in memory" : FileName);
 
-// Formats a new virtual disk device by calling system supplied format.com
-// command line tool. MountPoint parameter should be a drive letter followed by
-// a colon, and FormatOptions parameter is passed to the format.com command
-// line.
-int
-ImDiskCliFormatDisk(LPWSTR MountPoint, LPWSTR FormatOptions)
-{
-  WCHAR format_cmd_prefix[] = L"format.com ";
+  if (FormatOptions != NULL)
+    return ImDiskCliFormatDisk(device_path,
+			       create_data->DriveLetter,
+			       FormatOptions);
 
-  LPWSTR format_cmd = (LPWSTR) _alloca(sizeof(format_cmd_prefix) +
-				       ((wcslen(MountPoint) + 1) << 1) +
-				       (wcslen(FormatOptions) << 1));
-
-  STARTUPINFO startup_info = { sizeof(startup_info) };
-  PROCESS_INFORMATION process_info;
-
-  puts("Formatting disk...");
-
-  wcscpy(format_cmd, format_cmd_prefix);
-  wcscat(format_cmd, MountPoint);
-  wcscat(format_cmd, L" ");
-  wcscat(format_cmd, FormatOptions);
-
-  if (!CreateProcess(NULL, format_cmd, NULL, NULL, TRUE, 0, NULL, NULL,
-		     &startup_info, &process_info))
-    {
-      PrintLastError(L"Cannot format drive:");
-      return IMDISK_CLI_ERROR_FORMAT;
-    }
-
-  CloseHandle(process_info.hThread);
-  WaitForSingleObject(process_info.hProcess, INFINITE);
-  CloseHandle(process_info.hProcess);
-
-  return 0;
+  return IMDISK_CLI_SUCCESS;
 }
 
 // Removes an existing virtual disk device. ForeDismount can be set to TRUE to
@@ -811,6 +931,12 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
       PIMDISK_CREATE_DATA create_data = (PIMDISK_CREATE_DATA)
 	_alloca(sizeof(IMDISK_CREATE_DATA) + (MAX_PATH << 2));
       HANDLE device;
+
+      if (create_data == NULL)
+	{
+	  perror("Memory allocation error");
+	  return IMDISK_CLI_ERROR_FATAL;
+	}
 
       if (MountPoint == NULL)
 	{
@@ -1079,8 +1205,8 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	  };
 
 	  WCHAR drive_mount_point[3] = L" :";
-	  WCHAR reg_key[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints\\ ";
-	  WCHAR reg_key2[] = L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\ ";
+	  WCHAR reg_key[] = KEY_NAME_HKEY_MOUNTPOINTS;
+	  WCHAR reg_key2[] = KEY_NAME_HKEY_MOUNTPOINTS2;
 
 	  drive_mount_point[0] = MountPoint[0];
 
@@ -1089,8 +1215,8 @@ ImDiskCliRemoveDevice(DWORD DeviceNumber,
 	  if (!DefineDosDevice(DDD_REMOVE_DEFINITION, drive_mount_point, NULL))
 	    PrintLastError(MountPoint);
 
-	  reg_key[63] = MountPoint[0];
-	  reg_key2[64] = MountPoint[0];
+	  reg_key[(sizeof(reg_key) >> 1) - 2] = MountPoint[0];
+	  reg_key2[(sizeof(reg_key2) >> 1) - 2] = MountPoint[0];
 
 	  RegDeleteKey(HKEY_CURRENT_USER, reg_key);
 	  RegDeleteKey(HKEY_CURRENT_USER, reg_key2);
@@ -1773,7 +1899,7 @@ wmain(int argc, LPWSTR argv[])
 	  ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\n"
 	   "Version %i.%i.%i - (Compiled " __DATE__ ")\n"
 	   "\n"
-	   "Copyright (C) 2004-2010 Olof Lagerkvist.\r\n"
+	   "Copyright (C) 2004-2014 Olof Lagerkvist.\r\n"
 "\n"
 	   "http://www.ltr-data.se     olof@ltr-data.se\r\n"
 	   "\n"
@@ -1980,6 +2106,10 @@ wmain(int argc, LPWSTR argv[])
 		      ImDiskSyntaxHelp();
 
 		    flags |= IMDISK_TYPE_FILE | IMDISK_FILE_TYPE_AWEALLOC;
+		  }
+		else if (wcscmp(opt, L"bswap") == 0)
+		  {
+		    flags |= IMDISK_OPTION_BYTE_SWAP;
 		  }
 		else if (IMDISK_DEVICE_TYPE(flags) != 0)
 		  ImDiskSyntaxHelp();
@@ -2323,29 +2453,18 @@ wmain(int argc, LPWSTR argv[])
 	      }
 	  }
 
-	ret = ImDiskCliCreateDevice(&device_number, &disk_geometry,
-				    &image_offset, flags, file_name,
-				    native_path, mount_point);
+	ret = ImDiskCliCreateDevice(&device_number,
+				    &disk_geometry,
+				    &image_offset,
+				    flags,
+				    file_name,
+				    native_path,
+				    mount_point,
+				    numeric_print,
+				    format_options);
 
 	if (ret != 0)
 	  return ret;
-
-	if (numeric_print)
-	  printf("%u\n", device_number);
-	else
-	  ImDiskOemPrintF(stdout,
-			  "Created device %1!u!: %2!ws! -> %3!ws!",
-			  device_number,
-			  mount_point == NULL ? L"No mountpoint" : mount_point,
-			  file_name == NULL ? L"VM image" : file_name);
-
-	if (format_options != NULL)
-	  if (mount_point != NULL)
-	    ImDiskCliFormatDisk(mount_point, format_options);
-	  else
-	    fputs("Formatting is not supported without a mount point.\r\n"
-		  "The virtual disk has been created without formatting.\r\n",
-		  stderr);
 
 	// Notify processes that new device has arrived.
 	if (mount_point != NULL)

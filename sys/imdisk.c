@@ -5,7 +5,7 @@
     requests somewhere else, possibly to another machine, through a
     co-operating user-mode service, ImDskSvc.
 
-    Copyright (C) 2005-2013 Olof Lagerkvist.
+    Copyright (C) 2005-2014 Olof Lagerkvist.
 
     Permission is hereby granted, free of charge, to any person
     obtaining a copy of this software and associated documentation
@@ -223,6 +223,7 @@ typedef struct _DEVICE_EXTENSION
 
   HANDLE file_handle;          // For file or proxy type
   PUCHAR image_buffer;         // For vm type
+  BOOLEAN byte_swap;           // If image I/O should swap each pair of bytes
   PROXY_CONNECTION proxy;      // Proxy connection data
   UNICODE_STRING file_name;    // Name of image file, if any
   WCHAR drive_letter;          // Drive letter if maintained by the driver
@@ -1436,6 +1437,99 @@ ImDiskReadFormattedGeometry(IN OUT PIMDISK_CREATE_DATA CreateData,
 }
 
 NTSTATUS
+ImDiskGetDiskSize(IN HANDLE FileHandle,
+		  IN OUT PIO_STATUS_BLOCK IoStatus,
+		  IN OUT PLARGE_INTEGER DiskSize)
+{
+  NTSTATUS status;
+
+  {
+    FILE_STANDARD_INFORMATION file_standard;
+
+    status = ZwQueryInformationFile(FileHandle,
+				    IoStatus,
+				    &file_standard,
+				    sizeof(FILE_STANDARD_INFORMATION),
+				    FileStandardInformation);
+
+    if (NT_SUCCESS(status))
+      {
+	*DiskSize = file_standard.EndOfFile;
+	return status;
+      }
+
+    KdPrint(("ImDisk: FileStandardInformation not supported for "
+	     "target device. %#x\n", status));
+  }
+
+  // Retry with IOCTL_DISK_GET_LENGTH_INFO instead
+  {
+    GET_LENGTH_INFORMATION part_info = { 0 };
+
+    status =
+      ZwDeviceIoControlFile(FileHandle,
+			    NULL,
+			    NULL,
+			    NULL,
+			    IoStatus,
+			    IOCTL_DISK_GET_LENGTH_INFO,
+			    NULL,
+			    0,
+			    &part_info,
+			    sizeof(part_info));
+
+    if (status == STATUS_PENDING)
+      {
+	ZwWaitForSingleObject(FileHandle, FALSE, NULL);
+	status = IoStatus->Status;
+      }
+
+    if (NT_SUCCESS(status))
+      {
+	*DiskSize = part_info.Length;
+	return status;
+      }
+
+    KdPrint(("ImDisk: IOCTL_DISK_GET_LENGTH_INFO not supported "
+	     "for target device. %#x\n", status));
+  }
+
+  // Retry with IOCTL_DISK_GET_PARTITION_INFO instead
+  {
+    PARTITION_INFORMATION part_info = { 0 };
+
+    status =
+      ZwDeviceIoControlFile(FileHandle,
+			    NULL,
+			    NULL,
+			    NULL,
+			    IoStatus,
+			    IOCTL_DISK_GET_PARTITION_INFO,
+			    NULL,
+			    0,
+			    &part_info,
+			    sizeof(part_info));
+    
+    if (status == STATUS_PENDING)
+      {
+	ZwWaitForSingleObject(FileHandle, FALSE, NULL);
+	status = IoStatus->Status;
+      }
+
+    if (NT_SUCCESS(status))
+      {
+	*DiskSize = part_info.PartitionLength;
+	return status;
+      }
+
+    KdPrint(("ImDisk: IOCTL_DISK_GET_PARTITION_INFO not supported "
+	     "for target device. %#x\n", status));
+  }
+
+  return status;
+}
+
+NTSTATUS
 ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		   IN OUT PIMDISK_CREATE_DATA CreateData,
 		   IN PETHREAD ClientThread,
@@ -2115,13 +2209,12 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
       // Get the file size of the disk file.
       if (IMDISK_TYPE(CreateData->Flags) != IMDISK_TYPE_PROXY)
 	{
-	  FILE_STANDARD_INFORMATION file_standard;
+	  LARGE_INTEGER disk_size;
 
-	  status = ZwQueryInformationFile(file_handle,
-					  &io_status,
-					  &file_standard,
-					  sizeof(FILE_STANDARD_INFORMATION),
-					  FileStandardInformation);
+	  status =
+	    ImDiskGetDiskSize(file_handle,
+			      &io_status,
+			      &disk_size);
 
 	  if (!NT_SUCCESS(status))
 	    {
@@ -2140,10 +2233,10 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 			      0,
 			      0,
 			      NULL,
-			      L"Error getting FILE_STANDARD_INFORMATION."));
+			      L"Error getting image size."));
 
 	      KdPrint
-		(("ImDisk: Error getting FILE_STANDARD_INFORMATION (%#x).\n",
+		(("ImDisk: Error getting image size (%#x).\n",
 		  status));
 
 	      return status;
@@ -2160,14 +2253,14 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 #ifdef _WIN64
 	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
 		CreateData->DiskGeometry.Cylinders.QuadPart =
-		  file_standard.EndOfFile.QuadPart -
+		  disk_size.QuadPart -
 		  CreateData->ImageOffset.QuadPart;
 
 	      max_size = CreateData->DiskGeometry.Cylinders.QuadPart;
 #else
 	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
 		// Check that file size < 2 GB.
-		if ((file_standard.EndOfFile.QuadPart -
+		if ((disk_size.QuadPart -
 		     CreateData->ImageOffset.QuadPart) & 0xFFFFFFFF80000000)
 		  {
 		    ZwClose(file_handle);
@@ -2179,7 +2272,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 		  }
 		else
 		  CreateData->DiskGeometry.Cylinders.QuadPart =
-		    file_standard.EndOfFile.QuadPart -
+		    disk_size.QuadPart -
 		    CreateData->ImageOffset.QuadPart;
 
 	      max_size = CreateData->DiskGeometry.Cylinders.LowPart;
@@ -2260,7 +2353,7 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
 
 	      if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
 		CreateData->DiskGeometry.Cylinders.QuadPart =
-		  file_standard.EndOfFile.QuadPart -
+		  disk_size.QuadPart -
 		  CreateData->ImageOffset.QuadPart;
 
 	      alignment_requirement = file_alignment.AlignmentRequirement;
@@ -3023,6 +3116,12 @@ ImDiskCreateDevice(IN PDRIVER_OBJECT DriverObject,
     device_extension->awealloc_disk = TRUE;
   else
     device_extension->awealloc_disk = FALSE;
+
+  // Byte-swap
+  if (IMDISK_BYTE_SWAP(CreateData->Flags))
+    device_extension->byte_swap = TRUE;
+  else
+    device_extension->byte_swap = FALSE;
 
   device_extension->image_buffer = image_buffer;
   device_extension->file_handle = file_handle;
@@ -4924,6 +5023,22 @@ ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
 #pragma code_seg("PAGE")
 
 VOID
+ImDiskByteSwapBuffer(IN OUT PUCHAR Buffer,
+		     IN ULONG_PTR Length)
+{
+  PUCHAR ptr;
+
+  for (ptr = Buffer;
+       (ULONG_PTR)(ptr - Buffer) < Length;
+       ptr += 2)
+    {
+      UCHAR b1 = ptr[1];
+      ptr[1] = ptr[0];
+      ptr[0] = b1;
+    }
+}
+
+VOID
 ImDiskDeviceThread(IN PVOID Context)
 {
   PDEVICE_THREAD_DATA device_thread_data;
@@ -5052,7 +5167,13 @@ ImDiskDeviceThread(IN PVOID Context)
 	  ImDiskRemoveVirtualDisk(device_object);
 	}
       else
-	KdPrint(("ImDisk: Image loaded successfully.\n"));
+	{
+	  KdPrint(("ImDisk: Image loaded successfully.\n"));
+
+	  if (device_extension->byte_swap)
+	    ImDiskByteSwapBuffer(device_extension->image_buffer,
+				 disk_size);
+	}
     }
 
   for (;;)
@@ -5244,6 +5365,10 @@ ImDiskDeviceThread(IN PVOID Context)
 				device_extension->last_io_offset,
 				irp->IoStatus.Information);
 
+		  if (device_extension->byte_swap)
+		    ImDiskByteSwapBuffer(system_buffer,
+					 irp->IoStatus.Information);
+
 		  break;
 		}
 	      else if (device_extension->last_io_length <
@@ -5308,6 +5433,10 @@ ImDiskDeviceThread(IN PVOID Context)
 
 	    RtlCopyMemory(system_buffer, device_extension->last_io_data,
 			  irp->IoStatus.Information);
+
+	    if (device_extension->byte_swap)
+	      ImDiskByteSwapBuffer(system_buffer,
+				   irp->IoStatus.Information);
 
 	    if (NT_SUCCESS(irp->IoStatus.Status))
 	      {
@@ -5395,6 +5524,10 @@ ImDiskDeviceThread(IN PVOID Context)
 		irp->IoStatus.Information = 0;
 		break;
 	      }
+
+	    if (device_extension->byte_swap)
+	      ImDiskByteSwapBuffer(system_buffer,
+				   irp->IoStatus.Information);
 
 	    RtlCopyMemory(device_extension->last_io_data, system_buffer,
 			  io_stack->Parameters.Write.Length);
@@ -6652,14 +6785,14 @@ ImDiskReadProxy(IN PPROXY_CONNECTION Proxy,
 			       (ULONG) read_req.length,
 			       (PULONG) &read_resp.length);
 
-      length_done += (ULONG) read_resp.length;
-
       if (!NT_SUCCESS(status))
 	{
 	  IoStatusBlock->Status = STATUS_IO_DEVICE_ERROR;
 	  IoStatusBlock->Information = length_done;
 	  return IoStatusBlock->Status;
 	}
+
+      length_done += (ULONG) read_resp.length;
 
       if (read_resp.errorno != 0)
 	{

@@ -2,14 +2,16 @@
 #define _UNICODE
 #include <windows.h>
 
+#include <imdiskver.h>
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // Version
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 1,7,6,41
-PRODUCTVERSION 1,7,6,41
+FILEVERSION IMDISK_RC_VERSION_FLD,41
+PRODUCTVERSION IMDISK_RC_VERSION_FLD,41
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -26,12 +28,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "ImDisk Virtual Disk Driver\0"
-            VALUE "FileVersion", "1.7.6.41\0"
+            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".41\0"
             VALUE "InternalName", "imdisk\0"
-            VALUE "LegalCopyright", "Copyright © 2005-2013 Olof Lagerkvist etc.\0"
+            VALUE "LegalCopyright", "Copyright © 2005-2014 Olof Lagerkvist etc.\0"
             VALUE "OriginalFilename", "imdisk.sys\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", "1.7.6.41\0"
+            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".41\0"
         END
     END
     BLOCK "VarFileInfo"
