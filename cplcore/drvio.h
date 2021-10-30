@@ -2,17 +2,31 @@
 extern "C" {
 #endif
 
-  INT_PTR
-  CALLBACK
-  StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    INT_PTR
+        CALLBACK
+        StatusDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-  INT_PTR
-  CALLBACK
-  NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+    INT_PTR
+        CALLBACK
+        NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-  BOOL
-  WINAPI
-  ImDiskInteractiveCheckSave(HWND hWnd, HANDLE device);
+    BOOL
+        WINAPI
+        ImDiskInteractiveCheckSave(HWND hWnd, HANDLE device);
+
+  LONG
+      WINAPI
+      ImDiskShowCPlAppletElevated(HWND hWnd);
+
+  VOID
+      WINAPI
+      ImDiskRelaunchElevated(HWND hWnd, LPCSTR DllFunction,
+          LPCSTR CommandLine, int nCmdShow);
+
+  VOID
+      WINAPI
+      ImDiskRelaunchElevatedW(HWND hWnd, LPCWSTR DllFunction,
+          LPCWSTR CommandLine, int nCmdShow);
 
   /**
   This function is a quick perror-style way of displaying an error message
@@ -25,7 +39,7 @@ extern "C" {
   VOID
       WINAPI
       MsgBoxLastError(IN HWND hWndParent OPTIONAL,
-      IN LPCWSTR Prefix);
+          IN LPCWSTR Prefix);
 
   extern
   ULONGLONG

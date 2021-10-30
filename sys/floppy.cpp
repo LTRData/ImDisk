@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -45,7 +45,7 @@ Copyright (C) The Regents of the University of California.
 
 #pragma code_seg("PAGE")
 
-#ifdef INCLUDE_VFD_ORIGIN
+#ifdef INCLUDE_GPL_ORIGIN
 
 //
 //	Format tracks
@@ -153,4 +153,4 @@ ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
     return status;
 }
 
-#endif // INCLUDE_VFD_ORIGIN
+#endif // INCLUDE_GPL_ORIGIN

@@ -1,4 +1,6 @@
-﻿Imports LTR.IO.ImDisk.Devio.Server.Providers
+﻿Imports System.ComponentModel
+Imports System.IO
+Imports LTR.IO.ImDisk.Devio.Server.Providers
 
 Namespace Client
 
@@ -8,8 +10,9 @@ Namespace Client
     Public Class DevioProviderStream
         Inherits Stream
 
-        Private _Provider As IDevioProvider
-        Private _OwnsProvider As Boolean
+        Public ReadOnly Property Provider As IDevioProvider
+
+        Public ReadOnly Property OwnsProvider As Boolean
 
         Public Sub New(Provider As IDevioProvider, ownsProvider As Boolean)
             _Provider = Provider

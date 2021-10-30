@@ -7,7 +7,7 @@
     <SOURCES Condition="'$(OVERRIDE_SOURCES)'!='true'">imdisk.c imdisk.rc</SOURCES>
     <MSC_WARNING_LEVEL Condition="'$(OVERRIDE_MSC_WARNING_LEVEL)'!='true'">/W4 /WX /wd4201 /wd4204 /wd4221</MSC_WARNING_LEVEL>
     <MSC_OPTIMIZATION Condition="'$(OVERRIDE_MSC_OPTIMIZATION)'!='true'">/Ox /GF</MSC_OPTIMIZATION>
-    <C_DEFINES Condition="'$(OVERRIDE_C_DEFINES)'!='true'">$(C_DEFINES) /DINCLUDE_VFD_ORIGIN</C_DEFINES>
+    <C_DEFINES Condition="'$(OVERRIDE_C_DEFINES)'!='true'">$(C_DEFINES) /DINCLUDE_GPL_ORIGIN</C_DEFINES>
   </PropertyGroup>
   <Choose>
     <When Condition="'$(_BUILDARCH)'=='x86'">

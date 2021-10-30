@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -174,7 +174,8 @@ typedef struct _DEVICE_EXTENSION
     BOOLEAN vm_disk;             // TRUE if this device is a virtual memory disk
     BOOLEAN awealloc_disk;       // TRUE if this device is a physical memory disk
                                  // through AWEAlloc driver
-    BOOLEAN use_proxy;           // TRUE if this device uses proxy device for I/O
+    BOOLEAN use_proxy;           // TRUE if this device uses proxy service through
+                                 // shared memory, TCP/IP, serial port etc for I/O
     BOOLEAN proxy_unmap;         // TRUE if proxy supports UNMAP operations
     BOOLEAN proxy_zero;          // TRUE if proxy supports ZERO operations
     BOOLEAN image_modified;      // TRUE if this device has been written to
@@ -346,13 +347,13 @@ ImDiskReadWriteLowerDevice(PIRP Irp, PDEVICE_EXTENSION DeviceExtension);
 NTSTATUS
 ImDiskDeviceControlLowerDevice(PIRP Irp, PDEVICE_EXTENSION DeviceExtension);
 
-#ifdef INCLUDE_VFD_ORIGIN
+#ifdef INCLUDE_GPL_ORIGIN
 
 NTSTATUS
 ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
     IN PIRP Irp);
 
-#endif // INCLUDE_VFD_ORIGIN
+#endif // INCLUDE_GPL_ORIGIN
 
 #ifdef _AMD64_
 

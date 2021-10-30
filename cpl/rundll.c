@@ -2,7 +2,7 @@
 rundll32.exe compatible functions for the ImDisk Virtual Disk Driver for
 Windows NT/2000/XP.
 
-Copyright (C) 2007-2018 Olof Lagerkvist.
+Copyright (C) 2007-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -55,6 +55,14 @@ HINSTANCE hInst,
 LPWSTR lpszCmdLine,
 int nCmdShow)
 {
+    if (!ImDiskIsProcessElevated())
+    {
+        ImDiskRelaunchElevatedW(hWnd, L"imdisk.cpl,RunDLL_MountFile",
+            lpszCmdLine, nCmdShow);
+
+        return;
+    }
+
     DialogBoxParam(hInstance, MAKEINTRESOURCE(IDD_NEWDIALOG), hWnd, NewDlgProc,
         (LPARAM)lpszCmdLine);
 }
@@ -69,6 +77,14 @@ int nCmdShow)
 {
     int file_name_length;
     LPWSTR file_name;
+
+    if (!ImDiskIsProcessElevated())
+    {
+        ImDiskRelaunchElevated(hWnd, "imdisk.cpl,RunDLL_MountFile",
+            lpszCmdLine, nCmdShow);
+
+        return;
+    }
 
     file_name_length = (int)(strlen(lpszCmdLine) + 1);
     file_name = (LPWSTR)malloc(((size_t)file_name_length) << 1);
@@ -107,6 +123,14 @@ int nCmdShow)
     WCHAR win_dir[MAX_PATH + 1] = L"";
     WCHAR mount_point[3] = L" :";
     HWND hWndStatus;
+
+    if (!ImDiskIsProcessElevated())
+    {
+        ImDiskRelaunchElevated(hWnd, "imdisk.cpl,RunDLL_RemoveDevice",
+            lpszCmdLine, nCmdShow);
+
+        return;
+    }
 
     // If user right-clicked in Windows Explorer the drive we are dismounting is
     // the current directory in this process. Change to Windows directory.
@@ -149,6 +173,14 @@ int nCmdShow)
     WCHAR mount_point[] = L"\\\\.\\ :";
     HANDLE hDev;
     BOOL bIsCdRomType = FALSE;
+
+    if (!ImDiskIsProcessElevated())
+    {
+        ImDiskRelaunchElevated(hWnd, "imdisk.cpl,RunDLL_SaveImageFile",
+            lpszCmdLine, nCmdShow);
+
+        return;
+    }
 
     switch (GetDriveTypeA(lpszCmdLine))
     {

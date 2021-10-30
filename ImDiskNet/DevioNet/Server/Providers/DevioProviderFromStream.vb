@@ -1,4 +1,6 @@
-﻿Namespace Server.Providers
+﻿Imports System.IO
+
+Namespace Server.Providers
 
     ''' <summary>
     ''' Class that implements <see>IDevioProvider</see> interface with a System.IO.Stream
@@ -23,7 +25,7 @@
         ''' to an object of a class derived from System.IO.Stream.
         ''' </summary>
         ''' <param name="Stream">Object of a class derived from System.IO.Stream.</param>
-        ''' <param name="ownsStream">Indicates whether Stream object will be automacially closed when this
+        ''' <param name="ownsStream">Indicates whether Stream object will be automatically closed when this
         ''' instance is disposed.</param>
         Public Sub New(Stream As Stream, ownsStream As Boolean)
             _BaseStream = Stream

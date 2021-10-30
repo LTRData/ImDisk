@@ -1,5 +1,10 @@
-﻿Imports LTR.IO.ImDisk.Devio.IMDPROXY_CONSTANTS
+﻿Imports System.IO
+Imports System.IO.MemoryMappedFiles
+Imports System.Runtime.InteropServices
+Imports System.Threading
+Imports LTR.IO.ImDisk.Devio.IMDPROXY_CONSTANTS
 Imports LTR.IO.ImDisk.Devio.Server.Providers
+Imports Microsoft.Win32.SafeHandles
 
 Namespace Server.Services
 
@@ -35,11 +40,10 @@ Namespace Server.Services
             End Get
         End Property
 
-        Private Shared _random As New Random
         Private Shared Function GetNextRandomValue() As Integer
-            SyncLock _random
-                Return _random.Next()
-            End SyncLock
+            Dim value As Integer
+            NativeFileIO.UnsafeNativeMethods.RtlGenRandom(value, 4)
+            Return value
         End Function
 
         ''' <summary>
@@ -91,7 +95,7 @@ Namespace Server.Services
         ''' instance is disposed.</param>
         ''' <param name="BufferSize">Buffer size to use for shared memory I/O communication.</param>
         Public Sub New(DevioProvider As IDevioProvider, OwnsProvider As Boolean, BufferSize As Long)
-            MyClass.New("devio-" & GetNextRandomValue(), DevioProvider, OwnsProvider, BufferSize)
+            MyClass.New($"devio-{GetNextRandomValue()}", DevioProvider, OwnsProvider, BufferSize)
         End Sub
 
         ''' <summary>
@@ -115,15 +119,15 @@ Namespace Server.Services
                 Dim ServerMutex As Mutex
 
                 Try
-                    Trace.WriteLine("Creating objects for shared memory communication '" & _ObjectName & "'.")
+                    Trace.WriteLine($"Creating objects for shared memory communication '{_ObjectName}'.")
 
-                    RequestEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & _ObjectName & "_Request")
+                    RequestEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:=$"Global\{_ObjectName}_Request")
                     DisposableObjects.Add(RequestEvent)
 
-                    ResponseEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & _ObjectName & "_Response")
+                    ResponseEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:=$"Global\{_ObjectName}_Response")
                     DisposableObjects.Add(ResponseEvent)
 
-                    ServerMutex = New Mutex(initiallyOwned:=False, name:="Global\" & _ObjectName & "_Server")
+                    ServerMutex = New Mutex(initiallyOwned:=False, name:=$"Global\{_ObjectName}_Server")
                     DisposableObjects.Add(ServerMutex)
 
                     If ServerMutex.WaitOne(0) = False Then
@@ -132,12 +136,21 @@ Namespace Server.Services
                         Return
                     End If
 
-                    Mapping = MemoryMappedFile.CreateNew("Global\" & _ObjectName,
+#If NETFRAMEWORK AndAlso Not NET46_OR_GREATER Then
+                    Mapping = MemoryMappedFile.CreateNew($"Global\{_ObjectName}",
                                                          _BufferSize,
                                                          MemoryMappedFileAccess.ReadWrite,
                                                          MemoryMappedFileOptions.None,
                                                          Nothing,
                                                          HandleInheritability.None)
+#Else
+                    Mapping = MemoryMappedFile.CreateNew($"Global\{_ObjectName}",
+                                                         _BufferSize,
+                                                         MemoryMappedFileAccess.ReadWrite,
+                                                         MemoryMappedFileOptions.None,
+                                                         HandleInheritability.None)
+#End If
+
                     DisposableObjects.Add(Mapping)
 
                     Dim MapAccessor = Mapping.CreateViewAccessor()
@@ -146,7 +159,7 @@ Namespace Server.Services
                     MapView = MapAccessor.SafeMemoryMappedViewHandle
                     DisposableObjects.Add(MapView)
 
-                    Trace.WriteLine("Created shared memory object, " & MapView.ByteLength & " bytes.")
+                    Trace.WriteLine($"Created shared memory object, {MapView.ByteLength} bytes.")
 
                     Trace.WriteLine("Raising service ready event.")
                     OnServiceReady()
@@ -204,7 +217,7 @@ Namespace Server.Services
                                     Return
 
                                 Case Else
-                                    Trace.WriteLine("Unsupported request code: " & RequestCode.ToString())
+                                    Trace.WriteLine($"Unsupported request code: {RequestCode}")
                                     Return
 
                             End Select
@@ -222,7 +235,7 @@ Namespace Server.Services
                     Trace.WriteLine("Client disconnected.")
 
                 Catch ex As Exception
-                    Trace.WriteLine("Unhandled exception in service thread: " & ex.ToString())
+                    Trace.WriteLine($"Unhandled exception in service thread: {ex}")
                     OnServiceUnhandledException(New UnhandledExceptionEventArgs(ex, True))
 
                 Finally
@@ -262,15 +275,15 @@ Namespace Server.Services
 
             Try
                 If ReadLength > MapView.ByteLength - IMDPROXY_HEADER_SIZE Then
-                    Trace.WriteLine("Requested read length " & ReadLength & ", lowered to " & CInt(MapView.ByteLength - CInt(IMDPROXY_HEADER_SIZE)) & " bytes.")
-                    ReadLength = CInt(MapView.ByteLength - CInt(IMDPROXY_HEADER_SIZE))
+                    Trace.WriteLine($"Requested read length {ReadLength}, lowered to {MapView.ByteLength - IMDPROXY_HEADER_SIZE} bytes.")
+                    ReadLength = CInt(MapView.ByteLength - IMDPROXY_HEADER_SIZE)
                 End If
                 Response.length = CULng(DevioProvider.Read(MapView.DangerousGetHandle(), IMDPROXY_HEADER_SIZE, ReadLength, Offset))
                 Response.errorno = 0
 
             Catch ex As Exception
                 Trace.WriteLine(ex.ToString())
-                Trace.WriteLine("Read request at " & Offset.ToString("X").PadLeft(8, "0"c) & " for " & ReadLength & " bytes.")
+                Trace.WriteLine($"Read request at 0x{Offset:X8} for {ReadLength} bytes.")
                 Response.errorno = 1
                 Response.length = 0
 
@@ -297,7 +310,7 @@ Namespace Server.Services
 
             Try
                 If Length > MapView.ByteLength - IMDPROXY_HEADER_SIZE Then
-                    Throw New Exception("Requested write length " & Length & ". Buffer size is " & CInt(MapView.ByteLength - CInt(IMDPROXY_HEADER_SIZE)) & " bytes.")
+                    Throw New Exception($"Requested write length {Length}. Buffer size is {CInt(MapView.ByteLength - IMDPROXY_HEADER_SIZE)} bytes.")
                 End If
                 Length = DevioProvider.Write(MapView.DangerousGetHandle(), IMDPROXY_HEADER_SIZE, Length, Offset)
                 Response.errorno = 0
@@ -305,7 +318,7 @@ Namespace Server.Services
 
             Catch ex As Exception
                 Trace.WriteLine(ex.ToString())
-                Trace.WriteLine("Write request at " & Offset.ToString("X").PadLeft(8, "0"c) & " for " & Length & " bytes.")
+                Trace.WriteLine($"Write request at 0x{Offset:X8} for {Length} bytes.")
                 Response.errorno = 1
                 Response.length = 0
 
@@ -326,49 +339,6 @@ Namespace Server.Services
                 Return ImDiskFlags.TypeProxy Or ImDiskFlags.ProxyTypeSharedMemory
             End Get
         End Property
-
-        ''' <summary>
-        ''' A System.Collections.Generic.List(Of T) extended with IDisposable implementation that disposes each
-        ''' object in the list when the list is disposed.
-        ''' </summary>
-        ''' <typeparam name="T"></typeparam>
-        <ComVisible(False)>
-        Private Class DisposableList(Of T As IDisposable)
-            Inherits List(Of T)
-
-            Implements IDisposable
-
-            Private disposedValue As Boolean    ' To detect redundant calls
-
-            ' IDisposable
-            Protected Overridable Sub Dispose(disposing As Boolean)
-                If Not Me.disposedValue Then
-                    If disposing Then
-                        ' TODO: free managed resources when explicitly called
-                        For Each obj In Me
-                            obj.Dispose()
-                        Next
-                    End If
-                End If
-                Me.disposedValue = True
-
-                ' TODO: free shared unmanaged resources
-                Clear()
-
-            End Sub
-
-            ' This code added by Visual Basic to correctly implement the disposable pattern.
-            Public Sub Dispose() Implements IDisposable.Dispose
-                ' Do not change this code.  Put cleanup code in Dispose(disposing As Boolean) above.
-                Dispose(True)
-                GC.SuppressFinalize(Me)
-            End Sub
-
-            Protected Overrides Sub Finalize()
-                Dispose(False)
-                MyBase.Finalize()
-            End Sub
-        End Class
 
     End Class
 

@@ -1,7 +1,7 @@
 /*
 No-GUI support for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-Copyright (C) 2007-2018 Olof Lagerkvist.
+Copyright (C) 2007-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation

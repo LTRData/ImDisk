@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.23107.0
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29920.165
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "ImDiskNet", "ImDiskNet\ImDiskNet.vbproj", "{3EFCB6F8-EF7E-4F60-A0DE-BB197240FCC9}"
 EndProject
@@ -13,6 +13,11 @@ Project("{7CF6DF6D-3B04-46F8-A40B-537D21BCA0B4}") = "ImDiskNetHelpBuilder", "ImD
 	ProjectSection(ProjectDependencies) = postProject
 		{C8131F7E-E240-4A1B-8D3D-FC4E5DBED050} = {C8131F7E-E240-4A1B-8D3D-FC4E5DBED050}
 		{3EFCB6F8-EF7E-4F60-A0DE-BB197240FCC9} = {3EFCB6F8-EF7E-4F60-A0DE-BB197240FCC9}
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Common", "Common", "{24EB0931-A36C-425E-ACEF-7B8E400E8C58}"
+	ProjectSection(SolutionItems) = preProject
+		Directory.build.props = Directory.build.props
 	EndProjectSection
 EndProject
 Global
@@ -54,5 +59,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DF55C9DC-F716-4394-8B6D-DEEBB8A9FE17}
 	EndGlobalSection
 EndGlobal

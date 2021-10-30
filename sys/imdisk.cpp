@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -108,7 +108,12 @@ DriverEntry(IN PDRIVER_OBJECT DriverObject,
     OBJECT_ATTRIBUTES object_attributes;
     ULONG n;
 
-    KdBreakPoint();
+#if DBG
+    if (!KD_DEBUGGER_NOT_PRESENT)
+    {
+        KdBreakPoint();
+    }
+#endif
 
     KeInitializeSpinLock(&DeviceListLock);
 
@@ -1020,7 +1025,7 @@ ImDiskCreateDriveLetter(IN WCHAR DriveLetter,
     IN ULONG DeviceNumber)
 {
     WCHAR sym_link_global_wchar[] = L"\\DosDevices\\Global\\ :";
-#ifndef _WIN64
+#ifdef _M_IX86
     WCHAR sym_link_wchar[] = L"\\DosDevices\\ :";
 #endif
     UNICODE_STRING sym_link;
@@ -1049,7 +1054,7 @@ ImDiskCreateDriveLetter(IN WCHAR DriveLetter,
     device_name_buffer[MAXIMUM_FILENAME_LENGTH - 1] = 0;
     RtlInitUnicodeString(&device_name, device_name_buffer);
 
-#ifndef _WIN64
+#ifdef _M_IX86
     sym_link_wchar[12] = DriveLetter;
 
     KdPrint(("ImDisk: Creating symlink '%ws' -> '%ws'.\n",

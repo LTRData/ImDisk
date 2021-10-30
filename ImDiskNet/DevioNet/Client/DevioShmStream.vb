@@ -1,4 +1,8 @@
-﻿Imports LTR.IO.ImDisk.Devio.IMDPROXY_CONSTANTS
+﻿Imports System.IO
+Imports System.IO.MemoryMappedFiles
+Imports System.Runtime.InteropServices
+Imports System.Threading
+Imports LTR.IO.ImDisk.Devio.IMDPROXY_CONSTANTS
 
 Namespace Client
 
@@ -22,11 +26,11 @@ Namespace Client
         ''' communication with a Devio service using this shared memory object.
         ''' </summary>
         ''' <param name="name">Name of shared memory object to use for communication.</param>
-        ''' <param name="read_only">Specifies if communication should be read-only.</param>
+        ''' <param name="[readOnly]">Specifies if communication should be read-only.</param>
         ''' <returns>Returns new instance of DevioShmStream.</returns>
-        Public Shared Function Open(name As String, read_only As Boolean) As DevioShmStream
+        Public Shared Function Open(name As String, [readOnly] As Boolean) As DevioShmStream
 
-            Return New DevioShmStream(name, read_only)
+            Return New DevioShmStream(name, [readOnly])
 
         End Function
 
@@ -35,9 +39,9 @@ Namespace Client
         ''' communication with a Devio service using this shared memory object.
         ''' </summary>
         ''' <param name="name">Name of shared memory object to use for communication.</param>
-        ''' <param name="read_only">Specifies if communication should be read-only.</param>
-        Public Sub New(name As String, read_only As Boolean)
-            MyBase.New(name, read_only)
+        ''' <param name="[readOnly]">Specifies if communication should be read-only.</param>
+        Public Sub New(name As String, [readOnly] As Boolean)
+            MyBase.New(name, [readOnly])
 
             Try
                 Using Mapping = MemoryMappedFile.OpenExisting(ObjectName,
@@ -47,11 +51,11 @@ Namespace Client
 
                 End Using
 
-                RequestEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & ObjectName & "_Request")
+                RequestEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:=$"Global\{ObjectName}_Request")
 
-                ResponseEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:="Global\" & ObjectName & "_Response")
+                ResponseEvent = New EventWaitHandle(initialState:=False, mode:=EventResetMode.AutoReset, name:=$"Global\{ObjectName}_Response")
 
-                ServerMutex = New Mutex(initiallyOwned:=False, name:="Global\" & ObjectName & "_Server")
+                ServerMutex = New Mutex(initiallyOwned:=False, name:=$"Global\{ObjectName}_Server")
 
                 MapView.Write(&H0, IMDPROXY_REQ.IMDPROXY_REQ_INFO)
 
@@ -89,9 +93,7 @@ Namespace Client
 
             For Each obj In New IDisposable() {ServerMutex, MapView, RequestEvent, ResponseEvent}
                 Try
-                    If obj IsNot Nothing Then
-                        obj.Dispose()
-                    End If
+                    obj?.Dispose()
 
                 Catch
 
@@ -116,11 +118,11 @@ Namespace Client
 
             Dim Response = MapView.Read(Of IMDPROXY_READ_RESP)(&H0)
             If Response.errorno <> 0 Then
-                Throw New EndOfStreamException("Read error: " & Response.errorno)
+                Throw New EndOfStreamException($"Read error: {Response.errorno}")
             End If
             Dim Length = CInt(Response.length)
 
-            MapView.ReadArray(CULng(IMDPROXY_HEADER_SIZE), buffer, offset, Length)
+            MapView.ReadArray(IMDPROXY_HEADER_SIZE, buffer, offset, Length)
             Position += Length
             Return Length
 
@@ -135,7 +137,7 @@ Namespace Client
 
             MapView.Write(&H0, Request)
 
-            MapView.WriteArray(CULng(IMDPROXY_HEADER_SIZE), buffer, offset, count)
+            MapView.WriteArray(IMDPROXY_HEADER_SIZE, buffer, offset, count)
 
             RequestEvent.Set()
             If WaitHandle.WaitAny({ResponseEvent, ServerMutex}) <> 0 Then
@@ -144,13 +146,13 @@ Namespace Client
 
             Dim Response = MapView.Read(Of IMDPROXY_WRITE_RESP)(&H0)
             If Response.errorno <> 0 Then
-                Throw New EndOfStreamException("Write error: " & Response.errorno)
+                Throw New EndOfStreamException($"Write error: {Response.errorno}")
             End If
             Dim Length = CInt(Response.length)
             Position += Length
 
             If Length <> count Then
-                Throw New EndOfStreamException("Write length mismatch. Wrote " & Length & " of " & count & " bytes.")
+                Throw New EndOfStreamException($"Write length mismatch. Wrote {Length} of {count} bytes.")
             End If
 
         End Sub

@@ -1,9 +1,25 @@
-﻿Imports DiscUtils
+﻿Imports System.IO
+Imports System.Net
+Imports System.Reflection
+Imports System.Threading
+Imports DiscUtils
+Imports DiscUtils.Setup
+Imports LTR.IO.ImDisk.Devio.Server.Providers
+Imports LTR.IO.ImDisk.Devio.Server.Services
 
-Module ServerModule
+Public Module ServerModule
+
+    Private ReadOnly asms As New List(Of Assembly) From {
+        GetType(Dmg.Disk).Assembly,
+        GetType(Vdi.Disk).Assembly,
+        GetType(Vmdk.Disk).Assembly,
+        GetType(Vhd.Disk).Assembly,
+        GetType(Vhdx.Disk).Assembly,
+        GetType(Xva.Disk).Assembly
+    }
 
     <MTAThread>
-    Sub Main(args As String())
+    Friend Sub Main(args As String())
 
         Try
             SafeMain(args)
@@ -22,220 +38,247 @@ Module ServerModule
 
     End Sub
 
-    Sub SafeMain(args As String())
+    Public Sub SafeMain(ParamArray args As String())
 
-        Dim DeviceName As String = Nothing
-        Dim ObjectName As String = Nothing
-        Dim ListenAddress As IPAddress = IPAddress.Any
-        Dim ListenPort As Integer
-        Dim BufferSize As Long = DevioShmService.DefaultBufferSize
-        Dim DiskAccess As FileAccess = FileAccess.ReadWrite
-        Dim PartitionNumber As Integer? = Nothing
-        Dim Mount As Boolean = False
-        Dim MountPoint As String = Nothing
-        Dim ShowHelp As Boolean = False
+        Dim device_name As String = Nothing
+        Dim object_name As String = Nothing
+        Dim listen_address As IPAddress = IPAddress.Any
+        Dim listen_port As Integer
+        Dim buffer_size As Long = DevioShmService.DefaultBufferSize
+        Dim disk_access As FileAccess = FileAccess.ReadWrite
+        Dim partition_number As Integer? = Nothing
+        Dim mount As Boolean = False
+        Dim mount_point As String = Nothing
+        Dim show_help As Boolean = False
 
         For Each arg In args
             If arg.StartsWith("/name=", StringComparison.OrdinalIgnoreCase) Then
-                ObjectName = arg.Substring("/name=".Length)
+                object_name = arg.Substring("/name=".Length)
             ElseIf arg.StartsWith("/ipaddress=", StringComparison.OrdinalIgnoreCase) Then
-                ListenAddress = IPAddress.Parse(arg.Substring("/ipaddress=".Length))
+                listen_address = IPAddress.Parse(arg.Substring("/ipaddress=".Length))
             ElseIf arg.StartsWith("/port=", StringComparison.OrdinalIgnoreCase) Then
-                ListenPort = Integer.Parse(arg.Substring("/port=".Length))
+                listen_port = Integer.Parse(arg.Substring("/port=".Length), Globalization.NumberFormatInfo.InvariantInfo)
             ElseIf arg.StartsWith("/buffersize=", StringComparison.OrdinalIgnoreCase) Then
-                BufferSize = Long.Parse(arg.Substring("/buffersize=".Length))
+                buffer_size = Long.Parse(arg.Substring("/buffersize=".Length), Globalization.NumberFormatInfo.InvariantInfo)
             ElseIf arg.StartsWith("/partition=", StringComparison.OrdinalIgnoreCase) Then
-                PartitionNumber = Integer.Parse(arg.Substring("/partition=".Length))
+                partition_number = Integer.Parse(arg.Substring("/partition=".Length), Globalization.NumberFormatInfo.InvariantInfo)
             ElseIf arg.StartsWith("/filename=", StringComparison.OrdinalIgnoreCase) Then
-                DeviceName = arg.Substring("/filename=".Length)
+                device_name = arg.Substring("/filename=".Length)
             ElseIf arg.Equals("/readonly", StringComparison.OrdinalIgnoreCase) Then
-                DiskAccess = FileAccess.Read
+                disk_access = FileAccess.Read
             ElseIf arg.Equals("/mount", StringComparison.OrdinalIgnoreCase) Then
-                Mount = True
+                mount = True
             ElseIf arg.Equals("/trace", StringComparison.OrdinalIgnoreCase) Then
                 Trace.Listeners.Add(New ConsoleTraceListener)
             ElseIf arg.StartsWith("/mount=", StringComparison.OrdinalIgnoreCase) Then
-                Mount = True
-                MountPoint = arg.Substring("/mount=".Length)
-            ElseIf arg = "/?" OrElse arg.Equals("/help", StringComparison.OrdinalIgnoreCase) Then
-                ShowHelp = True
+                mount = True
+                mount_point = arg.Substring("/mount=".Length)
+            ElseIf arg.StartsWith("/asm=", StringComparison.OrdinalIgnoreCase) Then
+                Dim asmname = AssemblyName.GetAssemblyName(arg.Substring("/asm=".Length))
+                asms.Add(Assembly.Load(asmname))
+            ElseIf arg.Equals("/?", StringComparison.Ordinal) OrElse arg.Equals("/help", StringComparison.OrdinalIgnoreCase) Then
+                show_help = True
                 Exit For
             Else
                 Console.WriteLine("Unsupported switch: " & arg)
-                ShowHelp = True
+                show_help = True
                 Exit For
             End If
         Next
 
         If _
-          ShowHelp OrElse
-          String.IsNullOrEmpty(DeviceName) Then
+          show_help OrElse
+          String.IsNullOrEmpty(device_name) Then
 
-            Console.WriteLine("Syntax:" & Environment.NewLine &
-                              "DiscUtilsDevio /name=objectname [/buffersize=bytes] [/partition=number]" & Environment.NewLine &
-                              "    /filename=imagefilename [/readonly] [/mount[=d:]] [/trace]" & Environment.NewLine &
-                              Environment.NewLine &
-                              "DiscUtilsDevio [/name=objectname] [/buffersize=bytes] [/partition=number]" & Environment.NewLine &
-                              "    /filename=imagefilename [/readonly] /mount[=d:] [/trace]" & Environment.NewLine &
-                              Environment.NewLine &
-                              "DiscUtilsDevio [/ipaddress=address] /port=tcpport [/partition=number]" & Environment.NewLine &
-                              "    /filename=imagefilename [/readonly] [/mount[=d:]] [/trace]")
+            Dim msg = "Syntax:
+DiscUtilsDevio /name=objectname [/buffersize=bytes] [/partition=number] /filename=imagefilename [/readonly] [/mount[=d:]] [/trace]
+
+DiscUtilsDevio [/name=objectname] [/buffersize=bytes] [/partition=number] /filename=imagefilename [/readonly] /mount[=d:] [/trace]
+
+DiscUtilsDevio [/ipaddress=address] /port=tcpport [/partition=number] /filename=imagefilename [/readonly] [/mount[=d:]] [/trace]
+
+You can additionally use the /asm=path switch to load an additional DiscUtils compatible assembly file that provides support for more virtual disk formats."
+
+            msg = LineFormat(msg, 4)
+
+            Console.WriteLine(msg)
 
             Return
 
         End If
 
-        Console.WriteLine("Opening image " & DeviceName)
+        For Each asm In asms.Distinct()
 
-        Dim Device = VirtualDisk.OpenDisk(DeviceName, DiskAccess)
+            Trace.WriteLine($"Registering assembly {asm.GetName().Name}...")
 
-        If Device Is Nothing Then
-            Dim fs As New FileStream(DeviceName, FileMode.Open, DiskAccess, FileShare.Read Or FileShare.Delete)
-            Try
-                Device = New Dmg.Disk(fs, Ownership.Dispose)
-            Catch
-                fs.Dispose()
-            End Try
-        End If
+            SetupHelper.RegisterAssembly(asm)
 
-        If Device Is Nothing Then
-            Console.WriteLine("Image not recognized by DiscUtils." & Environment.NewLine &
-                              Environment.NewLine &
-                              "Formats currently supported: " & String.Join(", ", VirtualDisk.SupportedDiskTypes.ToArray()),
-                              "Error")
-            Return
-        End If
-        Dim Table As Partitions.PartitionTable = Nothing
-        Console.WriteLine("Image type class: " & Device.GetType().ToString())
-        If Device.IsPartitioned Then
-            Table = Device.Partitions
-        End If
-        If Table Is Nothing Then
-            Console.WriteLine("Unknown partition table format or partition table not found.")
-        Else
-            Console.WriteLine("Partition table class: " & Table.GetType().ToString())
-        End If
+        Next
 
-        Console.WriteLine("Image virtual size is " & Device.Capacity & " bytes")
-        If Device.Geometry Is Nothing Then
-            Console.WriteLine("Image sector size is unknown")
-        Else
-            Console.WriteLine("Image sector size is " & Device.Geometry.BytesPerSector & " bytes")
-        End If
+        Console.WriteLine($"Opening image {device_name}")
 
-        Dim DiskStream As Stream
+        Using device = VirtualDisk.OpenDisk(device_name, disk_access)
 
-        If PartitionNumber.HasValue = False Then
-            If Table IsNot Nothing Then
-                PartitionNumber = 1
-                Console.WriteLine("Partition table found.")
+            If device Is Nothing Then
+
+                Console.WriteLine($"Image not recognized by DiscUtils.
+
+Formats currently supported: {String.Join(", ", VirtualDiskManager.SupportedDiskTypes.ToArray())}")
+
+                Return
+
+            End If
+
+            Dim partition_table As Partitions.PartitionTable = Nothing
+
+            Console.WriteLine($"Image type class: {device.GetType()}")
+
+            If device.IsPartitioned Then
+                partition_table = device.Partitions
+            End If
+
+            If partition_table Is Nothing Then
+                Console.WriteLine("Unknown partition table format or partition table not found.")
             Else
-                PartitionNumber = 0
-                Console.WriteLine("Partition table not found.")
+                Console.WriteLine($"Partition table class: {partition_table.GetType()}")
             End If
-        End If
 
-        If PartitionNumber = 0 Then
-            If Device IsNot Nothing Then
-                DiskStream = Device.Content
+            Console.WriteLine($"Image virtual size is {device.Capacity} bytes")
+
+            If device.Geometry Is Nothing Then
+                Console.WriteLine("Image sector size is unknown")
             Else
-                Console.WriteLine("Raw image access for this format is not supported by DiscUtils." & Environment.NewLine &
-                                  Environment.NewLine &
-                                  "Formats currently supported: " & String.Join(", ", VirtualDisk.SupportedDiskTypes.ToArray()))
-                Return
-            End If
-            Console.WriteLine("Using entire image file: " & DeviceName)
-        Else
-            If Table Is Nothing Then
-                Console.WriteLine("Partition table not found in image.")
-                Return
-            End If
-            If PartitionNumber > Table.Count Then
-                Console.WriteLine("Partition " & PartitionNumber & " not defined in partition table.")
-                Return
+                Console.WriteLine($"Image sector size is {device.Geometry.BytesPerSector} bytes")
             End If
 
-            DiskStream = Table(PartitionNumber.Value - 1).Open()
-            Console.WriteLine("Using partition " & PartitionNumber)
-        End If
-        Console.WriteLine("Used size is " & DiskStream.Length & " bytes")
-        If DiskStream.CanWrite Then
-            Console.WriteLine("Read/write mode.")
-        Else
-            Console.WriteLine("Read-only mode.")
-        End If
+            Dim disk_stream As Stream
 
-        Dim Service As DevioServiceBase
-        Dim Provider As New DevioProviderFromStream(DiskStream, ownsStream:=True)
+            If partition_number.HasValue = False Then
+                If partition_table IsNot Nothing Then
+                    partition_number = 1
+                    Console.WriteLine("Partition table found.")
+                Else
+                    partition_number = 0
+                    Console.WriteLine("Partition table not found.")
+                End If
+            End If
 
-        If Not String.IsNullOrEmpty(ObjectName) Then
+            If partition_number = 0 Then
+                If device.Content Is Nothing Then
+                    Console.WriteLine($"Raw image access for this format is not supported by DiscUtils.
 
-            Service = New DevioShmService(ObjectName, Provider, OwnsProvider:=True, BufferSize:=BufferSize)
-
-        ElseIf ListenPort <> 0 Then
-
-            Service = New DevioTcpService(ListenAddress, ListenPort, Provider, OwnsProvider:=True)
-
-        ElseIf Mount Then
-
-            Service = New DevioShmService(Provider, OwnsProvider:=True, BufferSize:=BufferSize)
-
-        Else
-
-            Provider.Dispose()
-            Console.WriteLine("Shared memory object name or TCP/IP port must be specified.")
-            Return
-
-        End If
-
-        If Mount Then
-            If "#:".Equals(MountPoint, StringComparison.Ordinal) Then
-                Dim drive_letter = ImDiskAPI.FindFreeDriveLetter()
-                If drive_letter = Nothing Then
-                    Console.Error.WriteLine("No drive letter available")
+Formats currently supported: {String.Join(", ", VirtualDiskManager.SupportedDiskTypes.ToArray())}")
                     Return
                 End If
-                MountPoint = {drive_letter, ":"c}
-                Console.WriteLine("Selected " & MountPoint & " as drive letter mount point")
+
+                disk_stream = device.Content
+
+                Console.WriteLine($"Using entire image file: {device_name}")
+            Else
+                If partition_table Is Nothing Then
+                    Console.WriteLine("Partition table not found in image.")
+                    Return
+                End If
+
+                If partition_number > partition_table.Count Then
+                    Console.WriteLine($"Partition {partition_number} not defined in partition table.")
+                    Return
+                End If
+
+                disk_stream = partition_table(partition_number.Value - 1).Open()
+
+                Console.WriteLine($"Using partition {partition_number}")
             End If
-            Console.WriteLine("Opening image file and mounting as virtual disk...")
-            Service.StartServiceThreadAndMountImDisk(ImDiskFlags.Auto, MountPoint)
-            Console.WriteLine("Virtual disk created. Press Ctrl+C to remove virtual disk and exit.")
-        Else
-            Console.WriteLine("Opening image file...")
-            Service.StartServiceThread()
-            Console.WriteLine("Image file opened, waiting for incoming connections. Press Ctrl+C to exit.")
-        End If
 
-        AddHandler Console.CancelKeyPress,
-            Sub(sender, e)
-                ThreadPool.QueueUserWorkItem(
-                Sub()
+            Console.WriteLine($"Used size is {disk_stream.Length} bytes")
 
-                    If Not Monitor.TryEnter(break_lock) Then
-                        Return
+            If disk_stream.CanWrite Then
+                Console.WriteLine("Read/write mode.")
+            Else
+                Console.WriteLine("Read-only mode.")
+            End If
+
+            Dim service As DevioServiceBase
+
+            Using provider As New DevioProviderFromStream(disk_stream, ownsStream:=True)
+
+                If Not String.IsNullOrEmpty(object_name) Then
+
+                    service = New DevioShmService(object_name, provider, OwnsProvider:=True, BufferSize:=buffer_size)
+
+                ElseIf listen_port <> 0 Then
+
+                    service = New DevioTcpService(listen_address, listen_port, provider, OwnsProvider:=True)
+
+                ElseIf mount Then
+
+                    service = New DevioShmService(provider, OwnsProvider:=True, BufferSize:=buffer_size)
+
+                Else
+
+                    provider.Dispose()
+
+                    Console.WriteLine("Shared memory object name or TCP/IP port must be specified.")
+                    Return
+
+                End If
+
+                Using service
+
+                    If mount Then
+                        If "#:".Equals(mount_point, StringComparison.Ordinal) Then
+                            Dim drive_letter = ImDiskAPI.FindFreeDriveLetter()
+                            If drive_letter = Nothing Then
+                                Console.Error.WriteLine("No drive letter available")
+                                Return
+                            End If
+                            mount_point = {drive_letter, ":"c}
+                            Console.WriteLine($"Selected {mount_point} as drive letter mount point")
+                        End If
+                        Console.WriteLine("Opening image file and mounting as virtual disk...")
+                        service.StartServiceThreadAndMountImDisk(ImDiskFlags.Auto, mount_point)
+                        Console.WriteLine("Virtual disk created. Press Ctrl+C to remove virtual disk and exit.")
+                    Else
+                        Console.WriteLine("Opening image file...")
+                        service.StartServiceThread()
+                        Console.WriteLine("Image file opened, waiting for incoming connections. Press Ctrl+C to exit.")
                     End If
 
+                    AddHandler Console.CancelKeyPress,
+                Sub(sender, e)
+                    ThreadPool.QueueUserWorkItem(
+                    Sub()
+
+                        If Not Monitor.TryEnter(break_lock) Then
+                            Return
+                        End If
+
+                        Try
+                            Console.WriteLine("Stopping service...")
+                            service.Dispose()
+
+                        Finally
+                            Monitor.Exit(break_lock)
+
+                        End Try
+                    End Sub)
+
                     Try
-                        Console.WriteLine("Stopping service...")
-                        Service.Dispose()
-
-                    Finally
-                        Monitor.Exit(break_lock)
-
+                        e.Cancel = True
+                    Catch
                     End Try
-                End Sub)
 
-                Try
-                    e.Cancel = True
-                Catch
-                End Try
+                End Sub
 
-            End Sub
+                    service.WaitForServiceThreadExit()
 
-        Service.WaitForServiceThreadExit()
+                    Console.WriteLine("Service stopped.")
 
-        Console.WriteLine("Service stopped.")
+                End Using
+
+            End Using
+
+        End Using
 
     End Sub
 

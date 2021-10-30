@@ -355,7 +355,8 @@ devio_with_options/
 cab/
 ImDiskNet/Help/
 private/
-*/obj*
+*/objchk*
+*/objfre*
 *.exe
 *.dll
 *.cpl
@@ -387,6 +388,9 @@ devio/devio.static.Linux_x86_64
 *.diff
 *.cat
 *.old
+*.old2
+*.old3
+*.old4
 *.err
 *.zip
 *.cab
@@ -400,4 +404,9 @@ changes.txt
 *.gz
 *.xz
 *.cer
-devio/iobridge/Release64/Bridge.asm
+*/*/Release*
+*.py
+*.snk
+*.filters
+dirs.sln
+ImDiskNet/DevioNet/Server/Services/DevioDrvService.vb

@@ -1,7 +1,7 @@
 /*
 Server end for ImDisk Virtual Disk Driver proxy operation.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -43,6 +43,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include <stdlib.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 
@@ -91,15 +92,34 @@ syslog(FILE *Stream, LPCSTR Message, ...)
 {
     va_list param_list;
     LPSTR MsgBuf = NULL;
+    LPSTR msgptr = NULL;
+    LPSTR alloc_msg = NULL;
 
     va_start(param_list, Message);
 
-    if (strstr(Message, "%m") != NULL)
+    msgptr = strstr(Message, "%m");
+
+    if (msgptr != NULL)
     {
+        size_t msgpos = msgptr - Message;
+
         DWORD winerrno = GetLastError();
 
         if (winerrno == NO_ERROR)
+        {
             winerrno = 10000 + errno;
+        }
+
+        alloc_msg = _strdup(Message);
+
+        if (alloc_msg == NULL)
+        {
+            return;
+        }
+
+        msgptr = alloc_msg + msgpos;
+
+        *msgptr = 0;
 
         if (FormatMessage(FORMAT_MESSAGE_MAX_WIDTH_MASK |
             FORMAT_MESSAGE_ALLOCATE_BUFFER |
@@ -113,6 +133,8 @@ syslog(FILE *Stream, LPCSTR Message, ...)
         {
             MsgBuf = NULL;
         }
+
+        Message = alloc_msg;
     }
 
     if (MsgBuf != NULL)
@@ -123,7 +145,14 @@ syslog(FILE *Stream, LPCSTR Message, ...)
         LocalFree(MsgBuf);
     }
     else
+    {
         vfprintf(Stream, Message, param_list);
+    }
+
+    if (alloc_msg != NULL)
+    {
+        free(alloc_msg);
+    }
 
     fflush(Stream);
     return;
@@ -142,14 +171,15 @@ HANDLE shm_server_mutex = NULL;
 HANDLE shm_request_event = NULL;
 HANDLE shm_response_event = NULL;
 
+OVERLAPPED drv_memory_io;
+OVERLAPPED drv_request_io;
+
 #else  // Unix
 
 #include <syslog.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -169,25 +199,15 @@ HANDLE shm_response_event = NULL;
 #define O_FSYNC 0
 #endif
 
-#define DEF_BUFFER_SIZE (64 << 20)
+#define DEF_BUFFER_SIZE ((int)((sizeof(void*) << 3) << 20))
 
 #define DEF_REQUIRED_ALIGNMENT 1
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(_DEBUG) || defined(DBG) || defined(SYSLOG)
 #define dbglog(x) syslog x
 #else
 #define dbglog(x)
 #endif
-
-//typedef union _LONGLONG_SWAP
-//{
-//    int64_t v64;
-//    struct
-//    {
-//        int32_t v1;
-//        int32_t v2;
-//    } v32;
-//} longlongswap;
 
 int64_t GetBigEndian64(int8_t *storage)
 {
@@ -224,6 +244,7 @@ safeio_size_t buffer_size = DEF_BUFFER_SIZE;
 off_t_64 image_offset = 0;
 IMDPROXY_INFO_RESP devio_info = { 0 };
 char dll_mode = 0;
+char drv_mode = 0;
 char vhd_mode = 0;
 char auto_vhd_detect = 1;
 
@@ -316,6 +337,86 @@ physical_close(int fd)
 
 #ifdef _WIN32
 
+int alloc_drv_buffer()
+{
+    HANDLE hFileMap = NULL;
+    safeio_size_t detected_buffer_size;
+    MEMORY_BASIC_INFORMATION memory_info;
+    ULARGE_INTEGER map_size = { 0 };
+
+    printf("Allocating new buffer: " SIZ_FMT " bytes.\n", buffer_size);
+
+    map_size.QuadPart = (ULONGLONG)buffer_size + IMDPROXY_HEADER_SIZE;
+
+    hFileMap = CreateFileMapping(INVALID_HANDLE_VALUE,
+        NULL,
+        PAGE_READWRITE | SEC_COMMIT,
+        map_size.HighPart,
+        map_size.LowPart,
+        NULL);
+
+    if (hFileMap == NULL)
+    {
+        syslog(LOG_ERR, "CreateFileMapping() failed: %m\n");
+        return 2;
+    }
+
+    shm_view = (char*)MapViewOfFile(hFileMap, FILE_MAP_WRITE, 0, 0, 0);
+
+    if (shm_view == NULL)
+    {
+        syslog(LOG_ERR, "MapViewOfFile() failed: %m\n");
+        return 2;
+    }
+
+    CloseHandle(hFileMap);
+
+    buf = shm_view + IMDPROXY_HEADER_SIZE;
+
+    if (!VirtualQuery(shm_view, &memory_info, sizeof(memory_info)))
+    {
+        syslog(LOG_ERR, "VirtualQuery() failed: %m\n");
+        return 2;
+    }
+
+    memset(shm_view, 0, memory_info.RegionSize);
+
+    detected_buffer_size = (safeio_size_t)
+        (memory_info.RegionSize - IMDPROXY_HEADER_SIZE);
+
+    if (buffer_size != detected_buffer_size)
+    {
+        buffer_size = detected_buffer_size;
+        if (buf2 != NULL)
+        {
+            free(buf2);
+            buf2 = (char*)malloc(buffer_size);
+            if (buf2 == NULL)
+            {
+                syslog(LOG_ERR, "malloc() failed: %m\n");
+                return 2;
+            }
+        }
+    }
+
+    ResetEvent(drv_memory_io.hEvent);
+
+    if (!DeviceIoControl((HANDLE)sd, IOCTL_DEVIODRV_LOCK_MEMORY, &shm_view, sizeof(void*), shm_view, buffer_size + IMDPROXY_HEADER_SIZE, NULL, &drv_memory_io))
+    {
+        if (GetLastError() == ERROR_IO_PENDING)
+        {
+            dbglog((LOG_ERR, "Memory successfully locked.\n"));
+        }
+        else
+        {
+            syslog(LOG_ERR, "Lock memory request failed: %m\n");
+            return 3;
+        }
+    }
+
+    return 0;
+}
+
 int
 shm_read(void *io_ptr, safeio_size_t size)
 {
@@ -326,7 +427,10 @@ shm_read(void *io_ptr, safeio_size_t size)
             return 0;
 
     if (shm_readptr == NULL)
-        shm_readptr = shm_view;
+        if (drv_mode)
+            shm_readptr = shm_view + sizeof(IMDPROXY_DEVIODRV_BUFFER_HEADER);
+        else
+            shm_readptr = shm_view;
 
     if ((long long)size > (long long)(buf - shm_readptr))
         return 0;
@@ -347,7 +451,10 @@ shm_write(const void *io_ptr, safeio_size_t size)
             return 0;
 
     if (shm_writeptr == NULL)
-        shm_writeptr = shm_view;
+        if (drv_mode)
+            shm_writeptr = shm_view + sizeof(IMDPROXY_DEVIODRV_BUFFER_HEADER);
+        else
+            shm_writeptr = shm_view;
 
     if ((long long)size > (long long)(buf - shm_writeptr))
         return 0;
@@ -376,6 +483,78 @@ shm_flush()
     return 1;
 }
 
+int
+drv_flush()
+{
+    DWORD dw;
+
+    shm_readptr = NULL;
+    shm_writeptr = NULL;
+
+    dbglog((LOG_ERR, "Calling DeviceIoControl for exchanging requests.\n"));
+
+    ResetEvent(drv_request_io.hEvent);
+
+    while (!DeviceIoControl((HANDLE)sd, IOCTL_DEVIODRV_EXCHANGE_IO, &shm_view, sizeof(void*), NULL, 0, &dw, &drv_request_io))
+    {
+        DWORD err = GetLastError();
+
+        if (err == ERROR_IO_PENDING)
+        {
+            dbglog((LOG_ERR, "Waiting for request to complete.\n"));
+
+            if (GetOverlappedResult((HANDLE)sd, &drv_request_io, &dw, TRUE))
+            {
+                dbglog((LOG_ERR, "Request complete.\n"));
+
+                break;
+            }
+
+            err = GetLastError();
+        }
+
+        dbglog((LOG_ERR, "Request failed: %i %m", err));
+
+        if (err == ERROR_INSUFFICIENT_BUFFER)
+        {
+            // need larger buffer (for write request, detected in driver)
+            dbglog((LOG_ERR, "Larger buffer needed.\n"));
+
+            if (!GetOverlappedResult((HANDLE)sd, &drv_memory_io, &dw, TRUE) &&
+                GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+            {
+                syslog(LOG_ERR, "Error waiting for memory unlock: %i %m", GetLastError());
+            }
+
+            UnmapViewOfFile(shm_view);
+
+            shm_view = NULL;
+
+            buffer_size <<= 1;
+
+            if (alloc_drv_buffer() == 0)
+            {
+                continue;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+        else if (err == ERROR_DEV_NOT_EXIST)
+        {
+            return 1;
+        }
+        else
+        {
+            syslog(LOG_ERR, "DeviceIoControl() failed: %m\n", err);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 #else  // Unix
 
 int
@@ -396,13 +575,91 @@ shm_flush()
     return 0;
 }
 
+int
+drv_flush()
+{
+  return 0;
+}
+
 #endif
+
+void
+buf_realloc(ULONGLONG new_size)
+{
+    if (shm_mode)
+        return;
+
+    if (new_size > (((safeio_size_t)-1) >> 1))
+    {
+        new_size = (((safeio_size_t)-1) >> 1);
+    }
+
+    buffer_size = (safeio_size_t)new_size;
+
+    dbglog((LOG_ERR, "Read request " SLL_FMT " bytes, reallocating buffer.\n",
+        (off_t_64)buffer_size));
+
+#ifdef _WIN32
+    if (drv_mode)
+    {
+        DWORD dw;
+
+        char* existing_buf = buf;
+        char* existing_buf2 = buf2;
+        char* existing_shm_view = shm_view;
+        safeio_size_t existing_buffer_size = buffer_size;
+
+        if (!GetOverlappedResult((HANDLE)sd, &drv_memory_io, &dw, TRUE) &&
+            GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+        {
+            syslog(LOG_ERR, "Error waiting for memory unlock: %i %m", GetLastError());
+        }
+
+        if (alloc_drv_buffer() == 0)
+        {
+            memcpy(shm_view, existing_shm_view, IMDPROXY_HEADER_SIZE);
+            UnmapViewOfFile(existing_shm_view);
+            free(existing_buf2);
+        }
+        else
+        {
+            shm_view = existing_shm_view;
+            buf = existing_buf;
+            buf2 = existing_buf2;
+            buffer_size = existing_buffer_size;
+        }
+    }
+    else
+#endif
+    {
+        char *new_buf = (char*)malloc(buffer_size);
+        char *new_buf2 = (char*)malloc(buffer_size);
+        if (new_buf == NULL || new_buf2 == NULL)
+        {
+            syslog(LOG_ERR, "Failed allocating new buffer: %m\n");
+
+            if (new_buf != NULL)
+                free(new_buf);
+            if (new_buf2 != NULL)
+                free(new_buf2);
+        }
+        else
+        {
+            free(buf);
+            buf = new_buf;
+            free(buf2);
+            buf2 = new_buf2;
+        }
+    }
+}
 
 int
 comm_flush()
 {
     if (shm_mode)
         return shm_flush();
+    else if (drv_mode)
+        return drv_flush();
     else
         return 1;
 }
@@ -410,7 +667,7 @@ comm_flush()
 int
 comm_read(void *io_ptr, safeio_size_t size)
 {
-    if (shm_mode)
+    if (shm_mode || drv_mode)
         return shm_read(io_ptr, size);
     else
         return safe_read(sd, io_ptr, size);
@@ -419,7 +676,7 @@ comm_read(void *io_ptr, safeio_size_t size)
 int
 comm_write(const void *io_ptr, safeio_size_t size)
 {
-    if (shm_mode)
+    if (shm_mode || drv_mode)
         return shm_write(io_ptr, size);
     else
         return safe_write(sd, io_ptr, size);
@@ -434,6 +691,7 @@ send_info()
     if (!comm_flush())
     {
         syslog(LOG_ERR, "Error flushing comm data: %m\n");
+
         return 0;
     }
 
@@ -491,6 +749,7 @@ vhd_read(char *io_ptr, safeio_size_t size, off_t_64 offset)
             (((off_t_64)block_offset) << sector_shift) + sector_size +
             in_block_offset;
 
+        readdone = physical_read(io_ptr, (safeio_size_t)first_size, data_offset);
         readdone = physical_read(io_ptr, (safeio_size_t)first_size, data_offset);
         if (readdone == -1)
             return (safeio_ssize_t)-1;
@@ -735,13 +994,18 @@ read_data()
         return 0;
     }
 
+    if (req_block.length > buffer_size) // we will need larger buffer to complete this request
+    {
+        buf_realloc(req_block.length);
+    }
+
     size = (safeio_size_t)
         (req_block.length < buffer_size ? req_block.length : buffer_size);
 
     dbglog((LOG_ERR, "read request " ULL_FMT " bytes at " ULL_FMT " + "
         ULL_FMT " = " ULL_FMT ".\n",
-        req_block.length, req_block.offset, offset,
-        req_block.offset + offset));
+        req_block.length, req_block.offset, image_offset,
+        req_block.offset + image_offset));
 
     memset(buf, 0, size);
 
@@ -804,8 +1068,8 @@ write_data()
 
     dbglog((LOG_ERR, "write request " ULL_FMT " bytes at " ULL_FMT " + "
         ULL_FMT " = " ULL_FMT ".\n",
-        req_block.length, req_block.offset, offset,
-        req_block.offset + offset));
+        req_block.length, req_block.offset, image_offset,
+        req_block.offset + image_offset));
 
     if (req_block.length > buffer_size)
     {
@@ -905,7 +1169,7 @@ main(int argc, char **argv)
     {
         fprintf(stderr,
             "devio with custom DLL support\n"
-            "Copyright (C) 2005-2018 Olof Lagerkvist.\n"
+            "Copyright (C) 2005-2021 Olof Lagerkvist.\n"
             "\n"
             "Usage for unmanaged C/C++ DLL files:\n"
             "devio --dll=dllfile;procedure other_devio_parameters ...\n"
@@ -1026,6 +1290,13 @@ main(int argc, char **argv)
 #endif
     }
 
+    if (argc >= 4 && strcmp(argv[1], "--drv") == 0)
+    {
+        drv_mode = 1;
+        argv++;
+        argc--;
+    }
+
     if (argc >= 4 && strcmp(argv[1], "--novhd") == 0)
     {
         auto_vhd_detect = 0;
@@ -1044,13 +1315,15 @@ main(int argc, char **argv)
     {
         fprintf(stderr,
             "devio - Device I/O Service ver " DEVIO_VERSION "\n"
-            "With support for Microsoft VHD format, custom DLL files and shared memory proxy\n"
-            "operation.\n"
-            "Copyright (C) 2005-2018 Olof Lagerkvist.\n"
+            "With support for Microsoft VHD format, custom DLL files, shared memory proxy\n"
+            "operation and also for use with DevIO Client Driver, if installed.\n"
+            "Copyright (C) 2005-2021 Olof Lagerkvist.\n"
             "\n"
             "Usage:\n"
             "devio [-r] tcp-port|commdev diskdev [blocks] [offset] [alignm] [buffersize]\n"
             "devio [-r] tcp-port|commdev diskdev [partitionnumber] [alignm] [buffersize]\n"
+            "\n"
+            "-r      Open image file in read-only mode.\n"
             "\n"
             "tcp-port can be any free tcp port where this service should listen for incoming\n"
             "client connections.\n"
@@ -1059,7 +1332,8 @@ main(int argc, char **argv)
             "service should listen for incoming client connections.\n"
             "\n"
             "commdev can also start with shm: followed by an section object name for using\n"
-            "shared memory communication.\n"
+            "shared memory communication. Alternatively, drv: followed by a name for using\n"
+            "DevIO Client Driver to expose a device object connected to this devio instance.\n"
             "\n"
             "Default number of blocks is 0. When running on Windows the program will try to\n"
             "get the size of the image file or partition automatically, otherwise the client\n"
@@ -1123,7 +1397,7 @@ main(int argc, char **argv)
         void *geometry = &vhd_info.Footer.DiskGeometry;
 
         // VHD I/O uses a secondary buffer
-        buf2 = malloc(buffer_size);
+        buf2 = (char*)malloc(buffer_size);
         if (buf2 == NULL)
         {
             syslog(LOG_ERR, "malloc() failed: %m\n");
@@ -1136,22 +1410,12 @@ main(int argc, char **argv)
         current_size = GetBigEndian64(vhd_info.Footer.CurrentSize);
         table_offset = GetBigEndian64(vhd_info.Header.TableOffset);
 
-        //((longlongswap*)&current_size)->v32.v1 =
-        //    ntohl(((longlongswap*)&vhd_info.Footer.CurrentSize)->v32.v2);
-        //((longlongswap*)&current_size)->v32.v2 =
-        //    ntohl(((longlongswap*)&vhd_info.Footer.CurrentSize)->v32.v1);
-
-        //((longlongswap*)&table_offset)->v32.v1 =
-        //    ntohl(((longlongswap*)&vhd_info.Header.TableOffset)->v32.v2);
-        //((longlongswap*)&table_offset)->v32.v2 =
-        //    ntohl(((longlongswap*)&vhd_info.Header.TableOffset)->v32.v1);
-
         sector_size = 512;
 
         block_size = ntohl(vhd_info.Header.BlockSize);
 
         for (block_shift = 0;
-            (block_shift < 64) &
+            (block_shift < 64) &&
             ((((safeio_size_t)1) << block_shift) != block_size);
         block_shift++);
 
@@ -1167,8 +1431,9 @@ main(int argc, char **argv)
     }
 
     for (sector_shift = 0;
-        (sector_shift < 64) & ((((safeio_size_t)1) << sector_shift) !=
-        sector_size); sector_shift++);
+        (sector_shift < 64) &&
+        ((((safeio_size_t)1) << sector_shift) != sector_size);
+        sector_shift++);
 
     if (argc > 3)
     {
@@ -1303,7 +1568,7 @@ main(int argc, char **argv)
     if (devio_info.file_size == 0)
     {
         struct stat file_stat = { 0 };
-        if (fstat(fd, &file_stat) == 0)
+        if (fstat(image_fd, &file_stat) == 0)
             devio_info.file_size = file_stat.st_size;
         else
             syslog(LOG_ERR, "Cannot determine size of image/partition: %m\n");
@@ -1579,7 +1844,7 @@ do_comm_shm(char *comm_device)
     char *namespace_prefix;
     HANDLE h = CreateFile("\\\\?\\Global", 0, FILE_SHARE_READ, NULL,
         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if ((h == INVALID_HANDLE_VALUE) & (GetLastError() == ERROR_FILE_NOT_FOUND))
+    if ((h == INVALID_HANDLE_VALUE) && (GetLastError() == ERROR_FILE_NOT_FOUND))
         namespace_prefix = "";
     else
         namespace_prefix = "Global\\";
@@ -1620,7 +1885,7 @@ do_comm_shm(char *comm_device)
         return 2;
     }
 
-    shm_view = MapViewOfFile(hFileMap, FILE_MAP_WRITE, 0, 0, 0);
+    shm_view = (char*)MapViewOfFile(hFileMap, FILE_MAP_WRITE, 0, 0, 0);
 
     if (shm_view == NULL)
     {
@@ -1645,7 +1910,7 @@ do_comm_shm(char *comm_device)
         if (buf2 != NULL)
         {
             free(buf2);
-            buf2 = malloc(buffer_size);
+            buf2 = (char*)malloc(buffer_size);
             if (buf2 == NULL)
             {
                 syslog(LOG_ERR, "malloc() failed: %m\n");
@@ -1712,6 +1977,77 @@ do_comm_shm(char *comm_device)
 
     return 0;
 }
+
+int
+do_comm_drv(char *comm_device)
+{
+    int rc;
+
+    char *objname = (char*)malloc(OBJNAME_SIZE);
+    if (objname == NULL)
+    {
+        syslog(LOG_ERR, "Memory allocation failed: %m");
+        return -1;
+    }
+
+    drv_memory_io.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    drv_request_io.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+    if (drv_memory_io.hEvent == NULL || drv_request_io.hEvent == NULL)
+    {
+        syslog(LOG_ERR, "Event object create failed: %m");
+        return -1;
+    }
+
+    puts("Driver mode.");
+
+    _snprintf(objname, OBJNAME_SIZE,
+        "%ws\\%s", DEVIODRV_DEVICE_DOSDEV_NAME, comm_device);
+    objname[OBJNAME_SIZE - 1] = 0;
+
+    sd = (SOCKET)CreateFile(objname, GENERIC_ALL, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+
+    if (sd == INVALID_SOCKET)
+    {
+        if (GetLastError() == ERROR_ALREADY_EXISTS)
+        {
+            syslog(LOG_ERR, "A service with this name is already running.\n");
+        }
+        else
+        {
+            syslog(LOG_ERR, "Error opening '%s': %m", objname);
+        }
+
+        return 2;
+    }
+
+    free(objname);
+    objname = NULL;
+
+    rc = alloc_drv_buffer();
+    if (rc > 0)
+    {
+        return rc;
+    }
+
+    drv_mode = 1;
+
+    printf("Waiting for client connection on object %s. Press Ctrl+C to cancel.\n",
+        comm_device);
+
+    ((PIMDPROXY_DEVIODRV_BUFFER_HEADER)shm_view)->request_code = IMDPROXY_REQ_INFO;
+
+    if (!send_info())
+    {
+        syslog(LOG_ERR, "Wait failed: %m.\n");
+        return 2;
+    }
+
+    printf("Connection on object %s.\n",
+        comm_device);
+
+    return 0;
+}
 #endif
 
 int
@@ -1731,9 +2067,20 @@ do_comm(char *comm_device)
         return 2;
 #endif
     }
+    else if (_strnicmp(comm_device, "drv:", 4) == 0)
+    {
+#ifdef _WIN32
+        int drvresult = do_comm_drv(comm_device + 4);
+        if (drvresult != 0)
+            return drvresult;
+#else
+        fprintf(stderr, "Driver operation only supported on Windows.\n");
+        return 2;
+#endif
+    }
     else
     {
-        buf = malloc(buffer_size);
+        buf = (char*)malloc(buffer_size);
         if (buf == NULL)
         {
             syslog(LOG_ERR, "malloc() failed: %m\n");
@@ -1741,8 +2088,9 @@ do_comm(char *comm_device)
         }
     }
 
-    if (shm_mode)
-        ;
+    if (shm_mode || drv_mode)
+    {
+    }
     else if (port != 0)
     {
         struct sockaddr_in saddr = { 0 };

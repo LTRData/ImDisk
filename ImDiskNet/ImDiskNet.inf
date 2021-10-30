@@ -1,0 +1,69 @@
+
+; DUMMY.INF
+; Dummy inf file.
+
+[Version]
+signature = "$Windows NT$"
+Class = SCSIAdapter
+ClassGUID = {4D36E97B-E325-11CE-BFC1-08002BE10318}
+Provider = "LTR Data"
+DriverVer = 03/24/2020,2.1.0.00068
+CatalogFile = ImDiskNet.cat
+
+
+[SourceDisksNames]
+1 = "ImDisk .NET API and tools"
+
+
+[SourceDisksFiles.x86]
+ImDiskNet.dll = 1, Release
+DevioNet.dll = 1, Release
+DiscUtils.dll = 1, Release
+DiscUtilsDevio.exe = 1, Release
+
+[SourceDisksFiles.ia64]
+ImDiskNet.dll = 1, Release
+DevioNet.dll = 1, Release
+DiscUtils.dll = 1, Release
+DiscUtilsDevio.exe = 1, Release
+
+[SourceDisksFiles.amd64]
+ImDiskNet.dll = 1, Release
+DevioNet.dll = 1, Release
+DiscUtils.dll = 1, Release
+DiscUtilsDevio.exe = 1, Release
+
+[SourceDisksFiles.arm]
+ImDiskNet.dll = 1, Release
+DevioNet.dll = 1, Release
+DiscUtils.dll = 1, Release
+DiscUtilsDevio.exe = 1, Release
+
+[SourceDisksFiles.arm64]
+ImDiskNet.dll = 1, Release
+DevioNet.dll = 1, Release
+DiscUtils.dll = 1, Release
+DiscUtilsDevio.exe = 1, Release
+
+[DestinationDirs]
+ExeFiles = 12
+ 
+
+[DefaultInstall.ntx86]
+CopyFiles = ExeFiles
+
+
+[ExeFiles]
+DiscUtilsDevio.exe
+
+
+[DefaultInstall.ntx86.Services]
+AddService = ImDiskNet, , ImDiskNet
+
+
+[ImDiskNet]
+DisplayName = "ImDiskNet"
+StartType = 2
+ServiceType = 16
+ErrorControl = 0
+ServiceBinary = %11%\DiscUtilsDevio.exe

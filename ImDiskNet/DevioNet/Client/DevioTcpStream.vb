@@ -1,149 +1,153 @@
-﻿Namespace Client
+﻿Imports System.IO
+Imports System.Net.Sockets
+Imports System.Text
 
-  ''' <summary>
-  ''' Derives DevioStream and implements client side of Devio tcp/ip based communication
-  ''' proxy.
-  ''' </summary>
-  Public Class DevioTcpStream
-    Inherits DevioStream
-
-    Protected ReadOnly Connection As NetworkStream
-
-    Protected ReadOnly Reader As BinaryReader
-
-    Protected ReadOnly Writer As New BinaryWriter(New MemoryStream, Encoding.Unicode)
+Namespace Client
 
     ''' <summary>
-    ''' Creates a new instance by opening an tcp/ip connection to specified host and port
-    ''' and starts communication with a Devio service using this connection.
+    ''' Derives DevioStream and implements client side of Devio tcp/ip based communication
+    ''' proxy.
     ''' </summary>
-    ''' <param name="name">Host name and port where service is listening for incoming
-    ''' connection. This can be on the form hostname:port or just hostname where default
-    ''' port number 9000 will be used. The hostname part can be either an IP address or a
-    ''' host name.</param>
-    ''' <param name="read_only">Specifies if communication should be read-only.</param>
-    ''' <returns>Returns new instance of DevioTcpStream.</returns>
-    Public Shared Function Open(name As String, read_only As Boolean) As DevioTcpStream
+    Public Class DevioTcpStream
+        Inherits DevioStream
 
-      Return New DevioTcpStream(name, read_only)
+        Protected ReadOnly Property Connection As NetworkStream
 
-    End Function
+        Protected ReadOnly Property Reader As BinaryReader
 
-    ''' <summary>
-    ''' Creates a new instance by opening an tcp/ip connection to specified host and port
-    ''' and starts communication with a Devio service using this connection.
-    ''' </summary>
-    ''' <param name="name">Host name and port where service is listening for incoming
-    ''' connection. This can be on the form hostname:port or just hostname where default
-    ''' port number 9000 will be used. The hostname part can be either an IP address or a
-    ''' host name.</param>
-    ''' <param name="read_only">Specifies if communication should be read-only.</param>
-    Public Sub New(name As String, read_only As Boolean)
-      MyBase.New(name, read_only)
+        Protected ReadOnly Property Writer As New BinaryWriter(New MemoryStream, Encoding.Unicode)
 
-      Try
-        Dim spl = ObjectName.Split({":"}, StringSplitOptions.RemoveEmptyEntries)
-        Dim server = spl(0)
-        Dim port = 9000
-        If spl.Length >= 2 Then
-          port = Integer.Parse(spl(1))
-        End If
+        ''' <summary>
+        ''' Creates a new instance by opening an tcp/ip connection to specified host and port
+        ''' and starts communication with a Devio service using this connection.
+        ''' </summary>
+        ''' <param name="name">Host name and port where service is listening for incoming
+        ''' connection. This can be on the form hostname:port or just hostname where default
+        ''' port number 9000 will be used. The hostname part can be either an IP address or a
+        ''' host name.</param>
+        ''' <param name="[readOnly]">Specifies if communication should be read-only.</param>
+        ''' <returns>Returns new instance of DevioTcpStream.</returns>
+        Public Shared Function Open(name As String, [readOnly] As Boolean) As DevioTcpStream
 
-        Dim Socket As New Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
-        Socket.Connect(server, port)
-        Connection = New NetworkStream(Socket, ownsSocket:=True)
+            Return New DevioTcpStream(name, [readOnly])
 
-        Reader = New BinaryReader(Connection, Encoding.Unicode)
+        End Function
 
-        Writer.Write(IMDPROXY_REQ.IMDPROXY_REQ_INFO)
-        Writer.Flush()
-        With DirectCast(Writer.BaseStream, MemoryStream)
-          .WriteTo(Connection)
-          .SetLength(0)
-          .Position = 0
-        End With
-        Connection.Flush()
+        ''' <summary>
+        ''' Creates a new instance by opening an tcp/ip connection to specified host and port
+        ''' and starts communication with a Devio service using this connection.
+        ''' </summary>
+        ''' <param name="name">Host name and port where service is listening for incoming
+        ''' connection. This can be on the form hostname:port or just hostname where default
+        ''' port number 9000 will be used. The hostname part can be either an IP address or a
+        ''' host name.</param>
+        ''' <param name="[readOnly]">Specifies if communication should be read-only.</param>
+        Public Sub New(name As String, [readOnly] As Boolean)
+            MyBase.New(name, [readOnly])
 
-        Size = Reader.ReadInt64()
-        Alignment = Reader.ReadInt64()
-        Flags = Flags Or CType(Reader.ReadInt64(), IMDPROXY_FLAGS)
+            Try
+                Dim spl = ObjectName.Split({":"}, StringSplitOptions.RemoveEmptyEntries)
+                Dim server = spl(0)
+                Dim port = 9000
+                If spl.Length >= 2 Then
+                    port = Integer.Parse(spl(1), Globalization.NumberFormatInfo.InvariantInfo)
+                End If
 
-      Catch
-        Dispose()
-        Throw
+                Dim Socket As New Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
+                Socket.Connect(server, port)
+                Connection = New NetworkStream(Socket, ownsSocket:=True)
 
-      End Try
+                Reader = New BinaryReader(Connection, Encoding.Unicode)
 
-    End Sub
+                Writer.Write(IMDPROXY_REQ.IMDPROXY_REQ_INFO)
+                Writer.Flush()
+                With DirectCast(Writer.BaseStream, MemoryStream)
+                    .WriteTo(Connection)
+                    .SetLength(0)
+                    .Position = 0
+                End With
+                Connection.Flush()
 
-    Public Overrides Sub Close()
-      MyBase.Close()
+                Size = Reader.ReadInt64()
+                Alignment = Reader.ReadInt64()
+                Flags = Flags Or CType(Reader.ReadInt64(), IMDPROXY_FLAGS)
 
-      For Each obj In New IDisposable() {Writer, Reader, Connection}
-        Try
-          If obj IsNot Nothing Then
-            obj.Dispose()
-          End If
+            Catch
+                Dispose()
+                Throw
 
-        Catch
+            End Try
 
-        End Try
-      Next
-    End Sub
+        End Sub
 
-    Public Overrides Function Read(buffer As Byte(), offset As Integer, count As Integer) As Integer
+        Public Overrides Sub Close()
+            MyBase.Close()
 
-      Writer.Write(IMDPROXY_REQ.IMDPROXY_REQ_READ)
-      Writer.Write(Position)
-      Writer.Write(CLng(count))
-      Writer.Flush()
-      With DirectCast(Writer.BaseStream, MemoryStream)
-        .WriteTo(Connection)
-        .SetLength(0)
-        .Position = 0
-      End With
-      Connection.Flush()
+            For Each obj In New IDisposable() {Writer, Reader, Connection}
+                Try
+                    If obj IsNot Nothing Then
+                        obj.Dispose()
+                    End If
 
-      Dim ErrorCode = Reader.ReadUInt64()
-      If ErrorCode <> 0 Then
-        Throw New EndOfStreamException("Read error: " & ErrorCode)
-      End If
-      Dim Length = CInt(Reader.ReadInt64())
+                Catch
 
-      Length = Reader.Read(buffer, offset, Length)
-      Position += Length
+                End Try
+            Next
+        End Sub
 
-      Return Length
+        Public Overrides Function Read(buffer As Byte(), offset As Integer, count As Integer) As Integer
 
-    End Function
+            Writer.Write(IMDPROXY_REQ.IMDPROXY_REQ_READ)
+            Writer.Write(Position)
+            Writer.Write(CLng(count))
+            Writer.Flush()
+            With DirectCast(Writer.BaseStream, MemoryStream)
+                .WriteTo(Connection)
+                .SetLength(0)
+                .Position = 0
+            End With
+            Connection.Flush()
 
-    Public Overrides Sub Write(buffer As Byte(), offset As Integer, count As Integer)
+            Dim ErrorCode = Reader.ReadUInt64()
+            If ErrorCode <> 0 Then
+                Throw New EndOfStreamException("Read error: " & ErrorCode)
+            End If
+            Dim Length = CInt(Reader.ReadInt64())
 
-      Writer.Write(IMDPROXY_REQ.IMDPROXY_REQ_WRITE)
-      Writer.Write(Position)
-      Writer.Write(CLng(count))
-      Writer.Write(buffer, offset, count)
-      Writer.Flush()
-      With DirectCast(Writer.BaseStream, MemoryStream)
-        .WriteTo(Connection)
-        .SetLength(0)
-        .Position = 0
-      End With
-      Connection.Flush()
+            Length = Reader.Read(buffer, offset, Length)
+            Position += Length
 
-      Dim ErrorCode = Reader.ReadUInt64()
-      If ErrorCode <> 0 Then
-        Throw New EndOfStreamException("Write error: " & ErrorCode)
-      End If
-      Dim Length = Reader.ReadInt64()
-      Position += Length
+            Return Length
 
-      If Length <> count Then
-        Throw New EndOfStreamException("Write length mismatch. Wrote " & Length & " of " & count & " bytes.")
-      End If
+        End Function
 
-    End Sub
+        Public Overrides Sub Write(buffer As Byte(), offset As Integer, count As Integer)
 
-  End Class
+            Writer.Write(IMDPROXY_REQ.IMDPROXY_REQ_WRITE)
+            Writer.Write(Position)
+            Writer.Write(CLng(count))
+            Writer.Write(buffer, offset, count)
+            Writer.Flush()
+            With DirectCast(Writer.BaseStream, MemoryStream)
+                .WriteTo(Connection)
+                .SetLength(0)
+                .Position = 0
+            End With
+            Connection.Flush()
+
+            Dim ErrorCode = Reader.ReadUInt64()
+            If ErrorCode <> 0 Then
+                Throw New EndOfStreamException("Write error: " & ErrorCode)
+            End If
+            Dim Length = Reader.ReadInt64()
+            Position += Length
+
+            If Length <> count Then
+                Throw New EndOfStreamException("Write length mismatch. Wrote " & Length & " of " & count & " bytes.")
+            End If
+
+        End Sub
+
+    End Class
 
 End Namespace

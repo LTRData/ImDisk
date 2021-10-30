@@ -1,4 +1,6 @@
-﻿Namespace Server.Providers
+﻿Imports System.Runtime.InteropServices
+
+Namespace Server.Providers
 
     ''' <summary>
     ''' Base class for implementing <see>IDevioProvider</see> interface with a storage backend where

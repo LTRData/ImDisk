@@ -7,7 +7,7 @@ Namespace ImDisk
         Inherits WaitHandle
 
         Public Sub New(InheritHandle As Boolean)
-            SafeWaitHandle = DLL.ImDiskOpenRefreshEvent(InheritHandle)
+            SafeWaitHandle = UnsafeNativeMethods.ImDiskOpenRefreshEvent(InheritHandle)
         End Sub
 
         ''' <summary>
@@ -15,7 +15,7 @@ Namespace ImDisk
         ''' simulates the same action done by the driver after such changes.
         ''' </summary>
         Public Sub Notify()
-            NativeFileIO.Win32Try(NativeFileIO.Win32API.PulseEvent(SafeWaitHandle))
+            NativeFileIO.Win32Try(NativeFileIO.UnsafeNativeMethods.PulseEvent(SafeWaitHandle))
         End Sub
 
     End Class

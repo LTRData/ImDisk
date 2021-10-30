@@ -1,20 +1,22 @@
-﻿Namespace ImDisk
+﻿Imports System.Runtime.InteropServices
 
-  ''' <summary>
-  ''' Represents ImDisk Virtual Disk Driver control device object.
-  ''' </summary>
-  <ComVisible(False)>
-  Public Class ImDiskControl
-    Inherits ImDiskObject
+Namespace ImDisk
 
     ''' <summary>
-    ''' Creates a new instance and opens ImDisk Virtual Disk Driver control device object.
+    ''' Represents ImDisk Virtual Disk Driver control device object.
     ''' </summary>
-    Public Sub New()
-      MyBase.New("\\?\ImDiskCtl", AccessMode:=0)
+    <ComVisible(False)>
+    Public Class ImDiskControl
+        Inherits ImDiskObject
 
-    End Sub
+        ''' <summary>
+        ''' Creates a new instance and opens ImDisk Virtual Disk Driver control device object.
+        ''' </summary>
+        Public Sub New()
+            MyBase.New("\\?\ImDiskCtl", AccessMode:=0)
 
-  End Class
+        End Sub
+
+    End Class
 
 End Namespace

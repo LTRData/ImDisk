@@ -1,4 +1,9 @@
-﻿Public Enum IMDPROXY_REQ As ULong
+﻿#Disable Warning CA1707 ' Identifiers should not contain underscores
+#Disable Warning IDE1006 ' Naming Styles
+
+Imports System.Runtime.InteropServices
+
+Public Enum IMDPROXY_REQ As ULong
 
     ''' <summary>
     ''' No operation.
@@ -45,6 +50,7 @@
     IMDPROXY_REQ_ZERO
 End Enum
 
+<Flags>
 Public Enum IMDPROXY_FLAGS As ULong
     IMDPROXY_FLAG_NONE = 0UL
     IMDPROXY_FLAG_RO = 1UL
@@ -72,15 +78,15 @@ End Class
 
 <StructLayout(LayoutKind.Sequential)>
 Public Structure IMDPROXY_CONNECT_REQ
-    Public request_code As IMDPROXY_REQ
-    Public flags As ULong
-    Public length As ULong
+    Public Property request_code As IMDPROXY_REQ
+    Public Property flags As ULong
+    Public Property length As ULong
 End Structure
 
 <StructLayout(LayoutKind.Sequential)>
 Public Structure IMDPROXY_CONNECT_RESP
-    Public error_code As ULong
-    Public object_ptr As ULong
+    Public Property error_code As ULong
+    Public Property object_ptr As ULong
 End Structure
 
 ''' <summary>
@@ -94,42 +100,42 @@ Public Structure IMDPROXY_INFO_RESP
     ''' <summary>
     ''' Total size in bytes of virtual image
     ''' </summary>
-    Public file_size As ULong
+    Public Property file_size As ULong
 
     ''' <summary>
     ''' Required alignment in bytes for I/O requests sent to this proxy service
     ''' </summary>
-    Public req_alignment As ULong
+    Public Property req_alignment As ULong
 
     ''' <summary>
     ''' Flags from IMDPROXY_FLAGS enumeration
     ''' </summary>
-    Public flags As IMDPROXY_FLAGS
+    Public Property flags As IMDPROXY_FLAGS
 
 End Structure
 
 <StructLayout(LayoutKind.Sequential)>
 Public Structure IMDPROXY_READ_REQ
-    Public request_code As IMDPROXY_REQ
-    Public offset As ULong
-    Public length As ULong
+    Public Property request_code As IMDPROXY_REQ
+    Public Property offset As ULong
+    Public Property length As ULong
 End Structure
 
 <StructLayout(LayoutKind.Sequential)>
 Public Structure IMDPROXY_READ_RESP
-    Public errorno As ULong
-    Public length As ULong
+    Public Property errorno As ULong
+    Public Property length As ULong
 End Structure
 
 <StructLayout(LayoutKind.Sequential)>
 Public Structure IMDPROXY_WRITE_REQ
-    Public request_code As IMDPROXY_REQ
-    Public offset As ULong
-    Public length As ULong
+    Public Property request_code As IMDPROXY_REQ
+    Public Property offset As ULong
+    Public Property length As ULong
 End Structure
 
 <StructLayout(LayoutKind.Sequential)>
 Public Structure IMDPROXY_WRITE_RESP
-    Public errorno As ULong
-    Public length As ULong
+    Public Property errorno As ULong
+    Public Property length As ULong
 End Structure

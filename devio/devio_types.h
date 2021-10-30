@@ -1,3 +1,9 @@
+#ifndef FALSE
+#define FALSE 0
+#endif
+#ifndef TRUE
+#define TRUE 1
+#endif
 
 #if defined(_MSC_VER) && _MSC_PLATFORM_TOOLSET < 120
 

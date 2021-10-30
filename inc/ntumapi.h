@@ -6,6 +6,7 @@
 extern "C" {
 #endif
 
+#if !defined(_NTDEF_) && !defined(_NTSECAPI_)
 typedef struct _UNICODE_STRING {
     USHORT Length;
     USHORT MaximumLength;
@@ -13,6 +14,7 @@ typedef struct _UNICODE_STRING {
 } UNICODE_STRING;
 typedef UNICODE_STRING *PUNICODE_STRING;
 typedef const UNICODE_STRING *PCUNICODE_STRING;
+#endif
 #define UNICODE_NULL ((WCHAR)0)
 
 typedef LONG NTSTATUS;
@@ -622,6 +624,24 @@ typedef struct _REPARSE_INDEX_KEY {
 } REPARSE_INDEX_KEY, *PREPARSE_INDEX_KEY;
 
 #pragma pack()
+
+NTSYSAPI
+ULONG
+__cdecl
+DbgPrint(
+    IN PCSTR Format,
+    ...
+);
+
+NTSYSAPI
+ULONG
+__cdecl
+DbgPrintEx(
+    IN ULONG ComponentId,
+    IN ULONG Level,
+    IN PCSTR Format,
+    ...
+);
 
 NTSYSAPI
 BOOLEAN 

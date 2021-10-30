@@ -1,4 +1,7 @@
-﻿Imports LTR.IO.ImDisk.Devio.Server.Providers
+﻿Imports System.Collections.ObjectModel
+Imports System.ComponentModel
+Imports System.Threading
+Imports LTR.IO.ImDisk.Devio.Server.Providers
 
 Namespace Server.Services
 
@@ -28,7 +31,7 @@ Namespace Server.Services
         ''' Indicates whether DevioProvider will be automatically closed when this instance
         ''' is disposed.
         ''' </summary>
-        Public ReadOnly OwnsProvider As Boolean
+        Public ReadOnly Property OwnsProvider As Boolean
 
         ''' <summary>
         ''' Size of virtual disk device.
@@ -127,6 +130,10 @@ Namespace Server.Services
         ''' instance is disposed.</param>
         Protected Sub New(DevioProvider As IDevioProvider, OwnsProvider As Boolean)
 
+            If DevioProvider Is Nothing Then
+                Throw New ArgumentNullException(NameOf(DevioProvider))
+            End If
+
             Me.OwnsProvider = OwnsProvider
 
             _DevioProvider = DevioProvider
@@ -141,7 +148,7 @@ Namespace Server.Services
         ''' Creates a device reader delegate used to directly read from device through this instance.
         ''' </summary>
         ''' <returns>A delegate that can be used to directly read from device through this instance.</returns>
-        Protected Overridable Function GetDeviceReader() As DLL.ImDiskReadFileUnmanagedProc
+        Protected Overridable Function GetDeviceReader() As UnsafeNativeMethods.ImDiskReadFileUnmanagedProc
 
             Return _
               Function(handle As IntPtr,
@@ -168,7 +175,7 @@ Namespace Server.Services
         ''' structure objects.
         ''' </summary>
         ''' <returns>Collection of PARTITION_INFORMATION structures objects.</returns>
-        Public Overridable Function GetPartitionInformation() As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+        Public Overridable Function GetPartitionInformation() As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
             Return ImDiskAPI.GetPartitionInformation(Nothing, GetDeviceReader(), SectorSize, Offset)
 
@@ -311,15 +318,15 @@ Namespace Server.Services
                     Exit Do
 
                 Catch ex As Win32Exception When (
-                    ex.NativeErrorCode = NativeFileIO.Win32API.ERROR_DEVICE_REMOVED OrElse
-                    ex.NativeErrorCode = NativeFileIO.Win32API.ERROR_DEV_NOT_EXIST)
+                    ex.NativeErrorCode = NativeFileIO.UnsafeNativeMethods.ERROR_DEVICE_REMOVED OrElse
+                    ex.NativeErrorCode = NativeFileIO.UnsafeNativeMethods.ERROR_DEV_NOT_EXIST)
 
                     _ImDiskDeviceNumber = UInteger.MaxValue
                     Exit Do
 
                 Catch ex As Win32Exception When (
                   i < 40 AndAlso
-                  ex.NativeErrorCode = NativeFileIO.Win32API.ERROR_ACCESS_DENIED)
+                  ex.NativeErrorCode = NativeFileIO.UnsafeNativeMethods.ERROR_ACCESS_DENIED)
 
                     i += 1
                     Thread.Sleep(100)
@@ -378,7 +385,7 @@ Namespace Server.Services
         Public Overridable ReadOnly Property ImDiskDeviceNumber As UInteger
             Get
                 If _ImDiskDeviceNumber = UInteger.MaxValue Then
-                    Throw New IOException("No ImDisk Virtual Disk Device currently associated with this instance.")
+                    Throw New InvalidOperationException("No ImDisk Virtual Disk Device currently associated with this instance.")
                 End If
                 Return _ImDiskDeviceNumber
             End Get

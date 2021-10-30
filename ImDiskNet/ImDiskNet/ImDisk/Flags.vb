@@ -1,4 +1,7 @@
-﻿Namespace ImDisk
+﻿#Disable Warning CA1028 ' Enum Storage should be Int32
+#Disable Warning CA1008
+
+Namespace ImDisk
 
     ''' <summary>
     ''' Values for ImDisk flags fields used when creating, querying or modifying virtual disks.

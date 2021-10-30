@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -435,11 +435,10 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
         base_name.Length = ConnectionStringLength;
         base_name.MaximumLength = ConnectionStringLength;
         event_name.MaximumLength = ConnectionStringLength + 20;
-        event_name.Buffer =
-            (PWCHAR)ExAllocatePoolWithTag(PagedPool,
-                event_name.MaximumLength,
-                POOL_TAG);
-        if (event_name.Buffer == NULL)
+
+        WPoolMem<WCHAR, PagedPool> event_name_buffer(event_name.MaximumLength);
+
+        if (!event_name_buffer)
         {
             status = STATUS_INSUFFICIENT_RESOURCES;
 
@@ -447,6 +446,8 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
             IoStatusBlock->Information = 0;
             return IoStatusBlock->Status;
         }
+
+        event_name.Buffer = event_name_buffer;
 
         InitializeObjectAttributes(&object_attributes,
             &event_name,
@@ -464,7 +465,6 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
         if (!NT_SUCCESS(status))
         {
             Proxy->request_event_handle = NULL;
-            ExFreePoolWithTag(event_name.Buffer, POOL_TAG);
 
             IoStatusBlock->Status = status;
             IoStatusBlock->Information = 0;
@@ -481,7 +481,6 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
         if (!NT_SUCCESS(status))
         {
             Proxy->request_event = NULL;
-            ExFreePoolWithTag(event_name.Buffer, POOL_TAG);
 
             IoStatusBlock->Status = status;
             IoStatusBlock->Information = 0;
@@ -498,7 +497,6 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
         if (!NT_SUCCESS(status))
         {
             Proxy->response_event_handle = NULL;
-            ExFreePoolWithTag(event_name.Buffer, POOL_TAG);
 
             IoStatusBlock->Status = status;
             IoStatusBlock->Information = 0;
@@ -515,7 +513,6 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
         if (!NT_SUCCESS(status))
         {
             Proxy->response_event = NULL;
-            ExFreePoolWithTag(event_name.Buffer, POOL_TAG);
 
             IoStatusBlock->Status = status;
             IoStatusBlock->Information = 0;
@@ -596,6 +593,7 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
         if (status == STATUS_PENDING)
         {
             KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+            status = irp->IoStatus.Status;
         }
 
         if (!NT_SUCCESS(status))

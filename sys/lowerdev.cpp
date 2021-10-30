@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -93,6 +93,28 @@ ImDiskReadWriteLowerDeviceCompletion(PDEVICE_OBJECT DeviceObject,
     {
         KdPrint(("ImDiskReadWriteLowerDeviceCompletion: Parallel I/O failed with status %#x\n",
             Irp->IoStatus.Status));
+
+        // If indicating that proxy connection died we can do
+        // nothing else but remove this device.
+        switch (item->OriginalIrp->IoStatus.Status)
+        {
+        case STATUS_CONNECTION_RESET:
+        case STATUS_DEVICE_REMOVED:
+        case STATUS_DEVICE_DOES_NOT_EXIST:
+        case STATUS_PIPE_BROKEN:
+        case STATUS_PIPE_DISCONNECTED:
+        case STATUS_PORT_DISCONNECTED:
+        case STATUS_REMOTE_DISCONNECT:
+            ImDiskRemoveVirtualDisk(DeviceObject);
+            item->OriginalIrp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
+            item->OriginalIrp->IoStatus.Information = 0;
+
+        }
+
+        if (item->AllocatedBuffer != NULL)
+        {
+            ExFreePoolWithTag(item->AllocatedBuffer, POOL_TAG);
+        }
     }
     else
     {

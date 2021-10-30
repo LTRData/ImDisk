@@ -1,0 +1,5 @@
+LIBRARY win32_fileio.dll
+
+EXPORTS
+
+	dllopen=?dllopen@@YAPAXPBDHPAP6AHPAX1H_J@Z3PAP6AH1@ZPA_J@Z

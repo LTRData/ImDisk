@@ -37,7 +37,7 @@ FILESUBTYPE    0
             VALUE "FileDescription", "Control Panel Applet for the ImDisk Virtual Disk Driver\0"
             VALUE "FileVersion", IMDISK_RC_VERSION_STR ".59\0"
             VALUE "InternalName", "imdisk\0"
-            VALUE "LegalCopyright", "Copyright © 2004-2018 Olof Lagerkvist.\0"
+            VALUE "LegalCopyright", "Copyright © 2004-2021 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "imdisk.cpl\0"
             VALUE "ProductName", "imdisk\0"
             VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".59\0"

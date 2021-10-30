@@ -1,0 +1,8 @@
+TARGETNAME=deviodrv
+TARGETPATH=.
+TARGETTYPE=DRIVER
+SOURCES=deviodrv.cpp dispatch.cpp filetable.cpp irpfwd.cpp deviodrv.rc
+MSC_WARNING_LEVEL=/W4 /WX /wd4100 /wd4201
+!IF "$(NTDEBUG)" != "ntsd"
+MSC_OPTIMIZATION=/Ox /GF
+!ENDIF

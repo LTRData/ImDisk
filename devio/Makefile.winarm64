@@ -1,0 +1,18 @@
+all: Release\arm64\devio.exe
+
+publish: P:\UtilsARM\devio.exe Z:\ltr-website\ltr-data.se\files\winRelease\arm64\devio.exe
+
+P:\UtilsARM\devio.exe: Release\arm64\devio.exe
+	copy /y Release\arm64\devio.exe P:\UtilsARM\\
+
+Z:\ltr-website\ltr-data.se\files\winarm64\devio.exe: Release\arm64\devio.exe
+	copy /y Release\arm64\devio.exe Z:\ltr-website\ltr-data.se\files\winarm64\\
+
+Release\arm64\devio.obj: devio.c ..\inc\*.h safeio.h devio.h devio_types.h Makefile.winarm
+	cl /c /WX /W4 /wd4201 /wd4204 /wd4996 /Ox /GR- /MD /D_ARM_WINAPI_PARTITION_DESKTOP_SDK_AVAILABLE /D_MSC_PLATFORM_TOOLSET=140 /FoRelease\arm64\devio.obj /nologo devio.c
+
+Release\arm64\safeio_win32.obj: safeio_win32.cpp ..\inc\*.h safeio.h devio.h devio_types.h Makefile.winarm
+	cl /c /WX /W4 /wd4201 /wd4204 /wd4996 /Ox /GR- /MD /D_ARM_WINAPI_PARTITION_DESKTOP_SDK_AVAILABLE /D_MSC_PLATFORM_TOOLSET=140 /FoRelease\arm64\safeio_win32.obj /nologo safeio_win32.cpp
+
+Release\arm64\devio.exe: Release\arm64\devio.obj Release\arm64\safeio_win32.obj Makefile.winarm
+	link /opt:ref,icf=10 /largeaddressaware /release /debug /nologo /out:Release\arm64\devio.exe Release\arm64\devio.obj Release\arm64\safeio_win32.obj

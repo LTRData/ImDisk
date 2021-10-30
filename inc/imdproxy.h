@@ -34,11 +34,17 @@ typedef uint32_t ULONG;
 typedef int64_t LONGLONG;
 typedef uint64_t ULONGLONG;
 typedef u_short WCHAR;
+typedef u_char UCHAR;
 #endif
 
 #define IMDPROXY_SVC                    L"ImDskSvc"
 #define IMDPROXY_SVC_PIPE_DOSDEV_NAME   L"\\\\.\\PIPE\\" IMDPROXY_SVC
 #define IMDPROXY_SVC_PIPE_NATIVE_NAME   L"\\Device\\NamedPipe\\" IMDPROXY_SVC
+
+#define DEVIODRV_DEVICE_NAME            L"DevIoDrv"
+#define DEVIODRV_DEVICE_DOSDEV_NAME     L"\\\\.\\" DEVIODRV_DEVICE_NAME
+#define DEVIODRV_DEVICE_NATIVE_NAME     L"\\Device\\" DEVIODRV_DEVICE_NAME
+#define DEVIODRV_SYMLINK_NATIVE_NAME    L"\\DosDevices\\" DEVIODRV_DEVICE_NAME
 
 #define IMDPROXY_FLAG_RO                0x01 // Read-only
 #define IMDPROXY_FLAG_SUPPORTS_UNMAP    0x02 // Unmap/TRIM ranges
@@ -59,6 +65,11 @@ typedef enum _IMDPROXY_REQ
     IMDPROXY_REQ_SCSI,
     IMDPROXY_REQ_SHARED
 } IMDPROXY_REQ, *PIMDPROXY_REQ;
+
+typedef struct _IMDPROXY_CLOSE_REQ
+{
+    ULONGLONG request_code;
+} IMDPROXY_CLOSE_REQ, *PIMDPROXY_CLOSE_REQ;
 
 typedef struct _IMDPROXY_CONNECT_REQ
 {
@@ -188,5 +199,22 @@ typedef enum _IMDPROXY_SHARED_RESP_CODE
 // For shared memory proxy communication only. Offset to data area in
 // shared memory.
 #define IMDPROXY_HEADER_SIZE 4096
+
+// For use with deviodrv driver, where requests and responses are tagged
+// with an id for asynchronous operations.
+typedef struct _IMDPROXY_DEVIODRV_BUFFER_HEADER
+{
+    ULONGLONG request_code;     // Request code to forward to response header.
+    ULONGLONG io_tag;           // Tag to forward to response header.
+    ULONGLONG flags;            // Reserved. Currently not used.
+} IMDPROXY_DEVIODRV_BUFFER_HEADER, *PIMDPROXY_DEVIODRV_BUFFER_HEADER;
+
+#if defined(CTL_CODE) && !defined(IOCTL_DEVIODRV_EXCHANGE_IO)
+#ifndef FILE_DEVICE_IMDISK
+#define FILE_DEVICE_IMDISK                  0x8372
+#endif
+#define IOCTL_DEVIODRV_EXCHANGE_IO	        ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x8D0, METHOD_OUT_DIRECT, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#define IOCTL_DEVIODRV_LOCK_MEMORY	        ((ULONG) CTL_CODE(FILE_DEVICE_IMDISK, 0x8D1, METHOD_OUT_DIRECT, FILE_READ_ACCESS | FILE_WRITE_ACCESS))
+#endif
 
 #endif // _INC_IMDPROXY_

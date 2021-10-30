@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -54,6 +54,8 @@ ImDiskDeviceThreadRead(IN PIRP Irp,
             NormalPagePriority);
     LARGE_INTEGER offset;
     KLOCK_QUEUE_HANDLE lock_handle;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
 
     if (system_buffer == NULL)
     {
@@ -136,11 +138,6 @@ ImDiskDeviceThreadRead(IN PIRP Irp,
                 DeviceExtension->device_number,
                 Irp->IoStatus.Status));
 
-            // If indicating that proxy connection died we can do
-            // nothing else but remove this device.
-            // if (Irp->IoStatus.Status == STATUS_CONNECTION_RESET)
-            ImDiskRemoveVirtualDisk(DeviceObject);
-
             Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
             Irp->IoStatus.Information = 0;
         }
@@ -201,6 +198,8 @@ ImDiskDeviceThreadWrite(IN PIRP Irp,
     LARGE_INTEGER offset;
     BOOLEAN set_zero_data = FALSE;
     KLOCK_QUEUE_HANDLE lock_handle;
+
+    UNREFERENCED_PARAMETER(DeviceObject);
 
     if (system_buffer == NULL)
     {
@@ -334,11 +333,6 @@ ImDiskDeviceThreadWrite(IN PIRP Irp,
             KdPrint(("ImDisk: Write failed on device %i: %#x.\n",
                 DeviceExtension->device_number,
                 Irp->IoStatus.Status));
-
-            // If indicating that proxy connection died we can do
-            // nothing else but remove this device.
-            if (Irp->IoStatus.Status == STATUS_CONNECTION_RESET)
-                ImDiskRemoveVirtualDisk(DeviceObject);
 
             Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
             Irp->IoStatus.Information = 0;
@@ -511,6 +505,8 @@ ImDiskDeviceThreadDeviceControl(IN PIRP Irp,
 {
     PIO_STACK_LOCATION io_stack = IoGetCurrentIrpStackLocation(Irp);
 
+    UNREFERENCED_PARAMETER(DeviceObject);
+
     switch (io_stack->Parameters.DeviceIoControl.IoControlCode)
     {
     case IOCTL_DISK_CHECK_VERIFY:
@@ -560,11 +556,6 @@ ImDiskDeviceThreadDeviceControl(IN PIRP Irp,
         {
             KdPrint(("ImDisk: Verify failed on device %i.\n",
                 DeviceExtension->device_number));
-
-            // If indicating that proxy connection died we can do
-            // nothing else but remove this device.
-            if (Irp->IoStatus.Status == STATUS_CONNECTION_RESET)
-                ImDiskRemoveVirtualDisk(DeviceObject);
 
             Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
             Irp->IoStatus.Information = 0;
@@ -695,7 +686,7 @@ ImDiskDeviceThreadDeviceControl(IN PIRP Irp,
         break;
     }
 
-#ifdef INCLUDE_VFD_ORIGIN
+#ifdef INCLUDE_GPL_ORIGIN
 
     case IOCTL_DISK_FORMAT_TRACKS:
     case IOCTL_DISK_FORMAT_TRACKS_EX:
@@ -705,11 +696,6 @@ ImDiskDeviceThreadDeviceControl(IN PIRP Irp,
 
         if (!NT_SUCCESS(status))
         {
-            // If indicating that proxy connection died we can do
-            // nothing else but remove this device.
-            if (status == STATUS_CONNECTION_RESET)
-                ImDiskRemoveVirtualDisk(DeviceObject);
-
             Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
             Irp->IoStatus.Information = 0;
             break;
@@ -720,7 +706,7 @@ ImDiskDeviceThreadDeviceControl(IN PIRP Irp,
         break;
     }
 
-#endif // INCLUDE_VFD_ORIGIN
+#endif // INCLUDE_GPL_ORIGIN
 
     case IOCTL_STORAGE_MANAGE_DATA_SET_ATTRIBUTES:
     {
@@ -1274,6 +1260,23 @@ ImDiskDeviceThread(IN PVOID Context)
 
         default:
             Irp->IoStatus.Status = STATUS_DRIVER_INTERNAL_ERROR;
+        }
+
+        // If indicating that proxy connection died we can do
+        // nothing else but remove this device.
+        switch (Irp->IoStatus.Status)
+        {
+        case STATUS_CONNECTION_RESET:
+        case STATUS_DEVICE_REMOVED:
+        case STATUS_DEVICE_DOES_NOT_EXIST:
+        case STATUS_PIPE_BROKEN:
+        case STATUS_PIPE_DISCONNECTED:
+        case STATUS_PORT_DISCONNECTED:
+        case STATUS_REMOTE_DISCONNECT:
+            ImDiskRemoveVirtualDisk(device_object);
+            Irp->IoStatus.Status = STATUS_DEVICE_DOES_NOT_EXIST;
+            Irp->IoStatus.Information = 0;
+
         }
 
         IoCompleteRequest(Irp,

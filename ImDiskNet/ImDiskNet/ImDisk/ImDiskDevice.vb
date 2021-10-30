@@ -1,4 +1,9 @@
-﻿Namespace ImDisk
+﻿Imports System.ComponentModel
+Imports System.IO
+Imports System.Runtime.InteropServices
+Imports Microsoft.Win32.SafeHandles
+
+Namespace ImDisk
 
     ''' <summary>
     ''' Represents ImDisk Virtual Disk Driver disk device objects.
@@ -12,15 +17,15 @@
 
         Private Shared Function OpenDeviceHandle(DeviceNumber As UInt32, AccessMode As FileAccess) As SafeFileHandle
 
-            Dim NativeAccessMode As UInt32 = NativeFileIO.Win32API.FILE_READ_ATTRIBUTES
+            Dim NativeAccessMode As UInt32 = NativeFileIO.UnsafeNativeMethods.FILE_READ_ATTRIBUTES
             If (AccessMode And FileAccess.Read) = FileAccess.Read Then
-                NativeAccessMode += NativeFileIO.Win32API.GENERIC_READ
+                NativeAccessMode += NativeFileIO.UnsafeNativeMethods.GENERIC_READ
             End If
             If (AccessMode And FileAccess.Write) = FileAccess.Write Then
-                NativeAccessMode += NativeFileIO.Win32API.GENERIC_WRITE
+                NativeAccessMode += NativeFileIO.UnsafeNativeMethods.GENERIC_WRITE
             End If
 
-            Dim Handle = DLL.ImDiskOpenDeviceByNumber(DeviceNumber, NativeAccessMode)
+            Dim Handle = UnsafeNativeMethods.ImDiskOpenDeviceByNumber(DeviceNumber, NativeAccessMode)
             If Handle.IsInvalid Then
                 Throw New Win32Exception
             End If
@@ -29,27 +34,27 @@
                 Throw New Win32Exception
             End If
 
-            NativeFileIO.Win32API.DeviceIoControl(Handle, NativeFileIO.Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, IntPtr.Zero, 0UI, IntPtr.Zero, 0UI, 0UI, IntPtr.Zero)
+            NativeFileIO.UnsafeNativeMethods.DeviceIoControl(Handle, NativeFileIO.UnsafeNativeMethods.FSCTL_ALLOW_EXTENDED_DASD_IO, IntPtr.Zero, 0UI, IntPtr.Zero, 0UI, 0UI, IntPtr.Zero)
             Return Handle
 
         End Function
 
         Private Shared Function OpenDeviceHandle(MountPoint As String, AccessMode As FileAccess) As SafeFileHandle
 
-            Dim NativeAccessMode As UInt32 = NativeFileIO.Win32API.FILE_READ_ATTRIBUTES
+            Dim NativeAccessMode As UInt32 = NativeFileIO.UnsafeNativeMethods.FILE_READ_ATTRIBUTES
             If (AccessMode And FileAccess.Read) = FileAccess.Read Then
-                NativeAccessMode += NativeFileIO.Win32API.GENERIC_READ
+                NativeAccessMode += NativeFileIO.UnsafeNativeMethods.GENERIC_READ
             End If
             If (AccessMode And FileAccess.Write) = FileAccess.Write Then
-                NativeAccessMode += NativeFileIO.Win32API.GENERIC_WRITE
+                NativeAccessMode += NativeFileIO.UnsafeNativeMethods.GENERIC_WRITE
             End If
 
-            Dim Handle = DLL.ImDiskOpenDeviceByMountPoint(MountPoint, NativeAccessMode)
+            Dim Handle = UnsafeNativeMethods.ImDiskOpenDeviceByMountPoint(MountPoint, NativeAccessMode)
             If Handle.IsInvalid Then
                 Throw New Win32Exception
             End If
 
-            NativeFileIO.Win32API.DeviceIoControl(Handle, NativeFileIO.Win32API.FSCTL_ALLOW_EXTENDED_DASD_IO, IntPtr.Zero, 0UI, IntPtr.Zero, 0UI, 0UI, IntPtr.Zero)
+            NativeFileIO.UnsafeNativeMethods.DeviceIoControl(Handle, NativeFileIO.UnsafeNativeMethods.FSCTL_ALLOW_EXTENDED_DASD_IO, IntPtr.Zero, 0UI, IntPtr.Zero, 0UI, 0UI, IntPtr.Zero)
             Return Handle
 
         End Function
@@ -80,7 +85,7 @@
         Public ReadOnly Property DiskSize As Long
             Get
                 Dim Size As Int64
-                NativeFileIO.Win32Try(DLL.ImDiskGetVolumeSize(SafeFileHandle, Size))
+                NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskGetVolumeSize(SafeFileHandle, Size))
                 Return Size
             End Get
         End Property
@@ -117,7 +122,11 @@
         <ComVisible(False)>
         Public Sub SaveImageFile(ImageFile As FileStream, BufferSize As UInt32)
 
-            NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+            If ImageFile Is Nothing Then
+                Throw New ArgumentNullException(NameOf(ImageFile))
+            End If
+
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskSaveImageFile(SafeFileHandle,
                                                           ImageFile.SafeFileHandle,
                                                           BufferSize,
                                                           IntPtr.Zero))
@@ -134,13 +143,17 @@
         <ComVisible(False)>
         Public Sub SaveImageFile(ImageFile As FileStream, BufferSize As UInt32, CancelAction As Action(Of Action(Of Boolean)))
 
+            If ImageFile Is Nothing Then
+                Throw New ArgumentNullException(NameOf(ImageFile))
+            End If
+
             Dim CancelFlag As Integer
             Dim CancelFlagHandle = GCHandle.Alloc(CancelFlag, GCHandleType.Pinned)
             Try
                 If CancelAction IsNot Nothing Then
                     CancelAction(Sub(flag) CancelFlag = If(flag, 1, 0))
                 End If
-                NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskSaveImageFile(SafeFileHandle,
                                                               ImageFile.SafeFileHandle,
                                                               BufferSize,
                                                               CancelFlagHandle.AddrOfPinnedObject()))
@@ -159,7 +172,7 @@
         <ComVisible(False)>
         Public Sub SaveImageFile(ImageFile As SafeFileHandle, BufferSize As UInt32)
 
-            NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskSaveImageFile(SafeFileHandle,
                                                           ImageFile,
                                                           BufferSize,
                                                           IntPtr.Zero))
@@ -176,13 +189,19 @@
         <ComVisible(False)>
         Public Sub SaveImageFile(ImageFile As SafeFileHandle, BufferSize As UInt32, CancelAction As Action(Of Action(Of Boolean)))
 
+            If ImageFile Is Nothing Then
+                Throw New ArgumentNullException(NameOf(ImageFile))
+            End If
+
             Dim CancelFlag As Integer
             Dim CancelFlagHandle = GCHandle.Alloc(CancelFlag, GCHandleType.Pinned)
+
             Try
                 If CancelAction IsNot Nothing Then
                     CancelAction(Sub(flag) CancelFlag = If(flag, 1, 0))
                 End If
-                NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+
+                NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskSaveImageFile(SafeFileHandle,
                                                               ImageFile,
                                                               BufferSize,
                                                               CancelFlagHandle.AddrOfPinnedObject()))
@@ -202,9 +221,13 @@
         <ComVisible(False)>
         Public Sub SaveImageFile(ImageFile As String, BufferSize As UInt32)
 
+            If ImageFile Is Nothing Then
+                Throw New ArgumentNullException(NameOf(ImageFile))
+            End If
+
             Using ImageFileHandle = NativeFileIO.OpenFileHandle(ImageFile, FileAccess.Write, FileShare.None, FileMode.Create, Overlapped:=False)
 
-                NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskSaveImageFile(SafeFileHandle,
                                                               ImageFileHandle,
                                                               BufferSize,
                                                               IntPtr.Zero))
@@ -223,6 +246,10 @@
         <ComVisible(False)>
         Public Sub SaveImageFile(ImageFile As String, BufferSize As UInt32, CancelAction As Action(Of Action(Of Boolean)))
 
+            If ImageFile Is Nothing Then
+                Throw New ArgumentNullException(NameOf(ImageFile))
+            End If
+
             Using ImageFileHandle = NativeFileIO.OpenFileHandle(ImageFile, FileAccess.Write, FileShare.None, FileMode.Create, Overlapped:=False)
 
                 Dim CancelFlag As Integer
@@ -231,7 +258,7 @@
                     If CancelAction IsNot Nothing Then
                         CancelAction(Sub(flag) CancelFlag = If(flag, 1, 0))
                     End If
-                    NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                    NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskSaveImageFile(SafeFileHandle,
                                                                   ImageFileHandle,
                                                                   BufferSize,
                                                                   CancelFlagHandle.AddrOfPinnedObject()))
@@ -249,9 +276,13 @@
         ''' <param name="ImageFile">Name of file to which disk contents will be written.</param>
         Public Sub SaveImageFile(ImageFile As String)
 
+            If ImageFile Is Nothing Then
+                Throw New ArgumentNullException(NameOf(ImageFile))
+            End If
+
             Using ImageFileHandle = NativeFileIO.OpenFileHandle(ImageFile, FileAccess.Write, FileShare.None, FileMode.Create, Overlapped:=False)
 
-                NativeFileIO.Win32Try(DLL.ImDiskSaveImageFile(SafeFileHandle,
+                NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskSaveImageFile(SafeFileHandle,
                                                                 ImageFileHandle,
                                                                 0,
                                                                 IntPtr.Zero))
@@ -269,13 +300,13 @@
         ''' boxes etc.</param>
         ''' <param name="BufferSize">I/O buffer size to use when reading source disk. This
         ''' parameter is optional, if it is zero the buffer size to use
-        ''' will automatically choosen.</param>
+        ''' will automatically chosen.</param>
         ''' <param name="IsCdRomType">If this parameter is TRUE and the source device type cannot
         ''' be automatically determined this function will ask user for
         ''' a .iso suffixed image file name.</param>
         Public Sub SaveImageFileInteractive(hWnd As IntPtr, BufferSize As UInt32, IsCdRomType As Boolean)
 
-            DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, BufferSize, IsCdRomType)
+            UnsafeNativeMethods.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, BufferSize, IsCdRomType)
 
         End Sub
 
@@ -292,7 +323,7 @@
         <ComVisible(False)>
         Public Sub SaveImageFileInteractive(hWnd As IntPtr, IsCdRomType As Boolean)
 
-            DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, 0, IsCdRomType)
+            UnsafeNativeMethods.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, 0, IsCdRomType)
 
         End Sub
 
@@ -305,11 +336,11 @@
         ''' boxes etc.</param>
         ''' <param name="BufferSize">I/O buffer size to use when reading source disk. This
         ''' parameter is optional, if it is zero the buffer size to use
-        ''' will automatically choosen.</param>
+        ''' will automatically chosen.</param>
         <ComVisible(False)>
         Public Sub SaveImageFileInteractive(hWnd As IntPtr, BufferSize As UInt32)
 
-            DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, BufferSize, False)
+            UnsafeNativeMethods.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, BufferSize, False)
 
         End Sub
 
@@ -323,7 +354,7 @@
         <ComVisible(False)>
         Public Sub SaveImageFileInteractive(hWnd As IntPtr)
 
-            DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, 0, False)
+            UnsafeNativeMethods.ImDiskSaveImageFileInteractive(SafeFileHandle, hWnd, 0, False)
 
         End Sub
 
@@ -338,7 +369,7 @@
         <ComVisible(False)>
         Public Sub SaveImageFileInteractive(IsCdRomType As Boolean)
 
-            DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, IntPtr.Zero, 0, IsCdRomType)
+            UnsafeNativeMethods.ImDiskSaveImageFileInteractive(SafeFileHandle, IntPtr.Zero, 0, IsCdRomType)
 
         End Sub
 
@@ -350,7 +381,7 @@
         <ComVisible(False)>
         Public Sub SaveImageFileInteractive()
 
-            DLL.ImDiskSaveImageFileInteractive(SafeFileHandle, IntPtr.Zero, 0, False)
+            UnsafeNativeMethods.ImDiskSaveImageFileInteractive(SafeFileHandle, IntPtr.Zero, 0, False)
 
         End Sub
 
@@ -359,7 +390,7 @@
         ''' </summary>
         Public Overloads Sub ForceRemoveDevice()
 
-            NativeFileIO.Win32Try(DLL.ImDiskForceRemoveDevice(SafeFileHandle, 0))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskForceRemoveDevice(SafeFileHandle, 0))
 
         End Sub
 

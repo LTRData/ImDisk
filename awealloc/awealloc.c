@@ -1,7 +1,7 @@
 /*
 AWE Allocation Driver for Windows 2000/XP and later.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -105,17 +105,17 @@ typedef struct _OBJECT_CONTEXT
 
     PAGE_CONTEXT LatestPageContext;
 
-    LONGLONG AsynchronousExchangeHit;
+    volatile LONGLONG AsynchronousExchangeHit;
 
     KSPIN_LOCK IOLock;
 
-    LONG ActiveReaders;
+    volatile LONG ActiveReaders;
 
-    LONG ActiveWriters;
+    volatile LONG ActiveWriters;
 
-    LONGLONG ReadRequestLockConflicts;
+    volatile LONGLONG ReadRequestLockConflicts;
 
-    LONGLONG WriteRequestLockConflicts;
+    volatile LONGLONG WriteRequestLockConflicts;
 
     BOOLEAN UseNumaNumber;
 
@@ -402,7 +402,9 @@ IN OUT PKIRQL LowestAssumedIrql)
             (Context->ActiveReaders >= (OwnsReadLock ? 2 : 1)))
         {
             Context->WriteRequestLockConflicts++;
-            KdPrint(("AWEAlloc: I/O write protection busy while requesting lock for writing.\n"));
+            KdPrint(("AWEAlloc: I/O write protection busy while requesting lock for writing. Active readers: %i writers: %i\n",
+                Context->ActiveReaders, Context->ActiveWriters));
+
             status = STATUS_DEVICE_BUSY;
         }
         else
@@ -416,6 +418,10 @@ IN OUT PKIRQL LowestAssumedIrql)
             }
             else
             {
+                KdPrint(("AWEAlloc: Thread %p acquired lock for writing. Active readers: %i writers: %i\n",
+                    KeGetCurrentThread(),
+                    Context->ActiveReaders, Context->ActiveWriters));
+
                 status = STATUS_SUCCESS;
             }
         }
@@ -425,7 +431,9 @@ IN OUT PKIRQL LowestAssumedIrql)
         if ((Context->ActiveWriters >= 1) | (Context->ActiveReaders >= LONG_MAX))
         {
             Context->ReadRequestLockConflicts++;
-            KdPrint(("AWEAlloc: I/O write protection busy while requesting lock for reading.\n"));
+            KdPrint(("AWEAlloc: I/O write protection busy while requesting lock for reading. Active readers: %i writers: %i\n",
+                Context->ActiveReaders, Context->ActiveWriters));
+
             status = STATUS_DEVICE_BUSY;
         }
         else
@@ -439,6 +447,10 @@ IN OUT PKIRQL LowestAssumedIrql)
             }
             else
             {
+                KdPrint(("AWEAlloc: Thread %p acquired lock for reading. Active readers: %i writers: %i\n",
+                    KeGetCurrentThread(),
+                    Context->ActiveReaders, Context->ActiveWriters));
+
                 status = STATUS_SUCCESS;
             }
         }
@@ -458,6 +470,11 @@ IN OUT PKIRQL LowestAssumedIrql)
     if (ForWriteOperation)
     {
         Context->ActiveWriters--;
+
+        KdPrint(("AWEAlloc: Thread %p released lock for writing. Active readers: %i writers: %i\n",
+            KeGetCurrentThread(),
+            Context->ActiveReaders, Context->ActiveWriters));
+
         if (Context->ActiveWriters < 0)
         {
             DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
@@ -467,6 +484,11 @@ IN OUT PKIRQL LowestAssumedIrql)
     if (ForReadOperation)
     {
         Context->ActiveReaders--;
+
+        KdPrint(("AWEAlloc: Thread %p released lock for reading. Active readers: %i writers: %i\n",
+            KeGetCurrentThread(),
+            Context->ActiveReaders, Context->ActiveWriters));
+
         if (Context->ActiveReaders < 0)
         {
             DbgPrint("AWEAlloc: I/O synchronization state corrupt.\n");
@@ -836,6 +858,9 @@ IN PIRP Irp)
     {
         KdPrint(("AWEAlloc: Read request starting past EOF.\n"));
 
+        AWEAllocReleaseProtection(context, TRUE, FALSE,
+            &lowest_assumed_irql);
+
         Irp->IoStatus.Status = STATUS_END_OF_FILE;
         Irp->IoStatus.Information = 0;
 
@@ -937,8 +962,10 @@ IN PIRP Irp)
             return STATUS_SUCCESS;
         }
 
-        if ((page_offset_this_iter + bytes_this_iter) > ALLOC_PAGE_SIZE)
+        if (((ULONGLONG)page_offset_this_iter + bytes_this_iter) > ALLOC_PAGE_SIZE)
+        {
             bytes_this_iter = ALLOC_PAGE_SIZE - page_offset_this_iter;
+        }
 
         status = AWEAllocMapPage(context, abs_offset_this_iter,
             &current_page_context, &lowest_assumed_irql);

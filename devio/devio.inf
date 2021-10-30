@@ -1,0 +1,51 @@
+
+; DUMMY.INF
+; Dummy inf file.
+
+[Version]
+signature = "$Windows NT$"
+Class = SCSIAdapter
+ClassGUID = {4D36E97B-E325-11CE-BFC1-08002BE10318}
+Provider = "LTR Data"
+DriverVer = 10/26/2021,2.1.0.00070
+CatalogFile = devio.cat
+
+
+[SourceDisksNames]
+1 = "ImDisk Virtual Disk Driver Proxy back-end"
+
+
+[SourceDisksFiles.x86]
+devio.exe = 1, Release\x86
+
+[SourceDisksFiles.amd64]
+devio.exe = 1, Release\x64
+
+[SourceDisksFiles.arm]
+devio.exe = 1, Release\arm
+
+[SourceDisksFiles.arm64]
+devio.exe = 1, Release\arm64
+
+[DestinationDirs]
+ImDiskExeExeFiles = 12
+ 
+
+[DefaultInstall.ntx86]
+CopyFiles = ImDiskExeExeFiles
+
+
+[ImDiskExeExeFiles]
+devio.exe
+
+
+[DefaultInstall.ntx86.Services]
+AddService = ImDiskExe, , ImDiskExe
+
+
+[ImDiskExe]
+DisplayName = "ImDisk Virtual Disk Driver Proxy back-end"
+StartType = 2
+ServiceType = 16
+ErrorControl = 0
+ServiceBinary = %11%\devio.exe

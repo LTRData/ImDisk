@@ -1,4 +1,6 @@
-﻿Imports LTR.IO.ImDisk.Devio.Server.Providers
+﻿Imports System.Collections.ObjectModel
+Imports System.IO
+Imports LTR.IO.ImDisk.Devio.Server.Providers
 
 Namespace Server.Services
 
@@ -13,7 +15,7 @@ Namespace Server.Services
         ''' <summary>
         ''' Name and path of image file mounted by ImDisk Virtual Disk Driver.
         ''' </summary>
-        Public ReadOnly Imagefile As String
+        Public ReadOnly Property Imagefile As String
 
         Private ReadOnly _Access As FileAccess
 
@@ -29,7 +31,7 @@ Namespace Server.Services
 
             _Access = Access
             Offset = ImDiskAPI.GetOffsetByFileExt(Imagefile)
-            Me.Imagefile = Imagefile
+            Me._Imagefile = Imagefile
 
         End Sub
 
@@ -38,13 +40,13 @@ Namespace Server.Services
         ''' structure objects.
         ''' </summary>
         ''' <returns>Collection of PARTITION_INFORMATION structures objects.</returns>
-        Public Overrides Function GetPartitionInformation() As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
-            Return ImDiskAPI.GetPartitionInformation(Imagefile, SectorSize, Offset)
+        Public Overrides Function GetPartitionInformation() As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
+            Return ImDiskAPI.GetPartitionInformation(_Imagefile, SectorSize, Offset)
         End Function
 
         Protected Overrides ReadOnly Property ImDiskProxyObjectName As String
             Get
-                Return Imagefile
+                Return _Imagefile
             End Get
         End Property
 

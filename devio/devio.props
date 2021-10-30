@@ -7,6 +7,9 @@
     <ClCompile>
       <PreprocessorDefinitions>_WINSOCK_DEPRECATED_NO_WARNINGS;_MSC_PLATFORM_TOOLSET=$(PlatformToolsetVersion);%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
+    <Link>
+      <SetChecksum>true</SetChecksum>
+    </Link>
   </ItemDefinitionGroup>
   <ItemGroup />
 </Project>

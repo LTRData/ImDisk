@@ -1,0 +1,54 @@
+
+; DUMMY.INF
+; Dummy inf file.
+
+[Version]
+signature = "$Windows NT$"
+Class = SCSIAdapter
+ClassGUID = {4D36E97B-E325-11CE-BFC1-08002BE10318}
+Provider = "LTR Data"
+DriverVer = 10/26/2021,2.1.0.00070
+CatalogFile = cli.cat
+
+
+[SourceDisksNames]
+1 = "ImDisk Virtual Disk Driver Command line tool"
+
+
+[SourceDisksFiles.x86]
+imdisk.exe = 1, i386
+
+[SourceDisksFiles.ia64]
+imdisk.exe = 1, ia64
+
+[SourceDisksFiles.amd64]
+imdisk.exe = 1, amd64
+
+[SourceDisksFiles.arm]
+imdisk.exe = 1, arm
+
+[SourceDisksFiles.arm64]
+imdisk.exe = 1, arm64
+
+[DestinationDirs]
+ImDiskExeExeFiles = 12
+ 
+
+[DefaultInstall.ntx86]
+CopyFiles = ImDiskExeExeFiles
+
+
+[ImDiskExeExeFiles]
+imdisk.exe
+
+
+[DefaultInstall.ntx86.Services]
+AddService = ImDiskExe, , ImDiskExe
+
+
+[ImDiskExe]
+DisplayName = "ImDisk Virtual Disk Driver Command line tool"
+StartType = 2
+ServiceType = 16
+ErrorControl = 0
+ServiceBinary = %11%\imdisk.exe

@@ -10,7 +10,7 @@
 // Ensures that we build a pre Win 2000 compatible x86 sys file
 // (without ExFreePoolWithTag()). // Olof Lagerkvist
 //
-#ifndef _WIN64
+#if defined(_M_IX86)
 #ifdef ExFreePool
 #undef ExFreePool
 #endif

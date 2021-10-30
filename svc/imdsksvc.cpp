@@ -5,7 +5,7 @@ This service redirects I/O requests sent to the ImDisk Virtual Disk Driver
 to another computer through a serial communication interface or by opening
 a TCP/IP connection.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -40,9 +40,11 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 #include "..\inc\imdisk.h"
 #include "..\inc\imdproxy.h"
+#include "..\inc\ntumapi.h"
 #include "..\inc\wio.hpp"
 #include "..\inc\wmem.hpp"
 
+#pragma comment(lib, "ntdll.lib")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "ws2_32.lib")
 
@@ -57,32 +59,8 @@ HANDLE ImDiskSvcStopEvent = NULL;
 
 #if defined(DEBUG) || defined(_DEBUG)
 
-#define KdPrint(x)          DbgPrintF          x
+#define KdPrint(x)          DbgPrint           x
 #define KdPrintLastError(x) DbgPrintLastError  x
-
-BOOL
-DbgPrintF(LPCSTR Message, ...)
-{
-    va_list param_list;
-    LPSTR lpBuf = NULL;
-
-    va_start(param_list, Message);
-
-    if (!FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
-        FORMAT_MESSAGE_ALLOCATE_BUFFER |
-        FORMAT_MESSAGE_FROM_STRING, Message, 0, 0,
-        (LPSTR)&lpBuf, 0, &param_list))
-        return FALSE;
-
-    OutputDebugStringA(lpBuf);
-    
-    DWORD dw;
-    WriteFile(GetStdHandle(STD_ERROR_HANDLE), lpBuf, (DWORD)strlen(lpBuf), &dw, NULL);
-    
-    LocalFree(lpBuf);
-    
-    return TRUE;
-}
 
 void
 DbgPrintLastError(LPCSTR Prefix)
@@ -95,7 +73,7 @@ DbgPrintLastError(LPCSTR Prefix)
         FORMAT_MESSAGE_IGNORE_INSERTS,
         NULL, GetLastError(), 0, (LPSTR)&MsgBuf, 0, NULL);
 
-    DbgPrintF("ImDskSvc: %1: %2%n", Prefix, MsgBuf);
+    DbgPrint("ImDskSvc: %s: %s\n", Prefix, MsgBuf);
 
     LocalFree(MsgBuf);
 }
@@ -116,7 +94,7 @@ class ImDiskSvcServerSession
     {
         IMDPROXY_CONNECT_REQ ConnectReq;
 
-        KdPrint(("ImDskSvc: Thread created.%n"));
+        KdPrint(("ImDskSvc: Thread created.\n"));
 
         if (Overlapped.BufRecv(hPipe, &ConnectReq.request_code,
             sizeof ConnectReq.request_code) !=
@@ -148,9 +126,9 @@ class ImDiskSvcServerSession
             return 0;
         }
 
-        if ((ConnectReq.length == 0) | (ConnectReq.length > 520))
+        if ((ConnectReq.length == 0) || (ConnectReq.length > 520))
         {
-            KdPrint(("ImDskSvc: Bad connection string length received (%1!u!).%n",
+            KdPrint(("ImDskSvc: Bad connection string length received (%u).\n",
                 ConnectReq.length));
 
             delete this;
@@ -200,7 +178,7 @@ class ImDiskSvcServerSession
         {
             LPWSTR FileName = wcstok(ConnectionString, L": ");
 
-            KdPrint(("ImDskSvc: Connecting to '%1!ws!'.%n", FileName));
+            KdPrint(("ImDskSvc: Connecting to '%ws'.\n", FileName));
 
             hTarget = CreateFile(FileName,
                 GENERIC_READ | GENERIC_WRITE,
@@ -231,7 +209,7 @@ class ImDiskSvcServerSession
                 if (DCBAndTimeouts[0] == L' ')
                     ++DCBAndTimeouts;
 
-                KdPrint(("ImDskSvc: Configuring '%1!ws!'.%n", DCBAndTimeouts));
+                KdPrint(("ImDskSvc: Configuring '%ws'.\n", DCBAndTimeouts));
 
                 GetCommState(hTarget, &dcb);
                 GetCommTimeouts(hTarget, &timeouts);
@@ -240,7 +218,7 @@ class ImDiskSvcServerSession
                 SetCommTimeouts(hTarget, &timeouts);
             }
 
-            KdPrint(("ImDskSvc: Connected to '%1!ws!' and configured.%n",
+            KdPrint(("ImDskSvc: Connected to '%ws' and configured.\n",
                 FileName));
 
             break;
@@ -255,7 +233,7 @@ class ImDiskSvcServerSession
             if (PortName == NULL)
                 PortName = L"9000";
 
-            KdPrint(("ImDskSvc: Connecting to '%1!ws!:%2!ws!'.%n",
+            KdPrint(("ImDskSvc: Connecting to '%ws:%ws'.\n",
                 ServerName, PortName));
 
             hTarget = (HANDLE)ConnectTCP(ServerName, PortName);
@@ -276,14 +254,14 @@ class ImDiskSvcServerSession
             setsockopt((SOCKET)hTarget, IPPROTO_TCP, TCP_NODELAY, (LPCSTR)&b,
                 sizeof b);
 
-            KdPrint(("ImDskSvc: Connected to '%1!ws!:%2!ws!' and configured.%n",
+            KdPrint(("ImDskSvc: Connected to '%ws:%ws' and configured.\n",
                 ServerName, PortName));
 
             break;
         }
 
         default:
-            KdPrint(("ImDskSvc: Unsupported connection type (%1!#x!).%n",
+            KdPrint(("ImDskSvc: Unsupported connection type (%#x).\n",
                 IMDISK_PROXY_TYPE(ConnectReq.flags)));
 
             connect_resp.error_code = (ULONGLONG)-1;
@@ -406,7 +384,7 @@ class ImDiskSvcServerSession
         // we should shut down this connection.
         Overlapped.BufRecv(hPipe, &dw, sizeof dw);
 
-        KdPrint(("ImDskSvc: Cleaning up.%n"));
+        KdPrint(("ImDskSvc: Cleaning up.\n"));
 
         CloseHandle(hTarget);
 
@@ -452,7 +430,7 @@ public:
             } ThreadFunction;
             ThreadFunction.Member = &ImDiskSvcServerSession::Thread;
 
-            KdPrint(("ImDskSvc: Creating thread.%n"));
+            KdPrint(("ImDskSvc: Creating thread.\n"));
 
             UINT id = 0;
             HANDLE hThread = (HANDLE)
@@ -501,8 +479,8 @@ public:
             return false;
 
         return
-            (hPipe != NULL) &
-            (hPipe != INVALID_HANDLE_VALUE) &
+            (hPipe != NULL) &&
+            (hPipe != INVALID_HANDLE_VALUE) &&
             (Overlapped.hEvent != NULL);
     }
 };
@@ -545,6 +523,7 @@ ImDiskSvcStart(DWORD, LPWSTR *)
 
     ImDiskSvcStatusHandle = RegisterServiceCtrlHandler(IMDPROXY_SVC,
         ImDiskSvcCtrlHandler);
+
     if (ImDiskSvcStatusHandle == (SERVICE_STATUS_HANDLE)0)
     {
         KdPrintLastError(("RegisterServiceCtrlHandler() failed"));
@@ -586,6 +565,8 @@ ImDiskSvcStart(DWORD, LPWSTR *)
     SetServiceStatus(ImDiskSvcStatusHandle, &ImDiskSvcStatus);
 }
 
+#ifdef _DEBUG
+
 extern "C"
 int
 CALLBACK
@@ -595,7 +576,62 @@ wWinMain(HINSTANCE,
     LPWSTR,
     int)
 {
-    KdPrint(("ImDskSvc: Starting up process.%n"));
+    KdPrint(("ImDskSvc: Starting up process.\n"));
+
+    WSADATA wsadata;
+    WSAStartup(0x0101, &wsadata);
+
+    ImDiskSvcStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (ImDiskSvcStopEvent == NULL)
+    {
+        KdPrintLastError(("CreateEvent() failed"));
+        return 0;
+    }
+
+    for (;;)
+    {
+        if (WaitForSingleObject(ImDiskSvcStopEvent, 0) != WAIT_TIMEOUT)
+        {
+            ImDiskSvcStatus.dwWin32ExitCode = NO_ERROR;
+            break;
+        }
+
+#pragma warning(suppress: 28197)
+        ImDiskSvcServerSession* ServerSession = new ImDiskSvcServerSession;
+        if (!ServerSession->IsOk())
+        {
+            delete ServerSession;
+            KdPrintLastError(("Pipe initialization failed"));
+            break;
+        }
+
+        if (!ServerSession->Connect())
+        {
+            if (ImDiskSvcStatus.dwWin32ExitCode != NO_ERROR)
+            {
+                KdPrintLastError(("Pipe connect failed"));
+            }
+            break;
+        }
+    }
+
+    SetEvent(ImDiskSvcStopEvent);
+
+    return 1;
+}
+
+#else
+
+extern "C"
+int
+CALLBACK
+#pragma warning(suppress: 28251)
+wWinMain(HINSTANCE,
+    HINSTANCE,
+    LPWSTR,
+    int)
+{
+    KdPrint(("ImDskSvc: Starting up process.\n"));
 
     WSADATA wsadata;
     WSAStartup(0x0101, &wsadata);
@@ -630,6 +666,8 @@ wWinMain(HINSTANCE,
     
     return 1;
 }
+
+#endif
 
 #if !defined(_DEBUG) && !defined(DEBUG) && _MSC_PLATFORM_TOOLSET < 140
 

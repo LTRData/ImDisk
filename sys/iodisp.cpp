@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -81,7 +81,7 @@ ImDiskDispatchCreateClose(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: Attempt to open device %i when shut down.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_DOES_NOT_EXIST;
+        status = STATUS_DEVICE_REMOVED;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -126,7 +126,7 @@ ImDiskDispatchReadWrite(IN PDEVICE_OBJECT DeviceObject,
 
         IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-        return STATUS_SUCCESS;
+        return STATUS_INVALID_PARAMETER;
     }
 
     device_extension = (PDEVICE_EXTENSION)DeviceObject->DeviceExtension;
@@ -150,7 +150,7 @@ ImDiskDispatchReadWrite(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: Read/write attempt on device %i while removing.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_DOES_NOT_EXIST;
+        status = STATUS_DEVICE_REMOVED;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -348,7 +348,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: IOCTL attempt on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_DOES_NOT_EXIST;
+        status = STATUS_DEVICE_REMOVED;
 
         Irp->IoStatus.Status = status;
 
@@ -811,6 +811,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
     case IOCTL_DISK_EJECT_MEDIA:
     case IOCTL_STORAGE_EJECT_MEDIA:
+    {
         KdPrint(("ImDisk: IOCTL_DISK/STORAGE_EJECT_MEDIA for device %i.\n",
             device_extension->device_number));
 
@@ -826,6 +827,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
         }
 
         break;
+    }
 
     case IOCTL_IMDISK_QUERY_DRIVER:
     {
@@ -1911,10 +1913,10 @@ ImDiskDispatchFlushBuffers(IN PDEVICE_OBJECT DeviceObject,
 
     if (KeReadStateEvent(&device_extension->terminate_thread) != 0)
     {
-        KdPrint(("ImDisk: flush dispatch on device %i that is being removed.\n",
+        KdPrint(("ImDisk: Flush dispatch on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_DOES_NOT_EXIST;
+        status = STATUS_DEVICE_REMOVED;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -1998,7 +2000,7 @@ ImDiskDispatchQueryInformation(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: QueryInformation dispatch on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_DOES_NOT_EXIST;
+        status = STATUS_DEVICE_REMOVED;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -2121,7 +2123,7 @@ ImDiskDispatchSetInformation(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: SetInformation dispatch on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_DOES_NOT_EXIST;
+        status = STATUS_DEVICE_REMOVED;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;
@@ -2222,7 +2224,7 @@ ImDiskDispatchPnP(IN PDEVICE_OBJECT DeviceObject,
         KdPrint(("ImDisk: PnP dispatch on device %i that is being removed.\n",
             device_extension->device_number));
 
-        status = STATUS_DEVICE_DOES_NOT_EXIST;
+        status = STATUS_DEVICE_REMOVED;
 
         Irp->IoStatus.Status = status;
         Irp->IoStatus.Information = 0;

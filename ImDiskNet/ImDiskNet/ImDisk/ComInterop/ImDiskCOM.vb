@@ -1,4 +1,12 @@
-﻿Namespace ImDisk.ComInterop
+﻿#Disable Warning CA1822 ' Mark members as static
+#Disable Warning CA1707 ' Identifiers should not contain underscores
+#Disable Warning CA1711 ' Identifiers should not have incorrect suffix
+#Disable Warning CA1305 ' Specify IFormatProvider
+
+Imports System.IO
+Imports System.Runtime.InteropServices
+
+Namespace ImDisk.ComInterop
 
     <Guid("b0bf4b36-0ebe-4ef4-8974-07694a7a3a81")>
     <ClassInterface(ClassInterfaceType.AutoDual)>
@@ -264,22 +272,22 @@
     <Guid("209d67ea-9afd-436a-a0f1-51c802fe6720")>
     <StructLayout(LayoutKind.Sequential)>
     Public Structure LARGE_INTEGER
-        Implements IEquatable(Of LARGE_INTEGER), IEquatable(Of Int64)
+        Implements IEquatable(Of LARGE_INTEGER), IEquatable(Of Int64), IComparable(Of LARGE_INTEGER), IComparable(Of Int64)
 
-        Public LowPart As Int32
-        Public HighPart As Int32
+        Public Property LowPart As Int32
+        Public Property HighPart As Int32
 
         Public Property QuadPart As Int64
             Get
                 Dim bytes As New List(Of Byte)(8)
-                bytes.AddRange(BitConverter.GetBytes(LowPart))
-                bytes.AddRange(BitConverter.GetBytes(HighPart))
+                bytes.AddRange(BitConverter.GetBytes(_LowPart))
+                bytes.AddRange(BitConverter.GetBytes(_HighPart))
                 Return BitConverter.ToInt64(bytes.ToArray(), 0)
             End Get
-            Set(value As Int64)
-                Dim bytes = BitConverter.GetBytes(value)
-                LowPart = BitConverter.ToInt32(bytes, 0)
-                HighPart = BitConverter.ToInt32(bytes, 4)
+            Set
+                Dim bytes = BitConverter.GetBytes(Value)
+                _LowPart = BitConverter.ToInt32(bytes, 0)
+                _HighPart = BitConverter.ToInt32(bytes, 4)
             End Set
         End Property
 
@@ -303,12 +311,62 @@
             Return value.QuadPart
         End Operator
 
-        Public Overloads Function Equals(other As Int64) As Boolean Implements IEquatable(Of Int64).Equals
-            Return QuadPart = other
+        Public Overloads Function Equals(other As LARGE_INTEGER) As Boolean Implements IEquatable(Of LARGE_INTEGER).Equals
+            Return _LowPart = other._LowPart AndAlso _HighPart = other._HighPart
         End Function
 
-        Public Overloads Function Equals(other As LARGE_INTEGER) As Boolean Implements IEquatable(Of LARGE_INTEGER).Equals
-            Return LowPart = other.LowPart AndAlso HighPart = other.HighPart
+        Public Overrides Function Equals(obj As Object) As Boolean
+            If TypeOf obj Is IEquatable(Of LARGE_INTEGER) Then
+                Return DirectCast(obj, IEquatable(Of LARGE_INTEGER)).Equals(Me)
+            ElseIf TypeOf obj Is IEquatable(Of Int64) Then
+                Return DirectCast(obj, IEquatable(Of Int64)).Equals(QuadPart)
+            Else
+                Return False
+            End If
+        End Function
+
+        Public Shared Operator =(left As LARGE_INTEGER, right As LARGE_INTEGER) As Boolean
+            Return left.Equals(right)
+        End Operator
+
+        Public Shared Operator <>(left As LARGE_INTEGER, right As LARGE_INTEGER) As Boolean
+            Return Not left.Equals(right)
+        End Operator
+
+        Public Function ToLARGE_INTEGER() As LARGE_INTEGER
+            Return Me
+        End Function
+
+        Public Function ToInt64() As Long
+            Return Me
+        End Function
+
+        Public Function CompareTo(other As LARGE_INTEGER) As Integer Implements IComparable(Of LARGE_INTEGER).CompareTo
+            Throw New NotImplementedException()
+        End Function
+
+        Public Shared Operator <(left As LARGE_INTEGER, right As LARGE_INTEGER) As Boolean
+            Return left.CompareTo(right) < 0
+        End Operator
+
+        Public Shared Operator <=(left As LARGE_INTEGER, right As LARGE_INTEGER) As Boolean
+            Return left.CompareTo(right) <= 0
+        End Operator
+
+        Public Shared Operator >(left As LARGE_INTEGER, right As LARGE_INTEGER) As Boolean
+            Return left.CompareTo(right) > 0
+        End Operator
+
+        Public Shared Operator >=(left As LARGE_INTEGER, right As LARGE_INTEGER) As Boolean
+            Return left.CompareTo(right) >= 0
+        End Operator
+
+        Public Function CompareTo(other As Long) As Integer Implements IComparable(Of Long).CompareTo
+            Return QuadPart.CompareTo(other)
+        End Function
+
+        Public Overloads Function Equals(other As Long) As Boolean Implements IEquatable(Of Long).Equals
+            Return QuadPart.Equals(other)
         End Function
     End Structure
 

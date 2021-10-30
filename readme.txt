@@ -23,7 +23,7 @@
   this product under NT 3.51 you have to manually add registry entries needed
   by driver and service or use resource kit tools to add necessary settings.
 
-    Copyright (c) 2005-2016 Olof Lagerkvist
+    Copyright (c) 2005-2018 Olof Lagerkvist
     http://www.ltr-data.se      olof@ltr-data.se
 
     Permission is hereby granted, free of charge, to any person

@@ -1,0 +1,10 @@
+all: Debug\x64\devio.exe
+
+Debug\x64\devio.obj: devio.c ..\inc\*.h safeio.h devio.h devio_types.h Makefile.win64
+	cl /c /DDEBUG /D_DEBUG /WX /W4 /wd4201 /wd4204 /wd4996 /Od /GR- /MD /FoDebug\x64\devio.obj /nologo devio.c
+
+Debug\x64\safeio_win32.obj: safeio_win32.cpp ..\inc\*.h safeio.h devio.h devio_types.h Makefile.win64
+	cl /c /DDEBUG /D_DEBUG /WX /W4 /wd4201 /wd4204 /wd4996 /Od /GR- /MD /FoDebug\x64\safeio_win32.obj /nologo safeio_win32.cpp
+
+Debug\x64\devio.exe: Debug\x64\devio.obj Debug\x64\safeio_win32.obj Makefile.win64
+	link /opt:nowin98,ref,icf=10 /largeaddressaware /defaultlib:bufferoverflowU.lib /release /debug /nologo /out:Debug\x64\devio.exe Debug\x64\devio.obj Debug\x64\safeio_win32.obj

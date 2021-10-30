@@ -1,4 +1,6 @@
-﻿Namespace Server.Providers
+﻿Imports System.Runtime.InteropServices
+
+Namespace Server.Providers
 
     ''' <summary>
     ''' Base class for implementing <see>IDevioProvider</see> interface with a storage backend where
@@ -33,7 +35,7 @@
         Private Function Read(buffer As Byte(), bufferoffset As Integer, count As Integer, fileoffset As Long) As Integer Implements IDevioProvider.Read
 
             If buffer Is Nothing Then
-                Throw New ArgumentNullException("buffer")
+                Throw New ArgumentNullException(NameOf(buffer))
             ElseIf bufferoffset + count > buffer.Length Then
                 Throw New ArgumentException("buffer too small")
             End If
@@ -62,7 +64,7 @@
         Private Function Write(buffer As Byte(), bufferoffset As Integer, count As Integer, fileoffset As Long) As Integer Implements IDevioProvider.Write
 
             If buffer Is Nothing Then
-                Throw New ArgumentNullException("buffer")
+                Throw New ArgumentNullException(NameOf(buffer))
             ElseIf bufferoffset + count > buffer.Length Then
                 Throw New ArgumentException("buffer too small")
             End If

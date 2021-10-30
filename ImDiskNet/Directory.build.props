@@ -1,0 +1,34 @@
+<Project>
+
+  <PropertyGroup>
+
+    <RootNamespace>LTR.IO</RootNamespace>
+    <OutputPath Condition="'$(MSBuildProjectExtension)' != '.shfbproj'">..\$(Configuration)\</OutputPath>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+    <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <LangVersion Condition="'$(MSBuildProjectExtension)' == '.csproj'">9.0</LangVersion>
+    <DebugType>portable</DebugType>
+    <Deterministic>false</Deterministic>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OptionInfer>On</OptionInfer>
+    <OptionStrict>On</OptionStrict>
+    <OptionExplicit>On</OptionExplicit>
+
+  </PropertyGroup>
+
+  <PropertyGroup>
+
+    <Title>ImDisk Virtual Disk Driver</Title>
+    <Company>Olof Lagerkvist, LTR Data</Company>
+    <Product>ImDisk Virtual Disk Driver</Product>
+    <Copyright>Copyright © Olof Lagerkvist, 2011 - 2021</Copyright>
+    <Trademark />
+    <FileVersion>2.1.013.0</FileVersion>
+    <ProductVersion>1.0.009.0</ProductVersion>
+    <AssemblyVersion>1.0.009.0</AssemblyVersion>
+
+  </PropertyGroup>
+
+</Project>

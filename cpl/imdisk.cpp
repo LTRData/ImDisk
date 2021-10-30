@@ -2,7 +2,7 @@
 Control Panel Applet for the ImDisk Virtual Disk Driver for
 Windows NT/2000/XP.
 
-Copyright (C) 2007-2018 Olof Lagerkvist.
+Copyright (C) 2007-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -135,7 +135,7 @@ BOOL *lpTranslated
         wcSize,
         _countof(wcSize));
 
-    if ((item_text_size == 0) |
+    if ((item_text_size == 0) ||
         (item_text_size >= _countof(wcSize)))
     {
         if (lpTranslated != NULL)
@@ -183,7 +183,9 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
 
     if (!QueryDosDevice(wcMountPoint, wcActualTarget,
         _countof(wcActualTarget)))
+    {
         wcMountPoint[0] = 0;
+    }
     else
     {
         wcActualTarget[_countof(wcActualTarget) - 1] = 0;
@@ -198,7 +200,7 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
             wcMountPoint[0] = 0;
     }
 
-    LVITEM lvi;
+    LVITEM lvi = { 0 };
     lvi.mask = LVIF_IMAGE | LVIF_TEXT | LVIF_PARAM | LVIF_STATE;
     lvi.iItem = 0;
     lvi.iSubItem = 0;
@@ -237,7 +239,7 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
     case IMDISK_TYPE_VM:
         if (create_data->FileNameLength == 0)
         {
-            if ((IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_FILE) &
+            if ((IMDISK_TYPE(create_data->Flags) == IMDISK_TYPE_FILE) &&
                 (IMDISK_FILE_TYPE(create_data->Flags) ==
                 IMDISK_FILE_TYPE_AWEALLOC))
             {
@@ -250,7 +252,7 @@ LoadDeviceToList(HWND hWnd, int iDeviceNumber, bool SelectItem)
                 break;
             }
         }
-
+        
         mem.ReAlloc(create_data->FileNameLength +
             sizeof(*create_data->FileName), HEAP_GENERATE_EXCEPTIONS);
         
@@ -417,9 +419,11 @@ RefreshList(HWND hWnd, DWORD SelectDeviceNumber)
     }
 
     for (DWORD counter = 1; counter <= *device_list; counter++)
+    {
         LoadDeviceToList(hWnd,
-        device_list[counter],
-        device_list[counter] == SelectDeviceNumber);
+            device_list[counter],
+            device_list[counter] == SelectDeviceNumber);
+    }
 
     return true;
 }
@@ -722,8 +726,8 @@ IN BOOL IsCdRomType)
 
     BOOL use_original_file_name = FALSE;
     LARGE_INTEGER save_offset = { 0 };
-    if ((IMDISK_DEVICE_TYPE(create_data->Flags) == IMDISK_DEVICE_TYPE_HD) ?
-    TRUE : !IsCdRomType)
+    if ((IMDISK_DEVICE_TYPE(create_data->Flags) == IMDISK_DEVICE_TYPE_HD) ||
+        !IsCdRomType)
     {
         INT_PTR i = DialogBoxParam(hInstance,
             MAKEINTRESOURCE(IDD_DLG_OPTIONS_SAVE),
@@ -884,12 +888,24 @@ IN BOOL IsCdRomType)
     }
 
     CloseHandle(hImage);
-    ImDiskMsgBoxPrintF(hWnd, MB_ICONINFORMATION,
-        L"ImDisk Virtual Disk Driver",
-        L"Successfully saved the contents of drive '%1!c!:' to "
-        L"image file '%2'.",
-        create_data->DriveLetter ? create_data->DriveLetter : L' ',
-        ofn.lpstrFile);
+
+    if (create_data->DriveLetter != 0)
+    {
+        ImDiskMsgBoxPrintF(hWnd, MB_ICONINFORMATION,
+            L"ImDisk Virtual Disk Driver",
+            L"Successfully saved the contents of drive '%1!c!:' to "
+            L"image file '%2'.",
+            create_data->DriveLetter,
+            ofn.lpstrFile);
+    }
+    else
+    {
+        ImDiskMsgBoxPrintF(hWnd, MB_ICONINFORMATION,
+            L"ImDisk Virtual Disk Driver",
+            L"Successfully saved drive contents to "
+            L"image file '%1'.",
+            ofn.lpstrFile);
+    }
 }
 
 BOOL
@@ -1170,11 +1186,15 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     case WM_COMMAND:
     {
-        if ((GetWindowTextLength(GetDlgItem(hWnd, IDC_EDT_IMAGEFILE)) > 0) |
+        if ((GetWindowTextLength(GetDlgItem(hWnd, IDC_EDT_IMAGEFILE)) > 0) ||
             (GetDlgItemDouble(hWnd, IDC_EDT_SIZE, NULL) > 0))
+        {
             EnableWindow(GetDlgItem(hWnd, IDOK), TRUE);
+        }
         else
+        {
             EnableWindow(GetDlgItem(hWnd, IDOK), FALSE);
+        }
 
         if (GetWindowTextLength(GetDlgItem(hWnd, IDC_EDT_IMAGEFILE)) > 0)
         {
@@ -1246,7 +1266,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 wcSize,
                 _countof(wcSize));
 
-            if ((item_text_size == 0) |
+            if ((item_text_size == 0) ||
                 (item_text_size >= _countof(wcSize)))
             {
                 MessageBox(hWnd,
@@ -1263,7 +1283,7 @@ NewDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             disk_geometry.Cylinders.QuadPart = wcstoul(wcSize, &stop_pos, 0);
 
             // If failed, try to parse as double
-            if ((stop_pos == wcSize) | (stop_pos[0] != 0))
+            if ((stop_pos == wcSize) || (stop_pos[0] != 0))
             {
                 double size = wcstod(wcSize, &stop_pos);
 
@@ -1478,7 +1498,7 @@ ExtendDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM /*lParam*/)
                 wcSize,
                 _countof(wcSize));
 
-            if ((item_text_size == 0) |
+            if ((item_text_size == 0) ||
                 (item_text_size >= _countof(wcSize)))
             {
                 MessageBox(hWnd,
@@ -1804,6 +1824,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             DWORD device_number = (DWORD)
                 DialogBox(hInstance, MAKEINTRESOURCE(IDD_NEWDIALOG), hWnd,
                 NewDlgProc);
+
             if (device_number != IMDISK_AUTO_DEVICE_NUMBER)
                 RefreshList(GetDlgItem(hWnd, IDC_LISTVIEW), device_number);
 
@@ -2087,7 +2108,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             SendDlgItemMessage(hWnd, IDC_LISTVIEW, LVM_GETITEM, 0,
                 (LPARAM)&lvi);
 
-            if ((mount_point[0] < 'A') | (mount_point[0] > 'Z'))
+            if ((mount_point[0] < 'A') || (mount_point[0] > 'Z'))
             {
                 ImDiskMsgBoxPrintF(hWnd, MB_ICONSTOP, L"Unsupported mount point",
                     L"It is only possible to format drives with a "
@@ -2124,7 +2145,7 @@ CPlAppletDlgProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 L"ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003.\r\n"
                 L"Version %1!i!.%2!i!.%3!i! - (Compiled %4!hs!)\r\n"
                 L"\r\n"
-                L"Copyright (C) 2004-2018 Olof Lagerkvist.\r\n"
+                L"Copyright (C) 2004-2021 Olof Lagerkvist.\r\n"
                 L"http://www.ltr-data.se     olof@ltr-data.se\r\n"
                 L"\r\n"
                 L"Permission is hereby granted, free of charge, to any person\r\n"
@@ -2349,6 +2370,117 @@ ImDiskInteractiveCheckSave(HWND hWnd, HANDLE device)
 }
 
 EXTERN_C
+VOID WINAPI
+ImDiskRelaunchElevated(HWND hWnd, LPCSTR DllFunction, LPCSTR CommandLine,
+    int nCmdShow)
+{
+    WHeapMem<CHAR> path(MAX_PATH, HEAP_GENERATE_EXCEPTIONS);
+
+    UINT length = GetSystemDirectoryA(path, (UINT)path.Count());
+
+    if (length == 0 || length >= path.Count())
+    {
+        ImDiskMsgBoxPrintF(hWnd, MB_ICONERROR, L"ImDisk Virtual Disk Driver",
+            L"Cannot find system directory.");
+
+        return;
+    }
+
+    strncat((LPSTR)path + length, "\\rundll32.exe",
+        path.Count() - length - 2);
+
+    WMem<CHAR> arguments(ImDiskAllocPrintFA("%1!s! %2!s!",
+        DllFunction, CommandLine));
+
+    if (arguments == NULL)
+    {
+        MsgBoxLastError(hWnd,
+            L"Not enough memory to launch ImDisk Control Panel applet with administrative privileges:");
+
+        return;
+    }
+
+    int inst = (int)(INT_PTR)ShellExecuteA(hWnd, "runas", path, arguments, NULL,
+        nCmdShow);
+
+    if (inst > 32)
+    {
+        return;
+    }
+
+    MsgBoxLastError(hWnd,
+        L"Failed to launch ImDisk Control Panel applet with administrative privileges:");
+
+    return;
+}
+
+EXTERN_C
+VOID WINAPI
+ImDiskRelaunchElevatedW(HWND hWnd, LPCWSTR DllFunction, LPCWSTR CommandLine,
+    int nCmdShow)
+{
+    WHeapMem<WCHAR> path(MAX_PATH * sizeof(WCHAR), HEAP_GENERATE_EXCEPTIONS);
+
+    UINT length = GetSystemDirectory(path, (UINT)path.Count());
+
+    if (length == 0 || length >= path.Count())
+    {
+        ImDiskMsgBoxPrintF(hWnd, MB_ICONERROR, L"ImDisk Virtual Disk Driver",
+            L"Cannot find system directory.");
+
+        return;
+    }
+
+    wcsncat((LPWSTR)path + length, L"\\rundll32.exe",
+        path.Count() - length - 2);
+
+    WMem<WCHAR> arguments(ImDiskAllocPrintF(L"%1!ws! %2!ws!",
+        DllFunction, CommandLine));
+
+    if (arguments == NULL)
+    {
+        MsgBoxLastError(hWnd,
+            L"Not enough memory to launch ImDisk Control Panel applet with administrative privileges:");
+
+        return;
+    }
+
+    int inst = (int)(INT_PTR)ShellExecute(hWnd, L"runas", path, arguments, NULL,
+        nCmdShow);
+
+    if (inst > 32)
+    {
+        return;
+    }
+
+    MsgBoxLastError(hWnd,
+        L"Failed to launch ImDisk Control Panel applet with administrative privileges:");
+
+    return;
+}
+
+EXTERN_C
+LONG WINAPI
+ImDiskShowCPlAppletElevated(HWND hwndCPl)
+{
+    if (!ImDiskIsProcessElevated())
+    {
+        ImDiskRelaunchElevatedW(hwndCPl, L"shell32.dll,Control_RunDLL",
+            L"imdisk.cpl", SW_SHOW);
+
+        return 0;
+    }
+
+    if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_CPLAPPLET), hwndCPl,
+        CPlAppletDlgProc) == -1)
+    {
+        MsgBoxLastError(hwndCPl, L"Failed to launch ImDisk Control Panel applet:");
+    }
+
+    return 0;
+}
+
+EXTERN_C
 IMDISK_API
 LONG APIENTRY
 CPlApplet(HWND hwndCPl,	        // handle to Control Panel window
@@ -2360,12 +2492,7 @@ LPARAM lParam2 	// second message parameter
     switch (uMsg)
     {
     case CPL_DBLCLK:
-        if (DialogBox(hInstance, MAKEINTRESOURCE(IDD_CPLAPPLET), hwndCPl,
-            CPlAppletDlgProc) == -1)
-            MsgBoxLastError(hwndCPl,
-            L"Error loading dialog box:");
-
-        return 0;
+        return ImDiskShowCPlAppletElevated(hwndCPl);
 
     case CPL_EXIT:
         return 0;

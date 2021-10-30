@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2018 Olof Lagerkvist.
+Copyright (C) 2005-2021 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -43,7 +43,7 @@ Copyright (C) The Regents of the University of California.
 
 #include "imdsksys.h"
 
-#ifdef INCLUDE_VFD_ORIGIN
+#ifdef INCLUDE_GPL_ORIGIN
 
 // For floppy devices. Based on Virtual Floppy Driver, VFD, by Ken Kato.
 #define SECTOR_SIZE_FDD                  512
@@ -115,7 +115,7 @@ const DISK_GEOMETRY media_table[] = {
 #define SET_MEDIA_TYPE(geometry, media_index) \
   (geometry.MediaType = media_table[media_index].MediaType)
 
-#endif // INCLUDE_VFD_ORIGIN
+#endif // INCLUDE_GPL_ORIGIN
 
 VOID
 ImDiskFindFreeDeviceNumber(PDRIVER_OBJECT DriverObject,
@@ -211,7 +211,7 @@ ImDiskReadFormattedGeometry(IN OUT PIMDISK_CREATE_DATA CreateData,
     if (CreateData->DiskGeometry.BytesPerSector == 0)
         CreateData->DiskGeometry.BytesPerSector = BPB->BytesPerSector;
 
-#ifdef INCLUDE_VFD_ORIGIN
+#ifdef INCLUDE_GPL_ORIGIN
 
     if (((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) |
         (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)) &
@@ -291,7 +291,7 @@ ImDiskReadFormattedGeometry(IN OUT PIMDISK_CREATE_DATA CreateData,
             break;
         }
 
-#endif // INCLUDE_VFD_ORIGIN
+#endif // INCLUDE_GPL_ORIGIN
 
     KdPrint
         (("ImDisk: Values after BPB geometry detection:\n"
@@ -475,17 +475,23 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
     // Auto-select type if not specified.
     if (IMDISK_TYPE(CreateData->Flags) == 0)
+    {
         if (CreateData->FileNameLength == 0)
+        {
             CreateData->Flags |= IMDISK_TYPE_VM;
+        }
         else
+        {
             CreateData->Flags |= IMDISK_TYPE_FILE;
+        }
+    }
 
     // Blank filenames only supported for memory disks where size is specified.
     if ((CreateData->FileNameLength == 0) &&
-        !(((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
-            (CreateData->DiskGeometry.Cylinders.QuadPart > 65536)) |
-            ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
-                (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC) &
+        !(((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &&
+            (CreateData->DiskGeometry.Cylinders.QuadPart > 65536)) ||
+            ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &&
+                (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC) &&
                 (CreateData->DiskGeometry.Cylinders.QuadPart > 65536))))
     {
         KdPrint(("ImDisk: Blank filenames only supported for memory disks where "
@@ -529,12 +535,6 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
         KdPrint(("ImDisk: Free device number %i.\n", CreateData->DeviceNumber));
     }
 
-    /*     for (CreateData->DeviceNumber = 0; */
-    /* 	 CreateData->DeviceNumber < MaxDevices; */
-    /* 	 CreateData->DeviceNumber++) */
-    /*       if ((~DeviceList) & (1ULL << CreateData->DeviceNumber)) */
-    /* 	break; */
-
     if (CreateData->DeviceNumber >= MaxDevices)
     {
         ImDiskLogError((DriverObject,
@@ -556,7 +556,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
     if (IMDISK_BYTE_SWAP(CreateData->Flags) &&
         (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &&
-        (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_PARALLEL_IO))
+        (IMDISK_FILE_TYPE(CreateData->Flags) != IMDISK_FILE_TYPE_BUFFERED_IO))
     {
         ImDiskLogError((DriverObject,
             0,
@@ -584,8 +584,8 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
     // If a file is to be opened or created, allocate name buffer and open that
     // file...
-    if ((CreateData->FileNameLength > 0) |
-        ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+    if ((CreateData->FileNameLength > 0) ||
+        ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &&
             (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC)))
     {
         IO_STATUS_BLOCK io_status;
@@ -715,9 +715,9 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
                 NULL,
                 NULL);
         }
-        else if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) &
+        else if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_PROXY) &&
             ((IMDISK_PROXY_TYPE(CreateData->Flags) ==
-                IMDISK_PROXY_TYPE_TCP) |
+                IMDISK_PROXY_TYPE_TCP) ||
                 (IMDISK_PROXY_TYPE(CreateData->Flags) ==
                     IMDISK_PROXY_TYPE_COMM)))
         {
@@ -772,8 +772,10 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
             }
 
             create_options = FILE_NON_DIRECTORY_FILE |
-                FILE_NO_INTERMEDIATE_BUFFERING |
                 FILE_SYNCHRONOUS_IO_NONALERT;
+
+            if (IMDISK_FILE_TYPE(CreateData->Flags) != IMDISK_FILE_TYPE_BUFFERED_IO)
+                create_options |= FILE_NO_INTERMEDIATE_BUFFERING;
 
             if (IMDISK_SPARSE_FILE(CreateData->Flags))
             {
@@ -810,7 +812,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
         // call will fail because OBJ_FORCE_ACCESS_CHECK is not supported. If so,
         // STATUS_INVALID_PARAMETER is returned and we go on without any access
         // checks in that case.
-#ifndef _WIN64
+#ifdef _M_IX86
         if (status == STATUS_INVALID_PARAMETER)
         {
             InitializeObjectAttributes(&object_attributes,
@@ -1180,6 +1182,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
                         &max_size,
                         MEM_COMMIT,
                         PAGE_READWRITE);
+
                 if (!NT_SUCCESS(status))
                 {
                     ZwClose(file_handle);
@@ -1245,15 +1248,17 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
                 }
 
                 if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
+                {
                     CreateData->DiskGeometry.Cylinders.QuadPart =
-                    disk_size.QuadPart -
-                    CreateData->ImageOffset.QuadPart;
+                        disk_size.QuadPart -
+                        CreateData->ImageOffset.QuadPart;
+                }
 
                 alignment_requirement = file_alignment.AlignmentRequirement;
             }
 
-            if ((CreateData->DiskGeometry.TracksPerCylinder == 0) |
-                (CreateData->DiskGeometry.SectorsPerTrack == 0) |
+            if ((CreateData->DiskGeometry.TracksPerCylinder == 0) ||
+                (CreateData->DiskGeometry.SectorsPerTrack == 0) ||
                 (CreateData->DiskGeometry.BytesPerSector == 0))
             {
                 SIZE_T free_size = 0;
@@ -1362,8 +1367,8 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
             if (CreateData->DiskGeometry.Cylinders.QuadPart == 0)
                 CreateData->DiskGeometry.Cylinders.QuadPart = proxy_info.file_size;
 
-            if ((CreateData->DiskGeometry.TracksPerCylinder == 0) |
-                (CreateData->DiskGeometry.SectorsPerTrack == 0) |
+            if ((CreateData->DiskGeometry.TracksPerCylinder == 0) ||
+                (CreateData->DiskGeometry.SectorsPerTrack == 0) ||
                 (CreateData->DiskGeometry.BytesPerSector == 0))
             {
                 WPoolMem<FAT_VBR, PagedPool> fat_vbr(sizeof(FAT_VBR));
@@ -1399,11 +1404,12 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
                     sizeof(FAT_VBR),
                     &CreateData->ImageOffset);
 
-                if (!NT_SUCCESS(status))
+                if (NT_SUCCESS(status))
                 {
-                    ImDiskCloseProxy(&proxy);
-                    ZwClose(file_handle);
-
+                    ImDiskReadFormattedGeometry(CreateData, &fat_vbr->BPB);
+                }
+                else
+                {
                     ImDiskLogError((DriverObject,
                         0,
                         0,
@@ -1420,14 +1426,10 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
                     KdPrint(("ImDisk: Error reading first sector (%#x).\n",
                         status));
-
-                    return status;
                 }
-
-                ImDiskReadFormattedGeometry(CreateData, &fat_vbr->BPB);
             }
 
-            if ((proxy_info.req_alignment - 1 > FILE_512_BYTE_ALIGNMENT) |
+            if ((proxy_info.req_alignment - 1 > FILE_512_BYTE_ALIGNMENT) ||
                 (CreateData->DiskGeometry.Cylinders.QuadPart == 0))
             {
                 ImDiskCloseProxy(&proxy);
@@ -1526,6 +1528,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
                 &max_size,
                 MEM_COMMIT,
                 PAGE_READWRITE);
+
         if (!NT_SUCCESS(status))
         {
             KdPrint
@@ -1554,7 +1557,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
     KdPrint(("ImDisk: Done with file/memory checks.\n"));
 
-#ifdef INCLUDE_VFD_ORIGIN
+#ifdef INCLUDE_GPL_ORIGIN
 
     // If no device-type specified and size matches common floppy sizes,
     // auto-select FILE_DEVICE_DISK with FILE_FLOPPY_DISKETTE and
@@ -1587,12 +1590,12 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
     KdPrint(("ImDisk: Done with device type selection for floppy sizes.\n"));
 
-#else // INCLUDE_VFD_ORIGIN
+#else // INCLUDE_GPL_ORIGIN
 
     if (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)
         CreateData->Flags |= IMDISK_DEVICE_TYPE_HD;
 
-#endif // INCLUDE_VFD_ORIGIN
+#endif // INCLUDE_GPL_ORIGIN
 
     // If some parts of the DISK_GEOMETRY structure are zero, auto-fill with
     // typical values for this type of disk.
@@ -1636,7 +1639,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
     {
         LONGLONG calccyl = CreateData->DiskGeometry.Cylinders.QuadPart;
 
-#ifdef INCLUDE_VFD_ORIGIN
+#ifdef INCLUDE_GPL_ORIGIN
 
         if ((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) &
             (CreateData->DiskGeometry.BytesPerSector == 0) &
@@ -1709,7 +1712,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
         // defined floppy geometries above.
         CreateData->DiskGeometry.Cylinders.QuadPart = calccyl;
 
-#endif // INCLUDE_VFD_ORIGIN
+#endif // INCLUDE_GPL_ORIGIN
 
         if (CreateData->DiskGeometry.BytesPerSector == 0)
             CreateData->DiskGeometry.BytesPerSector = SECTOR_SIZE_HDD;

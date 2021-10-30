@@ -1,7 +1,7 @@
 [Version]
 signature = "$Windows NT$"
 Provider = "LTR Data"
-DriverVer=11/19/2018,6.0.6001.18000
+DriverVer=10/30/2021,2.1.0
 
 
 [SourceDisksNames]
@@ -9,6 +9,7 @@ DriverVer=11/19/2018,6.0.6001.18000
 
 
 [SourceDisksFiles.x86]
+deviodrv.sys = 1,deviodrv\i386
 awealloc.sys = 1,awealloc\i386
 imdisk.sys = 1,sys\i386
 imdsksvc.exe = 1,svc\i386
@@ -20,6 +21,7 @@ uninstall_imdisk.cmd = 1
 
 
 [SourceDisksFiles.ia64]
+deviodrv.sys = 1,deviodrv\ia64
 awealloc.sys = 1,awealloc\ia64
 imdisk.sys = 1,sys\ia64
 imdsksvc.exe = 1,svc\ia64
@@ -31,6 +33,7 @@ uninstall_imdisk.cmd = 1
 
 
 [SourceDisksFiles.amd64]
+deviodrv.sys = 1,deviodrv\amd64
 awealloc.sys = 1,awealloc\amd64
 imdisk.sys = 1,sys\amd64
 imdsksvc.exe = 1,svc\amd64
@@ -42,6 +45,7 @@ uninstall_imdisk.cmd = 1
 
 
 [SourceDisksFiles.arm]
+deviodrv.sys = 1,deviodrv\arm
 awealloc.sys = 1,awealloc\arm
 imdisk.sys = 1,sys\arm
 imdsksvc.exe = 1,svc\arm
@@ -53,6 +57,7 @@ uninstall_imdisk.cmd = 1
 
 
 [SourceDisksFiles.arm64]
+deviodrv.sys = 1,deviodrv\arm64
 awealloc.sys = 1,awealloc\arm64
 imdisk.sys = 1,sys\arm64
 imdsksvc.exe = 1,svc\arm64
@@ -127,60 +132,70 @@ DelReg = ImDiskDelReg
 
 
 [DefaultInstall.ntx86.Services]
+AddService = DevIoDrv, , DevIoDrv
 AddService = AWEAlloc, , AWEAllocDrv
 AddService = ImDisk, , ImDskDrv
 AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntx86.Services]
+DelService = DevIoDrv
 DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
 
 
 [DefaultInstall.ntarm.Services]
+AddService = DevIoDrv, , DevIoDrv
 AddService = AWEAlloc, , AWEAllocDrv
 AddService = ImDisk, , ImDskDrv
 AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntarm.Services]
+DelService = DevIoDrv
 DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
 
 
 [DefaultInstall.ntamd64.Services]
+AddService = DevIoDrv, , DevIoDrv
 AddService = AWEAlloc, , AWEAllocDrv
 AddService = ImDisk, , ImDskDrv
 AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntamd64.Services]
+DelService = DevIoDrv
 DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
 
 
 [DefaultInstall.ntarm64.Services]
+AddService = DevIoDrv, , DevIoDrv
 AddService = AWEAlloc, , AWEAllocDrv
 AddService = ImDisk, , ImDskDrv
 AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntarm64.Services]
+DelService = DevIoDrv
 DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
 
 
 [DefaultInstall.ntia64.Services]
+AddService = DevIoDrv, , DevIoDrv
 AddService = AWEAlloc, , AWEAllocDrv
 AddService = ImDisk, , ImDskDrv
 AddService = ImDskSvc, , ImDskSvc
 
 
 [DefaultUninstall.ntia64.Services]
+DelService = DevIoDrv
 DelService = AWEAlloc
 DelService = ImDisk
 DelService = ImDskSvc
@@ -199,6 +214,7 @@ imdisk.cpl,cpl\i386\imdisk.cpl
 
 
 [ImDiskSysFiles]
+deviodrv.sys
 awealloc.sys
 imdisk.sys
 
@@ -265,6 +281,15 @@ ServiceType = 1
 StartType = 2
 ErrorControl = 0
 ServiceBinary = %12%\awealloc.sys
+
+
+[DevIoDrv]
+DisplayName = "DevIO Client Driver"
+Description = "Client driver for ImDisk devio proxy mode"
+ServiceType = 1
+StartType = 2
+ErrorControl = 0
+ServiceBinary = %12%\deviodrv.sys
 
 
 [ImDskSvc]

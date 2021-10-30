@@ -1,4 +1,9 @@
-﻿Imports System.Threading
+﻿Imports System.Collections.ObjectModel
+Imports System.ComponentModel
+Imports System.IO
+Imports System.Runtime.InteropServices
+Imports System.Text
+Imports System.Threading
 
 Namespace ImDisk
 
@@ -69,12 +74,12 @@ Namespace ImDisk
         ''' <summary>
         ''' ImDisk API behaviour flags.
         ''' </summary>
-        Public Shared Property APIFlags As DLL.ImDiskAPIFlags
+        Public Shared Property APIFlags As UnsafeNativeMethods.ImDiskAPIFlags
             Get
-                Return DLL.ImDiskGetAPIFlags()
+                Return UnsafeNativeMethods.ImDiskGetAPIFlags()
             End Get
-            Set(value As DLL.ImDiskAPIFlags)
-                DLL.ImDiskSetAPIFlags(value)
+            Set
+                UnsafeNativeMethods.ImDiskSetAPIFlags(Value)
             End Set
         End Property
 
@@ -110,7 +115,7 @@ Namespace ImDisk
         Public Shared Function GetOffsetByFileExt(ImageFile As String) As Long
 
             Dim Offset As Long
-            If DLL.ImDiskGetOffsetByFileExt(ImageFile, Offset) Then
+            If UnsafeNativeMethods.ImDiskGetOffsetByFileExt(ImageFile, Offset) Then
                 Return Offset
             Else
                 Return 0
@@ -118,7 +123,7 @@ Namespace ImDisk
 
         End Function
 
-        Private Shared Function GetStreamReaderFunction(stream As Stream) As DLL.ImDiskReadFileManagedProc
+        Private Shared Function GetStreamReaderFunction(stream As Stream) As UnsafeNativeMethods.ImDiskReadFileManagedProc
 
             Return _
                 Function(_Handle As IntPtr,
@@ -149,11 +154,11 @@ Namespace ImDisk
         ''' parameter is in most cases 512.</param>
         ''' <param name="Offset">Offset in image file where master boot record is located.</param>
         ''' <returns>An array of PARTITION_INFORMATION structures</returns>
-        Public Shared Function GetPartitionInformation(ImageFile As String, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+        Public Shared Function GetPartitionInformation(ImageFile As String, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
-            Dim PartitionInformation As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+            Dim PartitionInformation As New List(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
-            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInformationEx(ImageFile, SectorSize, Offset,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskGetPartitionInformationEx(ImageFile, SectorSize, Offset,
                                                                       Function(data, ByRef info)
                                                                           PartitionInformation.Add(info)
                                                                           Return True
@@ -172,13 +177,13 @@ Namespace ImDisk
         ''' parameter is in most cases 512.</param>
         ''' <param name="Offset">Offset in image file where master boot record is located.</param>
         ''' <returns>An array of PARTITION_INFORMATION structures</returns>
-        Public Shared Function GetPartitionInformation(ImageFile As Stream, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+        Public Shared Function GetPartitionInformation(ImageFile As Stream, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
             Dim StreamReader = GetStreamReaderFunction(ImageFile)
 
-            Dim PartitionInformation As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+            Dim PartitionInformation As New List(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
-            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirectEx(Nothing, StreamReader, SectorSize, Offset,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskGetPartitionInfoIndirectEx(Nothing, StreamReader, SectorSize, Offset,
                 Function(data, ByRef info)
                     PartitionInformation.Add(info)
                     Return True
@@ -198,11 +203,11 @@ Namespace ImDisk
         ''' parameter is in most cases 512.</param>
         ''' <param name="Offset">Offset in image file where master boot record is located.</param>
         ''' <returns>An array of PARTITION_INFORMATION structures</returns>
-        Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileManagedProc, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+        Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As UnsafeNativeMethods.ImDiskReadFileManagedProc, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
-            Dim PartitionInformation As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+            Dim PartitionInformation As New List(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
-            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirectEx(Handle, ReadFileProc, SectorSize, Offset,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskGetPartitionInfoIndirectEx(Handle, ReadFileProc, SectorSize, Offset,
                                                                        Function(data, ByRef info)
                                                                            PartitionInformation.Add(info)
                                                                            Return True
@@ -221,7 +226,7 @@ Namespace ImDisk
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
         ''' <returns>An array of PARTITION_INFORMATION structures</returns>
-        Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileManagedProc, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+        Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As UnsafeNativeMethods.ImDiskReadFileManagedProc, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
             Return GetPartitionInformation(Handle, ReadFileProc, SectorSize, 0)
 
@@ -236,11 +241,11 @@ Namespace ImDisk
         ''' parameter is in most cases 512.</param>
         ''' <param name="Offset">Offset in image file where master boot record is located.</param>
         ''' <returns>An array of PARTITION_INFORMATION structures</returns>
-        Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileUnmanagedProc, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+        Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As UnsafeNativeMethods.ImDiskReadFileUnmanagedProc, SectorSize As UInt32, Offset As Long) As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
-            Dim PartitionInformation As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+            Dim PartitionInformation As New List(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
-            NativeFileIO.Win32Try(DLL.ImDiskGetPartitionInfoIndirectEx(Handle, ReadFileProc, SectorSize, Offset,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskGetPartitionInfoIndirectEx(Handle, ReadFileProc, SectorSize, Offset,
                                                                        Function(data, ByRef info)
                                                                            PartitionInformation.Add(info)
                                                                            Return True
@@ -259,7 +264,7 @@ Namespace ImDisk
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
         ''' <returns>An array of PARTITION_INFORMATION structures</returns>
-        Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As DLL.ImDiskReadFileUnmanagedProc, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+        Public Shared Function GetPartitionInformation(Handle As IntPtr, ReadFileProc As UnsafeNativeMethods.ImDiskReadFileUnmanagedProc, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
             Return GetPartitionInformation(Handle, ReadFileProc, SectorSize, 0)
 
@@ -272,7 +277,7 @@ Namespace ImDisk
         ''' <param name="SectorSize">Sector size for translating sector values to absolute byte positions. This
         ''' parameter is in most cases 512.</param>
         ''' <returns>An array of PARTITION_INFORMATION structures</returns>
-        Public Shared Function GetPartitionInformation(ImageFile As String, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
+        Public Shared Function GetPartitionInformation(ImageFile As String, SectorSize As UInt32) As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
 
             Return GetPartitionInformation(ImageFile, SectorSize, 0)
 
@@ -283,8 +288,13 @@ Namespace ImDisk
         ''' from source sequence with valid partition definitions.
         ''' </summary>
         ''' <param name="PartitionList">Sequence of partition table entries</param>
-        Public Shared Function FilterDefinedPartitions(PartitionList As IEnumerable(Of NativeFileIO.Win32API.PARTITION_INFORMATION)) As ReadOnlyCollection(Of NativeFileIO.Win32API.PARTITION_INFORMATION)
-            Dim DefinedPartitions As New List(Of NativeFileIO.Win32API.PARTITION_INFORMATION)(7)
+        Public Shared Function FilterDefinedPartitions(PartitionList As IEnumerable(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)) As ReadOnlyCollection(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)
+
+            If PartitionList Is Nothing Then
+                Throw New ArgumentNullException(NameOf(PartitionList))
+            End If
+
+            Dim DefinedPartitions As New List(Of NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION)(7)
             For Each PartitionInfo In PartitionList
                 If PartitionInfo.PartitionLength <> 0 AndAlso
                   Not PartitionInfo.IsContainerPartition Then
@@ -303,7 +313,7 @@ Namespace ImDisk
         ''' <param name="Offset">Optional offset in bytes to where raw disk data begins, for use
         ''' with "non-raw" image files with headers before the actual disk image data.</param>
         Public Shared Function ImageContainsISOFS(Imagefile As String, Offset As Int64) As Boolean
-            Dim rc = DLL.ImDiskImageContainsISOFS(Imagefile, Offset)
+            Dim rc = UnsafeNativeMethods.ImDiskImageContainsISOFS(Imagefile, Offset)
             If rc Then
                 Return True
             ElseIf Marshal.GetLastWin32Error() = 0 Then
@@ -320,7 +330,7 @@ Namespace ImDisk
         ''' <param name="Offset">Optional offset in bytes to where raw disk data begins, for use
         ''' with "non-raw" image files with headers before the actual disk image data.</param>
         Public Shared Function ImageContainsISOFS(Imagefile As Stream, Offset As Int64) As Boolean
-            Dim rc = DLL.ImDiskImageContainsISOFSIndirect(Nothing, GetStreamReaderFunction(Imagefile), Offset)
+            Dim rc = UnsafeNativeMethods.ImDiskImageContainsISOFSIndirect(Nothing, GetStreamReaderFunction(Imagefile), Offset)
             If rc Then
                 Return True
             ElseIf Marshal.GetLastWin32Error() = 0 Then
@@ -345,9 +355,9 @@ Namespace ImDisk
         ''' single volume.</param>
         ''' <returns>A DISK_GEOMETRY structure that receives information about formatted geometry.
         ''' This function zeroes the Cylinders member.</returns>
-        Public Shared Function GetFormattedGeometry(Imagefile As String, Offset As Int64) As NativeFileIO.Win32API.DISK_GEOMETRY
-            Dim DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY
-            NativeFileIO.Win32Try(DLL.ImDiskGetFormattedGeometry(Imagefile, Offset, DiskGeometry))
+        Public Shared Function GetFormattedGeometry(Imagefile As String, Offset As Int64) As NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY
+            Dim DiskGeometry As NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskGetFormattedGeometry(Imagefile, Offset, DiskGeometry))
             Return DiskGeometry
         End Function
 
@@ -365,9 +375,9 @@ Namespace ImDisk
         ''' single volume.</param>
         ''' <returns>A DISK_GEOMETRY structure that receives information about formatted geometry.
         ''' This function zeroes the Cylinders member.</returns>
-        Public Shared Function GetFormattedGeometry(Imagefile As Stream, Offset As Int64) As NativeFileIO.Win32API.DISK_GEOMETRY
-            Dim DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY
-            NativeFileIO.Win32Try(DLL.ImDiskGetFormattedGeometryIndirect(Nothing, GetStreamReaderFunction(Imagefile), Offset, DiskGeometry))
+        Public Shared Function GetFormattedGeometry(Imagefile As Stream, Offset As Int64) As NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY
+            Dim DiskGeometry As NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskGetFormattedGeometryIndirect(Nothing, GetStreamReaderFunction(Imagefile), Offset, DiskGeometry))
             Return DiskGeometry
         End Function
 
@@ -418,7 +428,7 @@ Namespace ImDisk
         ''' </summary>
         Public Shared Sub LoadDriver()
 
-            NativeFileIO.Win32Try(DLL.ImDiskStartService("ImDisk"))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskStartService("ImDisk"))
 
         End Sub
 
@@ -430,7 +440,7 @@ Namespace ImDisk
         ''' <remarks></remarks>
         Public Shared Sub LoadHelperService()
 
-            NativeFileIO.Win32Try(DLL.ImDiskStartService("ImDskSvc"))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskStartService("ImDskSvc"))
 
         End Sub
 
@@ -445,7 +455,7 @@ Namespace ImDisk
         ''' <param name="Target">Target path in native format, for example \Device\ImDisk0</param>
         Public Shared Sub CreateMountPoint(Directory As String, Target As String)
 
-            NativeFileIO.Win32Try(DLL.ImDiskCreateMountPoint(Directory, Target))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskCreateMountPoint(Directory, Target))
 
         End Sub
 
@@ -460,7 +470,7 @@ Namespace ImDisk
         ''' <param name="DeviceNumber">Device number of an existing ImDisk virtual disk</param>
         Public Shared Sub CreateMountPoint(Directory As String, DeviceNumber As UInt32)
 
-            NativeFileIO.Win32Try(DLL.ImDiskCreateMountPoint(Directory, "\Device\ImDisk" & DeviceNumber))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskCreateMountPoint(Directory, "\Device\ImDisk" & DeviceNumber))
 
         End Sub
 
@@ -472,7 +482,7 @@ Namespace ImDisk
         ''' letter followed by a colon to remove a drive letter mount point.</param>
         Public Shared Sub RemoveMountPoint(MountPoint As String)
 
-            NativeFileIO.Win32Try(DLL.ImDiskRemoveMountPoint(MountPoint))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskRemoveMountPoint(MountPoint))
 
         End Sub
 
@@ -481,7 +491,7 @@ Namespace ImDisk
         ''' </summary>
         Public Shared Function FindFreeDriveLetter() As Char
 
-            Return DLL.ImDiskFindFreeDriveLetter()
+            Return UnsafeNativeMethods.ImDiskFindFreeDriveLetter()
 
         End Function
 
@@ -495,7 +505,7 @@ Namespace ImDisk
 
             For i = 0 To 1
 
-                If DLL.ImDiskGetDeviceListEx(NativeList.Length, NativeList) Then
+                If UnsafeNativeMethods.ImDiskGetDeviceListEx(NativeList.Length, NativeList) Then
                     Exit For
                 End If
 
@@ -503,7 +513,7 @@ Namespace ImDisk
 
                 Select Case errorcode
 
-                    Case NativeFileIO.Win32API.ERROR_MORE_DATA
+                    Case NativeFileIO.UnsafeNativeMethods.ERROR_MORE_DATA
                         Array.Resize(NativeList, NativeList(0) + 1)
                         Continue For
 
@@ -532,7 +542,7 @@ Namespace ImDisk
         ''' <param name="StatusControl">Optional handle to control that can display status messages during operation.</param>
         Public Shared Sub ExtendDevice(DeviceNumber As UInt32, ExtendSize As Int64, StatusControl As IntPtr)
 
-            NativeFileIO.Win32Try(DLL.ImDiskExtendDevice(StatusControl, DeviceNumber, ExtendSize))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskExtendDevice(StatusControl, DeviceNumber, ExtendSize))
 
         End Sub
 
@@ -582,14 +592,14 @@ Namespace ImDisk
                                        MountPoint As String,
                                        StatusControl As IntPtr)
 
-            Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY With {
+            Dim DiskGeometry As New NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY With {
               .Cylinders = DiskSize,
               .TracksPerCylinder = TracksPerCylinder,
               .SectorsPerTrack = SectorsPerTrack,
               .BytesPerSector = BytesPerSector
             }
 
-            NativeFileIO.Win32Try(DLL.ImDiskCreateDevice(StatusControl,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskCreateDevice(StatusControl,
                                                          DiskGeometry,
                                                          ImageOffset,
                                                          Flags,
@@ -625,9 +635,9 @@ Namespace ImDisk
                                        MountPoint As String,
                                        ByRef DeviceNumber As UInt32)
 
-            Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY
+            Dim DiskGeometry As New NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY
 
-            NativeFileIO.Win32Try(DLL.ImDiskCreateDeviceEx(IntPtr.Zero,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskCreateDeviceEx(IntPtr.Zero,
                                                            DeviceNumber,
                                                            DiskGeometry,
                                                            ImageOffset,
@@ -652,11 +662,11 @@ Namespace ImDisk
                                        MountPoint As String,
                                        ByRef DeviceNumber As UInt32)
 
-            Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY With {
+            Dim DiskGeometry As New NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY With {
               .Cylinders = DiskSize
             }
 
-            NativeFileIO.Win32Try(DLL.ImDiskCreateDeviceEx(IntPtr.Zero,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskCreateDeviceEx(IntPtr.Zero,
                                                            DeviceNumber,
                                                            DiskGeometry,
                                                            0,
@@ -703,11 +713,11 @@ Namespace ImDisk
                                        MountPoint As String,
                                        ByRef DeviceNumber As UInt32)
 
-            Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY With {
+            Dim DiskGeometry As New NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY With {
               .Cylinders = DiskSize
             }
 
-            NativeFileIO.Win32Try(DLL.ImDiskCreateDeviceEx(IntPtr.Zero,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskCreateDeviceEx(IntPtr.Zero,
                                                            DeviceNumber,
                                                            DiskGeometry,
                                                            0,
@@ -760,14 +770,14 @@ Namespace ImDisk
                                        ByRef DeviceNumber As UInt32,
                                        StatusControl As IntPtr)
 
-            Dim DiskGeometry As New NativeFileIO.Win32API.DISK_GEOMETRY With {
+            Dim DiskGeometry As New NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY With {
               .Cylinders = DiskSize,
               .TracksPerCylinder = TracksPerCylinder,
               .SectorsPerTrack = SectorsPerTrack,
               .BytesPerSector = BytesPerSector
             }
 
-            NativeFileIO.Win32Try(DLL.ImDiskCreateDeviceEx(StatusControl,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskCreateDeviceEx(StatusControl,
                                                            DeviceNumber,
                                                            DiskGeometry,
                                                            ImageOffset,
@@ -795,7 +805,7 @@ Namespace ImDisk
         ''' <param name="StatusControl">Optional handle to control that can display status messages during operation.</param>
         Public Shared Sub RemoveDevice(DeviceNumber As UInt32, StatusControl As IntPtr)
 
-            NativeFileIO.Win32Try(DLL.ImDiskRemoveDevice(StatusControl, DeviceNumber, Nothing))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskRemoveDevice(StatusControl, DeviceNumber, Nothing))
 
         End Sub
 
@@ -817,9 +827,10 @@ Namespace ImDisk
         Public Shared Sub RemoveDevice(MountPoint As String, StatusControl As IntPtr)
 
             If String.IsNullOrEmpty(MountPoint) Then
-                Throw New ArgumentNullException("MountPoint")
+                Throw New ArgumentNullException(NameOf(MountPoint))
             End If
-            NativeFileIO.Win32Try(DLL.ImDiskRemoveDevice(StatusControl, 0, MountPoint))
+
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskRemoveDevice(StatusControl, 0, MountPoint))
 
         End Sub
 
@@ -829,7 +840,7 @@ Namespace ImDisk
         ''' <param name="DeviceNumber">Device number to remove.</param>
         Public Shared Sub ForceRemoveDevice(DeviceNumber As UInt32)
 
-            NativeFileIO.Win32Try(DLL.ImDiskForceRemoveDevice(IntPtr.Zero, DeviceNumber))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskForceRemoveDevice(IntPtr.Zero, DeviceNumber))
 
         End Sub
 
@@ -862,25 +873,26 @@ Namespace ImDisk
             Dim CreateDataBuffer As Byte() = Nothing
             Array.Resize(CreateDataBuffer, 1096)
 
-            NativeFileIO.Win32Try(DLL.ImDiskQueryDevice(DeviceNumber, CreateDataBuffer, CreateDataBuffer.Length))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskQueryDevice(DeviceNumber, CreateDataBuffer, CreateDataBuffer.Length))
 
-            Dim CreateDataReader As New BinaryReader(New MemoryStream(CreateDataBuffer), Encoding.Unicode)
-            DeviceNumber = CreateDataReader.ReadUInt32()
-            Dim Dummy = CreateDataReader.ReadUInt32()
-            DiskSize = CreateDataReader.ReadInt64()
-            Dim MediaType = CreateDataReader.ReadInt32()
-            TracksPerCylinder = CreateDataReader.ReadUInt32()
-            SectorsPerTrack = CreateDataReader.ReadUInt32()
-            BytesPerSector = CreateDataReader.ReadUInt32()
-            ImageOffset = CreateDataReader.ReadInt64()
-            Flags = CType(CreateDataReader.ReadUInt32(), ImDiskFlags)
-            DriveLetter = CreateDataReader.ReadChar()
-            Dim FilenameLength = CreateDataReader.ReadUInt16()
-            If FilenameLength = 0 Then
-                Filename = Nothing
-            Else
-                Filename = Encoding.Unicode.GetString(CreateDataReader.ReadBytes(FilenameLength))
-            End If
+            Using CreateDataReader As New BinaryReader(New MemoryStream(CreateDataBuffer), Encoding.Unicode)
+                CreateDataReader.ReadUInt32()
+                Dim Dummy = CreateDataReader.ReadUInt32()
+                DiskSize = CreateDataReader.ReadInt64()
+                Dim MediaType = CreateDataReader.ReadInt32()
+                TracksPerCylinder = CreateDataReader.ReadUInt32()
+                SectorsPerTrack = CreateDataReader.ReadUInt32()
+                BytesPerSector = CreateDataReader.ReadUInt32()
+                ImageOffset = CreateDataReader.ReadInt64()
+                Flags = CType(CreateDataReader.ReadUInt32(), ImDiskFlags)
+                DriveLetter = CreateDataReader.ReadChar()
+                Dim FilenameLength = CreateDataReader.ReadUInt16()
+                If FilenameLength = 0 Then
+                    Filename = Nothing
+                Else
+                    Filename = Encoding.Unicode.GetString(CreateDataReader.ReadBytes(FilenameLength))
+                End If
+            End Using
 
         End Sub
 
@@ -888,10 +900,10 @@ Namespace ImDisk
         ''' Retrieves properties for an existing ImDisk virtual disk.
         ''' </summary>
         ''' <param name="DeviceNumber">Device number of ImDisk virtual disk to retrieve properties for.</param>
-        Public Shared Function QueryDevice(DeviceNumber As UInt32) As DLL.ImDiskCreateData
+        Public Shared Function QueryDevice(DeviceNumber As UInt32) As UnsafeNativeMethods.ImDiskCreateData
 
-            Dim CreateDataBuffer As New DLL.ImDiskCreateData
-            NativeFileIO.Win32Try(DLL.ImDiskQueryDevice(DeviceNumber, CreateDataBuffer, Marshal.SizeOf(CreateDataBuffer.GetType())))
+            Dim CreateDataBuffer As New UnsafeNativeMethods.ImDiskCreateData
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskQueryDevice(DeviceNumber, CreateDataBuffer, Marshal.SizeOf(CreateDataBuffer.GetType())))
             Return CreateDataBuffer
 
         End Function
@@ -922,7 +934,7 @@ Namespace ImDisk
                                       Flags As ImDiskFlags,
                                       StatusControl As IntPtr)
 
-            NativeFileIO.Win32Try(DLL.ImDiskChangeFlags(StatusControl,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskChangeFlags(StatusControl,
                                                         DeviceNumber,
                                                         Nothing,
                                                         FlagsToChange,
@@ -956,7 +968,7 @@ Namespace ImDisk
                                       Flags As ImDiskFlags,
                                       StatusControl As IntPtr)
 
-            NativeFileIO.Win32Try(DLL.ImDiskChangeFlags(StatusControl,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskChangeFlags(StatusControl,
                                                         0,
                                                         MountPoint,
                                                         FlagsToChange,
@@ -1081,11 +1093,15 @@ Namespace ImDisk
         ''' without any partition definitions.</param>
         ''' <param name="MBR">Pointer to memory buffer of at least 512 bytes where MBR will
         ''' be built.</param>
-        Public Shared Sub BuildInMemoryMBR(DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
-                                           PartitionInfo As NativeFileIO.Win32API.PARTITION_INFORMATION(),
+        Public Shared Sub BuildInMemoryMBR(DiskGeometry As NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY,
+                                           PartitionInfo As NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION(),
                                            MBR As Byte())
 
-            NativeFileIO.Win32Try(DLL.ImDiskBuildMBR(DiskGeometry,
+            If MBR Is Nothing Then
+                Throw New ArgumentNullException(NameOf(MBR))
+            End If
+
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskBuildMBR(DiskGeometry,
                                                      PartitionInfo,
                                                      CByte(If(PartitionInfo Is Nothing, 0, PartitionInfo.Length)),
                                                      MBR,
@@ -1115,12 +1131,12 @@ Namespace ImDisk
         ''' This parameter can be Nothing/null to create an empty MBR with just boot code
         ''' without any partition definitions.</param>
         ''' <returns>Memory buffer containing built MBR.</returns>
-        Public Shared Function BuildInMemoryMBR(DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
-                                           PartitionInfo As NativeFileIO.Win32API.PARTITION_INFORMATION()) As Byte()
+        Public Shared Function BuildInMemoryMBR(DiskGeometry As NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY,
+                                           PartitionInfo As NativeFileIO.UnsafeNativeMethods.PARTITION_INFORMATION()) As Byte()
 
             Dim MBR(0 To 511) As Byte
 
-            NativeFileIO.Win32Try(DLL.ImDiskBuildMBR(DiskGeometry,
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskBuildMBR(DiskGeometry,
                                                      PartitionInfo,
                                                      CByte(If(PartitionInfo Is Nothing, 0, PartitionInfo.Length)),
                                                      MBR,
@@ -1139,10 +1155,10 @@ Namespace ImDisk
         ''' <param name="CHS">Pointer to CHS disk address in three-byte partition table
         ''' style format.</param>
         ''' <returns>Calculated LBA disk address.</returns>
-        Public Shared Function ConvertCHSToLBA(DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+        Public Shared Function ConvertCHSToLBA(DiskGeometry As NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY,
                                                CHS As Byte()) As UInteger
 
-            Return DLL.ImDiskConvertCHSToLBA(DiskGeometry, CHS)
+            Return UnsafeNativeMethods.ImDiskConvertCHSToLBA(DiskGeometry, CHS)
 
         End Function
 
@@ -1155,10 +1171,10 @@ Namespace ImDisk
         ''' SectorsPerTrack and TracksPerCylinder members.</param>
         ''' <param name="LBA">LBA disk address.</param>
         ''' <returns>Calculated CHS values expressed in an array of three bytes.</returns>
-        Public Shared Function ConvertCHSToLBA(DiskGeometry As NativeFileIO.Win32API.DISK_GEOMETRY,
+        Public Shared Function ConvertCHSToLBA(DiskGeometry As NativeFileIO.UnsafeNativeMethods.DISK_GEOMETRY,
                                                LBA As UInteger) As Byte()
 
-            Dim bytes = BitConverter.GetBytes(DLL.ImDiskConvertLBAToCHS(DiskGeometry, LBA))
+            Dim bytes = BitConverter.GetBytes(UnsafeNativeMethods.ImDiskConvertLBAToCHS(DiskGeometry, LBA))
             Array.Resize(bytes, 3)
             Return bytes
 
@@ -1169,9 +1185,9 @@ Namespace ImDisk
         ''' when driver is loaded).</summary>
         ''' <param name="CreateData">ImDiskCreateData that contains device creation
         ''' settings to save. This structure is for example returned by QueryDevice.</param>
-        Public Shared Sub SaveRegistrySettings(CreateData As DLL.ImDiskCreateData)
+        Public Shared Sub SaveRegistrySettings(CreateData As UnsafeNativeMethods.ImDiskCreateData)
 
-            NativeFileIO.Win32Try(DLL.ImDiskSaveRegistrySettings(CreateData))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskSaveRegistrySettings(CreateData))
 
         End Sub
 
@@ -1182,7 +1198,7 @@ Namespace ImDisk
         ''' <param name="DeviceNumber">Device number specified in registry settings.</param>
         Public Shared Sub RemoveRegistrySettings(DeviceNumber As UInt32)
 
-            NativeFileIO.Win32Try(DLL.ImDiskRemoveRegistrySettings(DeviceNumber))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskRemoveRegistrySettings(DeviceNumber))
 
         End Sub
 
@@ -1194,7 +1210,7 @@ Namespace ImDisk
         Public Shared Function GetRegistryAutoLoadDevices() As UInt32
 
             Dim LoadDevicesValue As UInt32
-            NativeFileIO.Win32Try(DLL.ImDiskGetRegistryAutoLoadDevices(LoadDevicesValue))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskGetRegistryAutoLoadDevices(LoadDevicesValue))
             Return LoadDevicesValue
 
         End Function
@@ -1222,7 +1238,7 @@ Namespace ImDisk
         ''' </param>
         Public Shared Sub NotifyShellDriveLetter(WindowHandle As IntPtr, DriveLetterPath As String)
 
-            NativeFileIO.Win32Try(DLL.ImDiskNotifyShellDriveLetter(WindowHandle, DriveLetterPath))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskNotifyShellDriveLetter(WindowHandle, DriveLetterPath))
 
         End Sub
 
@@ -1239,7 +1255,7 @@ Namespace ImDisk
         ''' </param>
         Public Shared Sub NotifyRemovePending(WindowHandle As IntPtr, DriveLetter As Char)
 
-            NativeFileIO.Win32Try(DLL.ImDiskNotifyRemovePending(WindowHandle, DriveLetter))
+            NativeFileIO.Win32Try(UnsafeNativeMethods.ImDiskNotifyRemovePending(WindowHandle, DriveLetter))
 
         End Sub
 
