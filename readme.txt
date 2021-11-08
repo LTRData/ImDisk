@@ -1,5 +1,5 @@
 
-  ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003/Vista/7/8/8.1/10.
+  ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003/Vista/7/8/8.1/10
 
   This driver emulates harddisk partitions, floppy drives and CD/DVD-ROM
   drives from disk image files, in virtual memory or by redirecting I/O
@@ -49,7 +49,7 @@
 
     This software contains some GNU GPL licensed code:
     - Parts related to floppy emulation based on VFD by Ken Kato.
-      http://chitchat.at.infoseek.co.jp/vmware/vfd.html
+      https://web.archive.org/web/20100902032534/http://chitchat.at.infoseek.co.jp:80/vmware/vfd.html
     Copyright (C) Free Software Foundation, Inc.
     Read gpl.txt for the full GNU GPL license.
 
