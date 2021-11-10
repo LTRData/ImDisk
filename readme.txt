@@ -1,6 +1,18 @@
 
   ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003/Vista/7/8/8.1/10
 
+  PLEASE NOTE: This project is not recommended on recent versions of
+  Windows. There are many known compatibility issues because of a very
+  old design for compatibility with as old versions as Windows NT 3.51.
+  No new features will be added to this project but it will remain
+  available here because it could still be useful in certain scenarios.
+
+  I will continue development of Arsenal Image Mounter instead. That
+  has a different design and emulates complete disks and is compatible
+  with most cases where physical disk are normally used.
+  https://github.com/ArsenalRecon/Arsenal-Image-Mounter
+
+  Back to this project, ImDisk Virtual Disk driver.
   This driver emulates harddisk partitions, floppy drives and CD/DVD-ROM
   drives from disk image files, in virtual memory or by redirecting I/O
   requests somewhere else, possibly to another machine, through a
@@ -23,7 +35,7 @@
   this product under NT 3.51 you have to manually add registry entries needed
   by driver and service or use resource kit tools to add necessary settings.
 
-    Copyright (c) 2005-2018 Olof Lagerkvist
+    Copyright (c) 2005-2021 Olof Lagerkvist
     https://www.ltr-data.se      olof@ltr-data.se
 
     Permission is hereby granted, free of charge, to any person
