@@ -58,7 +58,7 @@ all: cli\$(ARCHDIR)\imdisk.exe svc\$(ARCHDIR)\imdsksvc.exe cpl\$(ARCHDIR)\imdisk
 clean:
 	del /s *~ *.obj *.log *.wrn *.err *.mac *.o
 
-publish: $(DIST_DIR) $(UPLOAD_DIR) $(DIST_DIR)\imdiskinst.exe $(DIST_DIR)\imdisk_source.7z
+publish: $(DIST_DIR) $(UPLOAD_DIR) $(DIST_DIR)\imdiskinst.exe $(DIST_DIR)\imdisk.zip
 	start $(UPLOAD_DIR)
 
 $(DIST_DIR) $(UPLOAD_DIR):
@@ -78,6 +78,11 @@ $(DIST_DIR)\imdisk.7z: $(README_TXT_FILES) imdisk.inf runwaitw.exe install.cmd u
 	del $(DIST_DIR)\imdisk.7z
 	stampinf -f imdisk.inf -a NTx86,NTia64,NTamd64,NTarm,NTarm64
 	7z a $(DIST_DIR)\imdisk.7z -m0=LZMA:a=2 $(README_TXT_FILES) imdisk.inf runwaitw.exe install.cmd uninstall_imdisk.cmd msgboxw.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl cplcore\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys deviodrv\i386\deviodrv.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl cplcore\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys deviodrv\ia64\deviodrv.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl cplcore\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys deviodrv\amd64\deviodrv.sys cli\arm\imdisk.exe cpl\arm\imdisk.cpl cplcore\arm\imdisk.cpl svc\arm\imdsksvc.exe sys\arm\imdisk.sys awealloc\arm\awealloc.sys deviodrv\arm\deviodrv.sys cli\arm64\imdisk.exe cpl\arm64\imdisk.cpl cplcore\arm64\imdisk.cpl svc\arm64\imdsksvc.exe sys\arm64\imdisk.sys awealloc\arm64\awealloc.sys deviodrv\arm64\deviodrv.sys
+
+$(DIST_DIR)\imdisk.zip: $(DIST_DIR)\imdisk.7z
+	del $(DIST_DIR)\imdisk.zip
+	7z a $(DIST_DIR)\imdisk.zip $(README_TXT_FILES) imdisk.inf runwaitw.exe install.cmd uninstall_imdisk.cmd msgboxw.exe cli\i386\imdisk.exe cpl\i386\imdisk.cpl cplcore\i386\imdisk.cpl svc\i386\imdsksvc.exe sys\i386\imdisk.sys awealloc\i386\awealloc.sys deviodrv\i386\deviodrv.sys cli\ia64\imdisk.exe cpl\ia64\imdisk.cpl cplcore\ia64\imdisk.cpl svc\ia64\imdsksvc.exe sys\ia64\imdisk.sys awealloc\ia64\awealloc.sys deviodrv\ia64\deviodrv.sys cli\amd64\imdisk.exe cpl\amd64\imdisk.cpl cplcore\amd64\imdisk.cpl svc\amd64\imdsksvc.exe sys\amd64\imdisk.sys awealloc\amd64\awealloc.sys deviodrv\amd64\deviodrv.sys cli\arm\imdisk.exe cpl\arm\imdisk.cpl cplcore\arm\imdisk.cpl svc\arm\imdsksvc.exe sys\arm\imdisk.sys awealloc\arm\awealloc.sys deviodrv\arm\deviodrv.sys cli\arm64\imdisk.exe cpl\arm64\imdisk.cpl cplcore\arm64\imdisk.cpl svc\arm64\imdsksvc.exe sys\arm64\imdisk.sys awealloc\arm64\awealloc.sys deviodrv\arm64\deviodrv.sys
+	xcopy /d /y $(DIST_DIR)\imdisk.zip $(UPLOAD_DIR)
 
 cli\$(ARCHDIR)\imdisk.exe: cli\sources cli\*.c cli\*.rc inc\*.h cpl\$(ARCHDIR)\imdisk.lib cplcore\$(ARCHDIR)\imdisk.lib
 	cd cli
