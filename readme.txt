@@ -2,10 +2,11 @@
   ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003/Vista/7/8/8.1/10
 
   PLEASE NOTE: This project is not recommended on recent versions of
-  Windows. There are many known compatibility issues because of a very
-  old design for compatibility with as old versions as Windows NT 3.51.
-  No new features will be added to this project but it will remain
-  available here because it could still be useful in certain scenarios.
+  Windows (versions after XP). There are many known compatibility
+  issues because of a very old design for compatibility with as old
+  versions as Windows NT 3.51.  No new features will be added to this
+  project but it will remain available here because it could still
+  be useful in certain scenarios.
 
   I will continue development of Arsenal Image Mounter instead. That
   has a different design and emulates complete disks and is compatible
