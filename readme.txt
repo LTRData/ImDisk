@@ -1,22 +1,23 @@
 
   ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003/Vista/7/8/8.1/10
 
-  PLEASE NOTE: This project is not recommended on recent versions of
-  Windows. There are many known compatibility issues because of a very
-  old design for compatibility with as old versions as Windows NT 3.51.
-  No new features will be added to this project but it will remain
-  available here because it could still be useful in certain scenarios.
+  PLEASE NOTE: This project is not recommended on recent versions of Windows
+  and many applications written for Windows Vista and later require features
+  that are not supported. It is based on an old design for compatibility with
+  as old versions as Windows NT 3.51. No new features will be added to this
+  project but it will remain available here because it could still be useful in
+  certain scenarios.
 
-  I will continue development of Arsenal Image Mounter instead. That
-  has a different design and emulates complete disks and is compatible
-  with most cases where physical disk are normally used.
+  I will continue development of Arsenal Image Mounter instead. That has a
+  different design and emulates complete disks and is compatible with most
+  cases where physical disk are normally used.
   https://github.com/ArsenalRecon/Arsenal-Image-Mounter
 
   Back to this project, ImDisk Virtual Disk driver.
-  This driver emulates harddisk partitions, floppy drives and CD/DVD-ROM
-  drives from disk image files, in virtual memory or by redirecting I/O
-  requests somewhere else, possibly to another machine, through a
-  co-operating user-mode service, ImDskSvc.
+  This driver emulates harddisk partitions, floppy drives and CD/DVD-ROM drives
+  from disk image files, in virtual memory or by redirecting I/O requests
+  somewhere else, possibly to another machine, through a co-operating user-mode
+  service, ImDskSvc.
 
   To install this driver, service and command line tool, right-click on the
   imdisk.inf file and select 'Install'. To uninstall, use the Add/Remove
