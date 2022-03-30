@@ -35,6 +35,10 @@
   The install/uninstall routines do not work under NT 3.51. If you want to use
   this product under NT 3.51 you have to manually add registry entries needed
   by driver and service or use resource kit tools to add necessary settings.
+  
+  To install/uninstall on ARM or ARM64 architectures a manual setup is needed.
+  More about that and other frequently asked questions in the wiki:
+  https://github.com/LTRData/ImDisk/wiki
 
     Copyright (c) 2005-2021 Olof Lagerkvist
     https://www.ltr-data.se      olof@ltr-data.se
