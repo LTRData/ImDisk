@@ -43,11 +43,11 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
     <Company>LTR Data</Company>
-    <Product>LTRLib</Product>
-    <ProductName>LTRLib</ProductName>
+    <Product>ImDisk</Product>
+    <ProductName>ImDisk Virtual Disk Driver</ProductName>
     <Authors>Olof Lagerkvist</Authors>
     <Copyright>2011 - 2023, Olof Lagerkvist, LTR Data</Copyright>
-    <PackageVersion>1.0.12</PackageVersion>
+    <PackageVersion>1.0.13</PackageVersion>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
   </PropertyGroup>
