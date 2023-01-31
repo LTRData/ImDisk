@@ -13,7 +13,9 @@
 
     <TargetFrameworks>net20;net40;netstandard2.0</TargetFrameworks>
 
-    <RegisterForComInterop Condition="'$(TargetFramework)|$(Configuration)' == 'net20|Release'">true</RegisterForComInterop>
+    <RegisterForComInterop Condition="'$(TargetFramework)|$(Configuration)' == 'net40|Release'">true</RegisterForComInterop>
+
+    <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release'">true</GeneratePackageOnBuild>
 
   </PropertyGroup>
 

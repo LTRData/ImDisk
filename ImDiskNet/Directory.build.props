@@ -8,7 +8,7 @@
     <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
     <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
-    <LangVersion Condition="'$(MSBuildProjectExtension)' == '.csproj'">9.0</LangVersion>
+    <LangVersion>Latest</LangVersion>
     <DebugType>portable</DebugType>
     <Deterministic>false</Deterministic>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -23,12 +23,38 @@
     <Title>ImDisk Virtual Disk Driver</Title>
     <Company>Olof Lagerkvist, LTR Data</Company>
     <Product>ImDisk Virtual Disk Driver</Product>
-    <Copyright>Copyright © Olof Lagerkvist, 2011 - 2021</Copyright>
+    <Copyright>Copyright © Olof Lagerkvist, 2004 - 2023</Copyright>
     <Trademark />
     <FileVersion>2.1.013.0</FileVersion>
     <ProductVersion>1.0.009.0</ProductVersion>
     <AssemblyVersion>1.0.009.0</AssemblyVersion>
 
   </PropertyGroup>
+
+  <PropertyGroup>
+
+    <PackageProjectUrl>https://github.com/LTRData/ImDisk</PackageProjectUrl>
+    <PackageId>LTRData.$(MSBuildProjectName)</PackageId>
+    <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
+    <RepositoryType>git</RepositoryType>
+    <PackageOutputPath>$(LocalNuGetPath)</PackageOutputPath>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <Company>LTR Data</Company>
+    <Product>LTRLib</Product>
+    <ProductName>LTRLib</ProductName>
+    <Authors>Olof Lagerkvist</Authors>
+    <Copyright>2011 - 2023, Olof Lagerkvist, LTR Data</Copyright>
+    <PackageVersion>1.0.12</PackageVersion>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Link="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE.md" Link="LICENSE.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>

@@ -9,7 +9,7 @@
     <Title>DiscUtilsDevio</Title>
     <Description>ImDisk Devio for DiscUtils library</Description>
 
-    <TargetFrameworks>net40;net5.0-windows</TargetFrameworks>
+    <TargetFrameworks>net46;net6.0-windows</TargetFrameworks>
 
   </PropertyGroup>
 
@@ -19,30 +19,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="DiscUtils.Core">
-      <HintPath>..\DiscUtils\$(TargetFramework)\DiscUtils.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="DiscUtils.Dmg">
-      <HintPath>..\DiscUtils\$(TargetFramework)\DiscUtils.Dmg.dll</HintPath>
-    </Reference>
-    <Reference Include="DiscUtils.Streams">
-      <HintPath>..\DiscUtils\$(TargetFramework)\DiscUtils.Streams.dll</HintPath>
-    </Reference>
-    <Reference Include="DiscUtils.Vdi">
-      <HintPath>..\DiscUtils\$(TargetFramework)\DiscUtils.Vdi.dll</HintPath>
-    </Reference>
-    <Reference Include="DiscUtils.Vhd">
-      <HintPath>..\DiscUtils\$(TargetFramework)\DiscUtils.Vhd.dll</HintPath>
-    </Reference>
-    <Reference Include="DiscUtils.Vhdx">
-      <HintPath>..\DiscUtils\$(TargetFramework)\DiscUtils.Vhdx.dll</HintPath>
-    </Reference>
-    <Reference Include="DiscUtils.Vmdk">
-      <HintPath>..\DiscUtils\$(TargetFramework)\DiscUtils.Vmdk.dll</HintPath>
-    </Reference>
-    <Reference Include="DiscUtils.Xva">
-      <HintPath>..\DiscUtils\$(TargetFramework)\DiscUtils.Xva.dll</HintPath>
-    </Reference>
+    <PackageReference Include="LTRData.DiscUtils.Core" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils.Dmg" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils.Streams" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils.Vdi" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils.Vhd" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils.Vhdx" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils.Vmdk" Version="*" />
+    <PackageReference Include="LTRData.DiscUtils.Xva" Version="*" />
   </ItemGroup>
-
+  
 </Project>
