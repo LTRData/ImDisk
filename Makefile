@@ -41,7 +41,7 @@ BUILD_DEFAULT=-cegiw -nmake -i
 
 INCLUDE=$(INCLUDE);$(MAKEDIR)\inc
 
-README_TXT_FILES=gpl.txt readme.txt
+README_TXT_FILES=LICENSE.md README.md
 
 !IFNDEF DIST_DIR
 DIST_DIR=$(MAKEDIR)\dist
@@ -58,7 +58,7 @@ all: cli\$(ARCHDIR)\imdisk.exe svc\$(ARCHDIR)\imdsksvc.exe cpl\$(ARCHDIR)\imdisk
 clean:
 	del /s *~ *.obj *.log *.wrn *.err *.mac *.o
 
-publish: $(DIST_DIR) $(UPLOAD_DIR) $(DIST_DIR)\imdiskinst.exe $(DIST_DIR)\imdisk.zip
+publish: $(DIST_DIR) $(UPLOAD_DIR) $(DIST_DIR)\imdiskinst.exe $(DIST_DIR)\imdisk.zip $(DIST_DIR)\imdisk_source.7z
 	start $(UPLOAD_DIR)
 
 $(DIST_DIR) $(UPLOAD_DIR):
