@@ -360,167 +360,113 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|Win32'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|Win32'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|Win32'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|x64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|x64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|x64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|ARM'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|ARM64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|ARM'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|ARM64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|ARM'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|ARM64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|Win32'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|Win32'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|Win32'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|x64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|x64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|x64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|ARM'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|ARM64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|ARM'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|ARM64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|ARM'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|ARM64'">
-    <TimeStampServer>
-    </TimeStampServer>
+    <TimeStampServer />
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
     <ClCompile />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <!-- The WrappedTaskItems label is used by the conversion tool to identify the location where items 
         associated with wrapped tasks will reside.-->

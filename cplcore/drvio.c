@@ -1,7 +1,7 @@
 /*
 API library for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-Copyright (C) 2007-2021 Olof Lagerkvist.
+Copyright (C) 2007-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -202,7 +202,7 @@ VOID
 WINAPI
 MsgBoxLastError(HWND hWnd, LPCWSTR Prefix)
 {
-    LPWSTR MsgBuf;
+    LPWSTR MsgBuf = { 0 };
 
     FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
         FORMAT_MESSAGE_FROM_SYSTEM |
@@ -290,7 +290,7 @@ ImDiskGetPartitionTypeName(IN BYTE PartitionType,
     }
 
 #pragma warning(suppress: 6053)
-    wcsncpy(Name, name, NameSize - 1);
+    wcsncpy(Name, name, (SIZE_T)NameSize - 1);
     Name[NameSize - 1] = 0;
 }
 
@@ -480,7 +480,7 @@ ImDiskGetPartitionInfoIndirectEx(IN HANDLE Handle,
     if (SectorSize == 0)
         SectorSize = 512;
 
-    buffer = (LPBYTE)_alloca(SectorSize << 1);
+    buffer = (LPBYTE)_alloca((SIZE_T)SectorSize << 1);
 
     if (!ReadFileProc(Handle, buffer, *Offset, SectorSize, &read_size))
         return FALSE;
@@ -532,7 +532,7 @@ ImDiskGetPartitionInfoIndirectEx(IN HANDLE Handle,
         {
             BOOL read_next_ebr = TRUE;
             PMBR_PARTITION_TABLE ebr_partition_table =
-                (PMBR_PARTITION_TABLE)(buffer + (SectorSize << 1) - 66);
+                (PMBR_PARTITION_TABLE)(buffer + ((SIZE_T)SectorSize << 1) - 66);
 
             first_ebr_offset.QuadPart = Offset->QuadPart +
                 partition_information.StartingOffset.QuadPart;
@@ -675,7 +675,7 @@ ImDiskGetPartitionInfoIndirect(IN HANDLE Handle,
     IN PLARGE_INTEGER Offset OPTIONAL,
     IN OUT PPARTITION_INFORMATION PartitionInformation)
 {
-    IMDISKGETPARTITIONINFOINDIRECTEX_DATA data;
+    IMDISKGETPARTITIONINFOINDIRECTEX_DATA data = { 0 };
     data.Count = 8;
     data.Next = PartitionInformation;
 
@@ -694,7 +694,7 @@ ImDiskGetSinglePartitionInfoIndirect(IN HANDLE Handle,
     IN OUT PPARTITION_INFORMATION PartitionInformation,
     IN INT PartitionNumber)
 {
-    IMDISKGETPARTITIONINFOINDIRECTEX_DATA data;
+    IMDISKGETPARTITIONINFOINDIRECTEX_DATA data = { 0 };
     data.Count = PartitionNumber;
     data.Next = PartitionInformation;
 
@@ -856,8 +856,8 @@ ImDiskImageContainsISOFSIndirect(IN HANDLE Handle,
     IN PLARGE_INTEGER Offset OPTIONAL)
 {
     const char magic[] = { 0x01, 'C', 'D', '0', '0', '1', 0x01 };
-    char buffer[sizeof(magic)];
-    LARGE_INTEGER final_offset;
+    char buffer[sizeof(magic)] = { 0 };
+    LARGE_INTEGER final_offset = { 0 };
     DWORD read_size = 0;
 
     final_offset.QuadPart = 0x8000;
@@ -1081,7 +1081,7 @@ ImDiskRemoveMountPoint(LPCWSTR MountPoint)
     if ((wcscmp(MountPoint + 1, L":") == 0 ||
         wcscmp(MountPoint + 1, L":\\") == 0))
     {
-        DWORD_PTR dwp;
+        DWORD_PTR dwp = 0;
         DEV_BROADCAST_VOLUME dev_broadcast_volume = {
             sizeof(DEV_BROADCAST_VOLUME),
             DBT_DEVTYP_VOLUME
@@ -1199,7 +1199,7 @@ ImDiskOpenDeviceByName(PUNICODE_STRING FileName, DWORD AccessMode)
 {
     NTSTATUS status;
     HANDLE handle;
-    OBJECT_ATTRIBUTES object_attrib;
+    OBJECT_ATTRIBUTES object_attrib = { 0 };
     IO_STATUS_BLOCK io_status;
 
     InitializeObjectAttributes(&object_attrib,
@@ -1336,7 +1336,7 @@ IMDISK_API BOOL
 WINAPI
 ImDiskCheckDriverVersion(HANDLE Device)
 {
-    DWORD VersionCheck;
+    DWORD VersionCheck = 0;
     DWORD BytesReturned;
 
     if (!DeviceIoControl(Device,
@@ -1435,7 +1435,7 @@ ImDiskGetDeviceList()
 {
     UNICODE_STRING file_name;
     HANDLE driver;
-    ULONGLONG device_list;
+    ULONGLONG device_list = 0;
     DWORD dw;
 
     RtlInitUnicodeString(&file_name, IMDISK_CTL_DEVICE_NAME);
@@ -2423,7 +2423,7 @@ ImDiskChangeFlags(HWND hWnd,
 {
     HANDLE device;
     DWORD dw;
-    IMDISK_SET_DEVICE_FLAGS device_flags;
+    IMDISK_SET_DEVICE_FLAGS device_flags = { 0 };
 
     if (hWnd != NULL)
         SetWindowText(hWnd, L"Opening device...");
@@ -2595,8 +2595,8 @@ ImDiskExtendDevice(HWND hWnd,
     HANDLE device;
     DWORD dw;
     DISK_GROW_PARTITION grow_partition = { 0 };
-    GET_LENGTH_INFORMATION length_information;
-    DISK_GEOMETRY disk_geometry;
+    GET_LENGTH_INFORMATION length_information = { 0 };
+    DISK_GEOMETRY disk_geometry = { 0 };
     LONGLONG new_filesystem_size;
 
     if (hWnd != NULL)
@@ -2711,7 +2711,7 @@ ImDiskSaveImageFile(IN HANDLE DeviceHandle,
 {
     LPBYTE buffer;
     IMDISK_SET_DEVICE_FLAGS device_flags = { 0 };
-    LARGE_INTEGER disk_size;
+    LARGE_INTEGER disk_size = { 0 };
     LONGLONG saved_size = 0;
     DWORD dwReadSize;
     DWORD dwWriteSize;
@@ -2930,7 +2930,7 @@ ImDiskGetFormattedGeometryIndirect(IN HANDLE Handle,
     IN PLARGE_INTEGER Offset OPTIONAL,
     IN OUT PDISK_GEOMETRY DiskGeometry)
 {
-    FAT_VBR fat_vbr;
+    FAT_VBR fat_vbr = { 0 };
     LARGE_INTEGER offset = { 0 };
     DWORD read_size;
 
@@ -2975,7 +2975,7 @@ ImDiskBuildMBR(IN PDISK_GEOMETRY DiskGeometry OPTIONAL,
 
     for (i = 0; i < NumberOfPartitions; i++)
     {
-        LPBYTE partition_entry = MBR + 512 - 66 + (i << 4);
+        LPBYTE partition_entry = MBR + 512 - 66 + ((size_t)i << 4);
 
         ULONGLONG start_sector =
             PartitionInformation[i].StartingOffset.QuadPart /
@@ -3594,7 +3594,7 @@ WINAPI
 ImDiskIsProcessElevated()
 {
     HANDLE hToken;
-    TOKEN_ELEVATION elevation;
+    TOKEN_ELEVATION elevation = { 0 };
     DWORD dwSize;
 
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))

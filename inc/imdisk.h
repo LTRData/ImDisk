@@ -1,7 +1,7 @@
 /*
 ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation

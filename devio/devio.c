@@ -1,7 +1,7 @@
 /*
 Server end for ImDisk Virtual Disk Driver proxy operation.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -718,7 +718,7 @@ vhd_read(char *io_ptr, safeio_size_t size, off_t_64 offset)
 
     block_number = (safeio_size_t)(offset >> block_shift);
     data_offset = table_offset + (block_number << 2);
-    in_block_offset = (safeio_size_t)(offset & (block_size - 1));
+    in_block_offset = (safeio_size_t)offset & (block_size - 1);
     if (first_size + in_block_offset > block_size)
     {
         first_size = block_size - in_block_offset;
@@ -793,7 +793,7 @@ vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
 
     block_number = offset >> block_shift;
     data_offset = table_offset + (block_number << 2);
-    in_block_offset = (safeio_size_t)(offset & (block_size - 1));
+    in_block_offset = (safeio_size_t)offset & (block_size - 1);
     if (first_size + in_block_offset > block_size)
     {
         first_size = block_size - in_block_offset;
@@ -853,7 +853,7 @@ vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
             (off_t_64)first_size, (off_t_64)offset));
 
         new_block_buf = (char *)
-            malloc(sector_size + block_size + sizeof(vhd_info.Footer));
+            malloc((size_t)sector_size + block_size + sizeof(vhd_info.Footer));
         if (new_block_buf == NULL)
         {
             syslog(LOG_ERR, "vhd_write: Error allocating memory buffer for new "
@@ -891,14 +891,15 @@ vhd_write(char *io_ptr, safeio_size_t size, off_t_64 offset)
         }
 
         // Initialize new block with zeroes followed by the new footer
-        memset(new_block_buf, 0, sector_size + block_size);
+        memset(new_block_buf, 0, (size_t)sector_size + block_size);
         memcpy(new_block_buf + sector_size + block_size, &vhd_info.Footer,
             sizeof(vhd_info.Footer));
 
         readdone =
             physical_write(new_block_buf,
-            sector_size + block_size + sizeof(vhd_info.Footer),
-            block_offset_bytes);
+                (size_t)sector_size + block_size + sizeof(vhd_info.Footer),
+                block_offset_bytes);
+
         if (readdone != (safeio_ssize_t)(sector_size + block_size) +
             (safeio_ssize_t)sizeof(vhd_info.Footer))
         {
@@ -1162,14 +1163,14 @@ main(int argc, char **argv)
 
     SetUnhandledExceptionFilter(ExceptionFilter);
 
-    WSAStartup(0x0101, &wsadata);
+    (void)WSAStartup(0x0101, &wsadata);
 #endif
 
     if (argc > 1 && _stricmp(argv[1], "--dll") == 0)
     {
         fprintf(stderr,
             "devio with custom DLL support\n"
-            "Copyright (C) 2005-2021 Olof Lagerkvist.\n"
+            "Copyright (C) 2005-2023 Olof Lagerkvist.\n"
             "\n"
             "Usage for unmanaged C/C++ DLL files:\n"
             "devio --dll=dllfile;procedure other_devio_parameters ...\n"
@@ -1317,7 +1318,7 @@ main(int argc, char **argv)
             "devio - Device I/O Service ver " DEVIO_VERSION "\n"
             "With support for Microsoft VHD format, custom DLL files, shared memory proxy\n"
             "operation and also for use with DevIO Client Driver, if installed.\n"
-            "Copyright (C) 2005-2021 Olof Lagerkvist.\n"
+            "Copyright (C) 2005-2023 Olof Lagerkvist.\n"
             "\n"
             "Usage:\n"
             "devio [-r] tcp-port|commdev diskdev [blocks] [offset] [alignm] [buffersize]\n"
@@ -1556,7 +1557,7 @@ main(int argc, char **argv)
             }
             else
             {
-                LARGE_INTEGER file_size;
+                LARGE_INTEGER file_size = { 0 };
                 file_size.HighPart = by_handle_file_info.nFileSizeHigh;
                 file_size.LowPart = by_handle_file_info.nFileSizeLow;
 
@@ -1596,7 +1597,7 @@ main(int argc, char **argv)
             ((*(u_char*)(mbr + 0x01DE) & 0x7F) == 0) &&
             ((*(u_char*)(mbr + 0x01EE) & 0x7F) == 0))
         {
-            int i = 0;
+            size_t i = 0;
             int c = 0;
 
             puts("Detected a master boot record at sector 0.");
@@ -1625,7 +1626,7 @@ main(int argc, char **argv)
                     while (read_next_ebr)
                     {
                         char ebr[512];
-                        int e;
+                        size_t e;
 
                         read_next_ebr = FALSE;
 
@@ -1864,7 +1865,7 @@ do_comm_shm(char *comm_device)
         "%s%s", namespace_prefix, comm_device);
     objname[OBJNAME_SIZE - 1] = 0;
 
-    map_size.QuadPart = buffer_size + IMDPROXY_HEADER_SIZE;
+    map_size.QuadPart = (ULONGLONG)buffer_size + IMDPROXY_HEADER_SIZE;
 
     hFileMap = CreateFileMapping(INVALID_HANDLE_VALUE,
         NULL,

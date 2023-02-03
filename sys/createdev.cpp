@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -121,7 +121,7 @@ VOID
 ImDiskFindFreeDeviceNumber(PDRIVER_OBJECT DriverObject,
     PULONG DeviceNumber)
 {
-    KLOCK_QUEUE_HANDLE lock_handle;
+    KLOCK_QUEUE_HANDLE lock_handle = { 0 };
     PDEVICE_OBJECT device_object;
 
     ImDiskAcquireLock(&DeviceListLock, &lock_handle);
@@ -213,8 +213,8 @@ ImDiskReadFormattedGeometry(IN OUT PIMDISK_CREATE_DATA CreateData,
 
 #ifdef INCLUDE_GPL_ORIGIN
 
-    if (((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) |
-        (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)) &
+    if (((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) ||
+        (IMDISK_DEVICE_TYPE(CreateData->Flags) == 0)) &&
         (CreateData->DiskGeometry.MediaType == Unknown))
         switch (CreateData->DiskGeometry.Cylinders.QuadPart)
         {
@@ -333,7 +333,7 @@ ImDiskGetDiskSize(IN HANDLE FileHandle,
     PAGED_CODE();
 
     {
-        FILE_STANDARD_INFORMATION file_standard;
+        FILE_STANDARD_INFORMATION file_standard = { 0 };
 
         status = ZwQueryInformationFile(FileHandle,
             IoStatus,
@@ -517,7 +517,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
 #ifndef _WIN64
     // Cannot create >= 2 GB VM disk in 32 bit version.
-    if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &
+    if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_VM) &&
         ((CreateData->DiskGeometry.Cylinders.QuadPart & 0xFFFFFFFF80000000) !=
             0))
     {
@@ -577,7 +577,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
     WPoolMem<WCHAR, NonPagedPool> file_name_buffer;
 
-    UNICODE_STRING file_name;
+    UNICODE_STRING file_name = { 0 };
     file_name.Length = CreateData->FileNameLength;
     file_name.MaximumLength = CreateData->FileNameLength;
     file_name.Buffer = NULL;
@@ -589,7 +589,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
             (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC)))
     {
         IO_STATUS_BLOCK io_status;
-        OBJECT_ATTRIBUTES object_attributes;
+        OBJECT_ATTRIBUTES object_attributes = { 0 };
         ACCESS_MASK desired_access = 0;
         ULONG share_access = 0;
         ULONG create_options = 0;
@@ -625,15 +625,18 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
         // If no device-type specified, check if filename ends with .iso, .nrg or
         // .bin. In that case, set device-type automatically to FILE_DEVICE_CDROM
-        if ((IMDISK_DEVICE_TYPE(CreateData->Flags) == 0) &
+        if ((IMDISK_DEVICE_TYPE(CreateData->Flags) == 0) &&
             (CreateData->FileNameLength >= (4 * sizeof(*CreateData->FileName))))
         {
             LPWSTR name = CreateData->FileName +
                 (CreateData->FileNameLength / sizeof(*CreateData->FileName)) - 4;
-            if ((_wcsnicmp(name, L".iso", 4) == 0) |
-                (_wcsnicmp(name, L".nrg", 4) == 0) |
+            
+            if ((_wcsnicmp(name, L".iso", 4) == 0) ||
+                (_wcsnicmp(name, L".nrg", 4) == 0) ||
                 (_wcsnicmp(name, L".bin", 4) == 0))
+            {
                 CreateData->Flags |= IMDISK_DEVICE_TYPE_CD | IMDISK_OPTION_RO;
+            }
         }
 
         if (IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_CD)
@@ -870,10 +873,10 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
         // If not found we will create the file if a new non-zero size is
         // specified, read-only virtual disk is not specified and we are
         // creating a type 'file' virtual disk.
-        if (((status == STATUS_OBJECT_NAME_NOT_FOUND) |
-            (status == STATUS_NO_SUCH_FILE)) &
-            (CreateData->DiskGeometry.Cylinders.QuadPart != 0) &
-            (!IMDISK_READONLY(CreateData->Flags)) &
+        if (((status == STATUS_OBJECT_NAME_NOT_FOUND) ||
+            (status == STATUS_NO_SUCH_FILE)) &&
+            (CreateData->DiskGeometry.Cylinders.QuadPart != 0) &&
+            (!IMDISK_READONLY(CreateData->Flags)) &&
             (IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE))
         {
             KdPrint(("ImDisk: Creating new image file DesiredAccess=%#x ShareAccess=%#x CreateOptions=%#x\n",
@@ -942,7 +945,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
         KdPrint(("ImDisk: File '%wZ' opened successfully.\n",
             &real_file_name));
 
-        if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+        if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &&
             (!IMDISK_READONLY(CreateData->Flags)))
         {
             // If creating a sparse image file
@@ -971,7 +974,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
             }
 
             // Adjust the file length to the requested virtual disk size.
-            if ((CreateData->DiskGeometry.Cylinders.QuadPart != 0) &
+            if ((CreateData->DiskGeometry.Cylinders.QuadPart != 0) &&
                 (CreateData->ImageOffset.QuadPart == 0))
             {
                 status = ZwSetInformationFile(
@@ -1214,7 +1217,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
             }
             else
             {
-                FILE_ALIGNMENT_INFORMATION file_alignment;
+                FILE_ALIGNMENT_INFORMATION file_alignment = { 0 };
 
                 status = ZwQueryInformationFile(file_handle,
                     &io_status,
@@ -1641,10 +1644,10 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
 
 #ifdef INCLUDE_GPL_ORIGIN
 
-        if ((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) &
-            (CreateData->DiskGeometry.BytesPerSector == 0) &
-            (CreateData->DiskGeometry.SectorsPerTrack == 0) &
-            (CreateData->DiskGeometry.TracksPerCylinder == 0) &
+        if ((IMDISK_DEVICE_TYPE(CreateData->Flags) == IMDISK_DEVICE_TYPE_FD) &&
+            (CreateData->DiskGeometry.BytesPerSector == 0) &&
+            (CreateData->DiskGeometry.SectorsPerTrack == 0) &&
+            (CreateData->DiskGeometry.TracksPerCylinder == 0) &&
             (CreateData->DiskGeometry.MediaType == Unknown))
             switch (calccyl)
             {
@@ -1772,7 +1775,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
                 calccyl /= 255;
             }
             else
-                while ((calccyl > 128) &
+                while ((calccyl > 128) &&
                     (CreateData->DiskGeometry.TracksPerCylinder < 128))
                 {
                     CreateData->DiskGeometry.TracksPerCylinder <<= 1;
@@ -2096,7 +2099,7 @@ ImDiskCreateDevice(__in PDRIVER_OBJECT DriverObject,
         device_extension->vm_disk = FALSE;
 
     // AWEAlloc disk.
-    if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &
+    if ((IMDISK_TYPE(CreateData->Flags) == IMDISK_TYPE_FILE) &&
         (IMDISK_FILE_TYPE(CreateData->Flags) == IMDISK_FILE_TYPE_AWEALLOC))
         device_extension->awealloc_disk = TRUE;
     else

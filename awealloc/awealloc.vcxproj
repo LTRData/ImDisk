@@ -411,70 +411,40 @@
     <TimeStampServer />
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Release|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Debug|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Debug|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win7 Release|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8.1 Debug|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|ARM'">
-    <DriverSign>
-      <FileDigestAlgorithm />
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Win8 Release|ARM64'">
-    <DriverSign>
-      <FileDigestAlgorithm>
-      </FileDigestAlgorithm>
-    </DriverSign>
+    <DriverSign />
   </ItemDefinitionGroup>
   <!-- The WrappedTaskItems label is used by the conversion tool to identify the location where items 
         associated with wrapped tasks will reside.-->

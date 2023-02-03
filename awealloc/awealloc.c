@@ -1,7 +1,7 @@
 /*
 AWE Allocation Driver for Windows 2000/XP and later.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -393,7 +393,7 @@ IN BOOLEAN OwnsReadLock OPTIONAL,
 IN OUT PKIRQL LowestAssumedIrql)
 {
     NTSTATUS status;
-    KLOCK_QUEUE_HANDLE lock_handle;
+    KLOCK_QUEUE_HANDLE lock_handle = { 0 };
 
     AWEAllocAcquireLock(&Context->IOLock, &lock_handle, *LowestAssumedIrql);
     if (ForWriteOperation)
@@ -465,7 +465,7 @@ IN BOOLEAN ForReadOperation,
 IN BOOLEAN ForWriteOperation,
 IN OUT PKIRQL LowestAssumedIrql)
 {
-    KLOCK_QUEUE_HANDLE lock_handle;
+    KLOCK_QUEUE_HANDLE lock_handle = { 0 };
     AWEAllocAcquireLock(&Context->IOLock, &lock_handle, *LowestAssumedIrql);
     if (ForWriteOperation)
     {
@@ -503,7 +503,7 @@ AWEAllocExchangeMapPage(IN POBJECT_CONTEXT Context,
 IN OUT PPAGE_CONTEXT PageContext,
 IN OUT PKIRQL LowestAssumedIrql)
 {
-    KLOCK_QUEUE_HANDLE lock_handle;
+    KLOCK_QUEUE_HANDLE lock_handle = { 0 };
     
     PAGE_CONTEXT page_context = *PageContext;
 
@@ -878,7 +878,7 @@ IN PIRP Irp)
             // memory increase virtual file size.
 
             IO_STATUS_BLOCK io_status;
-            LARGE_INTEGER new_size;
+            LARGE_INTEGER new_size = { 0 };
 
             status = AWEAllocTryAcquireProtection(context, TRUE, TRUE,
                 &lowest_assumed_irql);
@@ -1591,11 +1591,11 @@ IN OUT PIO_STATUS_BLOCK IoStatus,
 IN PUNICODE_STRING FileName,
 IN BOOLEAN OwnsReadLock)
 {
-    OBJECT_ATTRIBUTES object_attributes;
+    OBJECT_ATTRIBUTES object_attributes = { 0 };
     NTSTATUS status;
     HANDLE file_handle = NULL;
-    FILE_STANDARD_INFORMATION file_standard;
-    LARGE_INTEGER offset;
+    FILE_STANDARD_INFORMATION file_standard = { 0 };
+    LARGE_INTEGER offset = { 0 };
     PAGE_CONTEXT current_page_context = { 0 };
     KIRQL lowest_assumed_irql = PASSIVE_LEVEL;
 

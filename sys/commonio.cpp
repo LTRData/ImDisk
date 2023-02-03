@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -62,7 +62,7 @@ ImDiskSafeReadFile(IN HANDLE FileHandle,
     ASSERT(IoStatusBlock != NULL);
     ASSERT(Buffer != NULL);
 
-    if (Length > (8UL << 20))
+    if (Length > ((SIZE_T)8 << 20))
     {
         request_length = (8UL << 20);
     }
@@ -81,7 +81,7 @@ ImDiskSafeReadFile(IN HANDLE FileHandle,
 
         for (;;)
         {
-            LARGE_INTEGER current_file_offset;
+            LARGE_INTEGER current_file_offset = { 0 };
 
             current_file_offset.QuadPart = Offset->QuadPart + length_done;
 
@@ -113,9 +113,9 @@ ImDiskSafeReadFile(IN HANDLE FileHandle,
                 &current_file_offset,
                 NULL);
 
-            if (((status == STATUS_INSUFFICIENT_RESOURCES) |
-                (status == STATUS_INVALID_BUFFER_SIZE) |
-                (status == STATUS_INVALID_PARAMETER)) &
+            if (((status == STATUS_INSUFFICIENT_RESOURCES) ||
+                (status == STATUS_INVALID_BUFFER_SIZE) ||
+                (status == STATUS_INVALID_PARAMETER)) &&
                 (request_length >= 2048))
             {
                 ExFreePoolWithTag(intermediate_buffer, POOL_TAG);
@@ -292,7 +292,7 @@ ImDiskSafeIOStream(IN PFILE_OBJECT FileObject,
                 irp, IoStatusBlock->Status));
 
             RequestLength >>= 1;
-        } while ((status == STATUS_INVALID_BUFFER_SIZE) |
+        } while ((status == STATUS_INVALID_BUFFER_SIZE) ||
             (status == STATUS_INVALID_PARAMETER));
 
         if (!NT_SUCCESS(status))

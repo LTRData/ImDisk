@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -258,9 +258,9 @@ ImDiskCallProxy(IN PPROXY_CONNECTION Proxy,
         ULONG number_of_wait_objects = CancelEvent != NULL ? 2 : 1;
 
         // Some parameter sanity checks
-        if ((RequestHeaderSize > IMDPROXY_HEADER_SIZE) |
-            (ResponseHeaderSize > IMDPROXY_HEADER_SIZE) |
-            ((RequestDataSize + IMDPROXY_HEADER_SIZE) >
+        if ((RequestHeaderSize > IMDPROXY_HEADER_SIZE) ||
+            (ResponseHeaderSize > IMDPROXY_HEADER_SIZE) ||
+            (((ULONG_PTR)RequestDataSize + IMDPROXY_HEADER_SIZE) >
                 Proxy->shared_memory_size))
         {
             KdPrint(("ImDisk Proxy Client: "
@@ -312,8 +312,9 @@ ImDiskCallProxy(IN PPROXY_CONNECTION Proxy,
         // If server end requests to send more data than we requested, we
         // treat that as an unrecoverable device error and exit.
         if (ResponseDataSize != NULL ? *ResponseDataSize > 0 : FALSE)
-            if ((*ResponseDataSize > ResponseDataBufferSize) |
-                ((*ResponseDataSize + IMDPROXY_HEADER_SIZE) >
+        {
+            if ((*ResponseDataSize > ResponseDataBufferSize) ||
+                (((ULONG_PTR)*ResponseDataSize + IMDPROXY_HEADER_SIZE) >
                     Proxy->shared_memory_size))
             {
                 KdPrint(("ImDisk Proxy Client: Invalid response size %u.\n.",
@@ -331,10 +332,15 @@ ImDiskCallProxy(IN PPROXY_CONNECTION Proxy,
 
                 IoStatusBlock->Information = *ResponseDataSize;
             }
+        }
 
         IoStatusBlock->Status = STATUS_SUCCESS;
-        if ((RequestDataSize > 0) & (IoStatusBlock->Information == 0))
+        
+        if ((RequestDataSize > 0) && (IoStatusBlock->Information == 0))
+        {
             IoStatusBlock->Information = RequestDataSize;
+        }
+
         return IoStatusBlock->Status;
     }
 
@@ -358,8 +364,8 @@ ImDiskCloseProxy(IN PPROXY_CONNECTION Proxy)
         break;
 
     case PROXY_CONNECTION::PROXY_CONNECTION_SHM:
-        if ((Proxy->request_event != NULL) &
-            (Proxy->response_event != NULL) &
+        if ((Proxy->request_event != NULL) &&
+            (Proxy->response_event != NULL) &&
             (Proxy->shared_memory != NULL))
         {
             *(ULONGLONG*)Proxy->shared_memory = IMDPROXY_REQ_CLOSE;
@@ -416,8 +422,8 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
     IN PWSTR ConnectionString,
     IN USHORT ConnectionStringLength)
 {
-    IMDPROXY_CONNECT_REQ connect_req;
-    IMDPROXY_CONNECT_RESP connect_resp;
+    IMDPROXY_CONNECT_REQ connect_req = { 0 };
+    IMDPROXY_CONNECT_RESP connect_resp = { 0 };
     NTSTATUS status;
 
     PAGED_CODE();
@@ -428,7 +434,7 @@ ImDiskConnectProxy(IN OUT PPROXY_CONNECTION Proxy,
 
     if (IMDISK_PROXY_TYPE(Flags) == IMDISK_PROXY_TYPE_SHM)
     {
-        OBJECT_ATTRIBUTES object_attributes;
+        OBJECT_ATTRIBUTES object_attributes = { 0 };
         UNICODE_STRING base_name = { 0 };
         UNICODE_STRING event_name = { 0 };
         base_name.Buffer = ConnectionString;
@@ -632,7 +638,7 @@ ImDiskQueryInformationProxy(IN PPROXY_CONNECTION Proxy,
     ASSERT(Proxy != NULL);
     ASSERT(IoStatusBlock != NULL);
 
-    if ((ProxyInfoResponse == NULL) |
+    if ((ProxyInfoResponse == NULL) ||
         (ProxyInfoResponseLength < sizeof(IMDPROXY_INFO_RESP)))
     {
         IoStatusBlock->Status = STATUS_BUFFER_OVERFLOW;
@@ -693,8 +699,8 @@ ImDiskReadProxy(IN PPROXY_CONNECTION Proxy,
     IN ULONG Length,
     IN PLARGE_INTEGER ByteOffset)
 {
-    IMDPROXY_READ_REQ read_req;
-    IMDPROXY_READ_RESP read_resp;
+    IMDPROXY_READ_REQ read_req = { 0 };
+    IMDPROXY_READ_RESP read_resp = { 0 };
     NTSTATUS status;
     ULONG_PTR max_transfer_size;
     ULONG length_done;
@@ -788,8 +794,8 @@ ImDiskWriteProxy(IN PPROXY_CONNECTION Proxy,
     IN ULONG Length,
     IN PLARGE_INTEGER ByteOffset)
 {
-    IMDPROXY_WRITE_REQ write_req;
-    IMDPROXY_WRITE_RESP write_resp;
+    IMDPROXY_WRITE_REQ write_req = { 0 };
+    IMDPROXY_WRITE_RESP write_resp = { 0 };
     NTSTATUS status;
     ULONG_PTR max_transfer_size;
     ULONG length_done;
@@ -888,8 +894,8 @@ ImDiskUnmapOrZeroProxy(IN PPROXY_CONNECTION Proxy,
     IN ULONG Items,
     IN PDEVICE_DATA_SET_RANGE Ranges)
 {
-    IMDPROXY_UNMAP_REQ unmap_req;
-    IMDPROXY_UNMAP_RESP unmap_resp;
+    IMDPROXY_UNMAP_REQ unmap_req = { 0 };
+    IMDPROXY_UNMAP_RESP unmap_resp = { 0 };
     NTSTATUS status;
     ULONG byte_size = (ULONG)(Items * sizeof(DEVICE_DATA_SET_RANGE));
 

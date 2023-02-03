@@ -30,7 +30,7 @@ BEGIN
             VALUE "FileDescription", "ImDisk Virtual Disk Driver\0"
             VALUE "FileVersion", IMDISK_RC_VERSION_STR ".65\0"
             VALUE "InternalName", "imdisk\0"
-            VALUE "LegalCopyright", "Copyright © 2005-2021 Olof Lagerkvist etc.\0"
+            VALUE "LegalCopyright", "Copyright © 2005-2023 Olof Lagerkvist etc.\0"
             VALUE "OriginalFilename", "imdisk.sys\0"
             VALUE "ProductName", "imdisk\0"
             VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".65\0"

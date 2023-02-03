@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -52,8 +52,8 @@ ImDiskDeviceThreadRead(IN PIRP Irp,
     PUCHAR system_buffer =
         (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress,
             NormalPagePriority);
-    LARGE_INTEGER offset;
-    KLOCK_QUEUE_HANDLE lock_handle;
+    LARGE_INTEGER offset = { 0 };
+    KLOCK_QUEUE_HANDLE lock_handle = { 0 };
 
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -96,7 +96,7 @@ ImDiskDeviceThreadRead(IN PIRP Irp,
 
     ImDiskAcquireLock(&DeviceExtension->last_io_lock, &lock_handle);
 
-    if ((DeviceExtension->last_io_data != NULL) &
+    if ((DeviceExtension->last_io_data != NULL) &&
         (DeviceExtension->last_io_length <
             io_stack->Parameters.Read.Length))
     {
@@ -195,9 +195,9 @@ ImDiskDeviceThreadWrite(IN PIRP Irp,
     PUCHAR system_buffer =
         (PUCHAR)MmGetSystemAddressForMdlSafe(Irp->MdlAddress,
             NormalPagePriority);
-    LARGE_INTEGER offset;
+    LARGE_INTEGER offset = { 0 };
     BOOLEAN set_zero_data = FALSE;
-    KLOCK_QUEUE_HANDLE lock_handle;
+    KLOCK_QUEUE_HANDLE lock_handle = { 0 };
 
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -299,7 +299,7 @@ ImDiskDeviceThreadWrite(IN PIRP Irp,
     {
         if (set_zero_data && DeviceExtension->proxy_zero)
         {
-            DEVICE_DATA_SET_RANGE range;
+            DEVICE_DATA_SET_RANGE range = { 0 };
             range.StartingOffset = offset.QuadPart;
             range.LengthInBytes = io_stack->Parameters.Write.Length;
 
@@ -342,7 +342,7 @@ ImDiskDeviceThreadWrite(IN PIRP Irp,
     {
         if (set_zero_data)
         {
-            FILE_ZERO_DATA_INFORMATION zero_data;
+            FILE_ZERO_DATA_INFORMATION zero_data = { 0 };
             zero_data.FileOffset = offset;
             zero_data.BeyondFinalZero.QuadPart = offset.QuadPart +
                 io_stack->Parameters.Write.Length;
@@ -763,8 +763,8 @@ ImDiskDeviceThreadDeviceControl(IN PIRP Irp,
     case IOCTL_DISK_GROW_PARTITION:
     {
         NTSTATUS status;
-        FILE_END_OF_FILE_INFORMATION new_size;
-        FILE_STANDARD_INFORMATION file_standard_information;
+        FILE_END_OF_FILE_INFORMATION new_size = { 0 };
+        FILE_STANDARD_INFORMATION file_standard_information = { 0 };
         PDISK_GROW_PARTITION grow_data = (PDISK_GROW_PARTITION)Irp->AssociatedIrp.SystemBuffer;
 
         KdPrint(("ImDisk: Request to grow device %i by %I64i bytes.\n",
@@ -947,7 +947,7 @@ ImDiskDeviceThread(IN PVOID Context)
     PDEVICE_THREAD_DATA device_thread_data;
     PDEVICE_OBJECT device_object;
     PDEVICE_EXTENSION device_extension;
-    LARGE_INTEGER time_out;
+    LARGE_INTEGER time_out = { 0 };
     BOOLEAN system_drive_letter;
 
     ASSERT(Context != NULL);
@@ -971,7 +971,7 @@ ImDiskDeviceThread(IN PVOID Context)
     // initialization).
     while (ImDiskCtlDevice->Flags & DO_DEVICE_INITIALIZING)
     {
-        LARGE_INTEGER wait_time;
+        LARGE_INTEGER wait_time = { 0 };
 
         KdPrint2(("ImDisk: Driver still initializing, waiting 100 ms...\n"));
 

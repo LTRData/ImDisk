@@ -2,7 +2,7 @@
 
 Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.
 
-Copyright (C) 2004-2021 Olof Lagerkvist.
+Copyright (C) 2004-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -388,7 +388,7 @@ ImDiskOemPrintF(
 void
 PrintLastError(LPCWSTR Prefix)
 {
-    LPSTR MsgBuf;
+    LPSTR MsgBuf = { 0 };
 
     if (!FormatMessageA(FORMAT_MESSAGE_MAX_WIDTH_MASK |
         FORMAT_MESSAGE_ALLOCATE_BUFFER |
@@ -423,7 +423,7 @@ ImDiskCliAssertNotNull(LPVOID Ptr)
 BOOL
 ImDiskCliCheckDriverVersion(HANDLE Device)
 {
-    DWORD VersionCheck;
+    DWORD VersionCheck = 0;
     DWORD BytesReturned;
 
     if (!DeviceIoControl(Device,
@@ -1627,7 +1627,7 @@ ImDiskCliChangeFlags(
 {
     HANDLE device;
     DWORD dw;
-    IMDISK_SET_DEVICE_FLAGS device_flags;
+    IMDISK_SET_DEVICE_FLAGS device_flags = { 0 };
 
     if (MountPoint == NULL)
     {
@@ -1778,8 +1778,8 @@ ImDiskCliExtendDevice(DWORD DeviceNumber, LPCWSTR MountPoint,
     HANDLE device;
     DWORD dw;
     DISK_GROW_PARTITION grow_partition = { 0 };
-    GET_LENGTH_INFORMATION length_information;
-    DISK_GEOMETRY disk_geometry;
+    GET_LENGTH_INFORMATION length_information = { 0 };
+    DISK_GEOMETRY disk_geometry = { 0 };
     LONGLONG new_filesystem_size;
 
     if (MountPoint == NULL)
@@ -1964,7 +1964,7 @@ wmain(int argc, LPWSTR argv[])
             ("Control program for the ImDisk Virtual Disk Driver for Windows NT/2000/XP.\n"
                 "Version %i.%i.%i - (Compiled " __DATE__ ")\n"
                 "\n"
-                "Copyright (C) 2004-2021 Olof Lagerkvist.\n"
+                "Copyright (C) 2004-2023 Olof Lagerkvist.\n"
                 "\n"
                 "http://www.ltr-data.se     olof@ltr-data.se\n"
                 "\n"

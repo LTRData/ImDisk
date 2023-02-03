@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -419,21 +419,32 @@ ImDiskInterlockedRemoveHeadList(
 
 #endif
 
+#if _M_ARM64
+
+#define ImDiskIsBufferZero RtlIsZeroMemory
+
+#else
+
 FORCEINLINE
 BOOLEAN
-ImDiskIsBufferZero(PVOID Buffer, ULONG Length)
+ImDiskIsBufferZero(PVOID Buffer, SIZE_T Length)
 {
-    PULONGLONG ptr;
+    if (((LONG_PTR)Buffer & (sizeof(ULONG) - 1)) == 0 &&
+        (Length & (sizeof(ULONG) - 1)) == 0)
+    {
+        SIZE_T length = RtlCompareMemoryUlong(Buffer, Length, 0);
+        return length == Length;
+    }
 
-    if (Length < sizeof(ULONGLONG))
-        return FALSE;
+    PUCHAR ptr;
 
-    for (ptr = (PULONGLONG)Buffer;
-    (ptr <= (PULONGLONG)((PUCHAR)Buffer + Length - sizeof(ULONGLONG))) &&
-        (*ptr == 0); ptr++);
-
-        return (BOOLEAN)(ptr == (PULONGLONG)((PUCHAR)Buffer + Length));
+    for (ptr = (PUCHAR)Buffer;
+        (ptr <= (PUCHAR)Buffer + Length) && (*ptr == 0); ptr++);
+    
+    return ptr == (PUCHAR)Buffer + Length;
 }
+
+#endif
 
 FORCEINLINE
 VOID

@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -58,8 +58,8 @@ ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
     PFORMAT_PARAMETERS	param;
     ULONG			track_length;
     PUCHAR		format_buffer;
-    LARGE_INTEGER		start_offset;
-    LARGE_INTEGER		end_offset;
+    LARGE_INTEGER		start_offset = { 0 };
+    LARGE_INTEGER		end_offset = { 0 };
     NTSTATUS		status;
 
     PAGED_CODE();
@@ -74,19 +74,19 @@ ImDiskFloppyFormat(IN PDEVICE_EXTENSION Extension,
         Extension->disk_geometry.SectorsPerTrack;
 
     start_offset.QuadPart =
-        param->StartCylinderNumber * Extension->disk_geometry.TracksPerCylinder *
-        track_length + param->StartHeadNumber * track_length;
+        (ULONGLONG)param->StartCylinderNumber * Extension->disk_geometry.TracksPerCylinder *
+        track_length + (ULONGLONG)param->StartHeadNumber * track_length;
 
     end_offset.QuadPart =
-        param->EndCylinderNumber * Extension->disk_geometry.TracksPerCylinder *
-        track_length + param->EndHeadNumber * track_length;
+        (ULONGLONG)param->EndCylinderNumber * Extension->disk_geometry.TracksPerCylinder *
+        track_length + (ULONGLONG)param->EndHeadNumber * track_length;
 
     if (Extension->vm_disk)
     {
-        LARGE_INTEGER wait_time;
+        LARGE_INTEGER wait_time = { 0 };
 
         RtlFillMemory(((PUCHAR)Extension->image_buffer) + start_offset.LowPart,
-            end_offset.LowPart - start_offset.LowPart + track_length,
+            (SIZE_T)end_offset.LowPart - start_offset.LowPart + track_length,
             MEDIA_FORMAT_FILL_DATA);
 
         wait_time.QuadPart = -1;

@@ -5,7 +5,7 @@ This service redirects I/O requests sent to the ImDisk Virtual Disk Driver
 to another computer through a serial communication interface or by opening
 a TCP/IP connection.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation

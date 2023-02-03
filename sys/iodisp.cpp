@@ -5,7 +5,7 @@ drives from disk image files, in virtual memory or by redirecting I/O
 requests somewhere else, possibly to another machine, through a
 co-operating user-mode service, ImDskSvc.
 
-Copyright (C) 2005-2021 Olof Lagerkvist.
+Copyright (C) 2005-2023 Olof Lagerkvist.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -220,12 +220,12 @@ ImDiskDispatchReadWrite(IN PDEVICE_OBJECT DeviceObject,
         (device_extension->last_io_data != NULL) &&
         !device_extension->shared_image)
     {
-        KLOCK_QUEUE_HANDLE lock_handle;
+        KLOCK_QUEUE_HANDLE lock_handle = { 0 };
 
         ImDiskAcquireLock(&device_extension->last_io_lock, &lock_handle);
 
         if ((io_stack->Parameters.Read.ByteOffset.QuadPart >=
-            device_extension->last_io_offset) &
+            device_extension->last_io_offset) &&
             ((io_stack->Parameters.Read.ByteOffset.QuadPart +
                 io_stack->Parameters.Read.Length) <=
                 (device_extension->last_io_offset +
@@ -437,7 +437,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
             if (DeviceObject->DeviceType == FILE_DEVICE_DISK)
             {
                 // Set read-only
-                if ((IMDISK_READONLY(device_flags->FlagValues) != 0) &
+                if ((IMDISK_READONLY(device_flags->FlagValues) != 0) &&
                     (device_extension->special_file_count <= 0))
                 {
                     DeviceObject->Characteristics |= FILE_READ_ONLY_DEVICE;
@@ -533,7 +533,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
     case IOCTL_IMDISK_REFERENCE_HANDLE:
     {
-        KLOCK_QUEUE_HANDLE lock_handle;
+        KLOCK_QUEUE_HANDLE lock_handle = { 0 };
         PREFERENCED_OBJECT record;
 
         KdPrint(("ImDisk: IOCTL_IMDISK_REFERENCE_HANDLE for device %i.\n",
@@ -567,7 +567,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
         }
 
         if ((io_stack->Parameters.DeviceIoControl.InputBufferLength <
-            sizeof(HANDLE)) |
+            sizeof(HANDLE)) ||
             (io_stack->Parameters.DeviceIoControl.OutputBufferLength <
                 sizeof(PFILE_OBJECT)))
         {
@@ -622,7 +622,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
     case IOCTL_IMDISK_GET_REFERENCED_HANDLE:
     {
-        KLOCK_QUEUE_HANDLE lock_handle;
+        KLOCK_QUEUE_HANDLE lock_handle = { 0 };
         PLIST_ENTRY list_entry;
 
         if (io_stack->MajorFunction != IRP_MJ_INTERNAL_DEVICE_CONTROL)
@@ -748,7 +748,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     case IOCTL_IMDISK_REMOVE_DEVICE:
     {
         ULONG device_number;
-        KLOCK_QUEUE_HANDLE lock_handle;
+        KLOCK_QUEUE_HANDLE lock_handle = { 0 };
 
         KdPrint(("ImDisk: IOCTL_IMDISK_REMOVE_DEVICE.\n"));
 
@@ -837,7 +837,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
         if (io_stack->Parameters.DeviceIoControl.OutputBufferLength >
             sizeof(ULONGLONG))
         {
-            KLOCK_QUEUE_HANDLE lock_handle;
+            KLOCK_QUEUE_HANDLE lock_handle = { 0 };
             ULONG max_items =
                 io_stack->Parameters.DeviceIoControl.OutputBufferLength >> 2;
             ULONG current_item = 0;
@@ -879,7 +879,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 
             if (current_item >= max_items)
             {
-                Irp->IoStatus.Information = 1 << 2;
+                Irp->IoStatus.Information = (ULONG_PTR)1 << 2;
                 status = STATUS_SUCCESS;
             }
             else
@@ -891,7 +891,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
         else
         {
             ULARGE_INTEGER DeviceList = { 0 };
-            KLOCK_QUEUE_HANDLE lock_handle;
+            KLOCK_QUEUE_HANDLE lock_handle = { 0 };
             PDEVICE_OBJECT device_object;
             ULONG HighestDeviceNumber = 0;
 
@@ -1184,14 +1184,14 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
             break;
         }
 
-        if ((param->StartCylinderNumber * geometry->TracksPerCylinder *
+        if (((LONGLONG)param->StartCylinderNumber * geometry->TracksPerCylinder *
             geometry->BytesPerSector * geometry->SectorsPerTrack +
-            param->StartHeadNumber * geometry->BytesPerSector *
+            (LONGLONG)param->StartHeadNumber * geometry->BytesPerSector *
             geometry->SectorsPerTrack >=
-            device_extension->disk_geometry.Cylinders.QuadPart) |
-            (param->EndCylinderNumber * geometry->TracksPerCylinder *
+            device_extension->disk_geometry.Cylinders.QuadPart) ||
+            ((LONGLONG)param->EndCylinderNumber * geometry->TracksPerCylinder *
                 geometry->BytesPerSector * geometry->SectorsPerTrack +
-                param->EndHeadNumber * geometry->BytesPerSector *
+                (LONGLONG)param->EndHeadNumber * geometry->BytesPerSector *
                 geometry->SectorsPerTrack >=
                 device_extension->disk_geometry.Cylinders.QuadPart))
         {
@@ -1265,7 +1265,7 @@ ImDiskDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
             Irp->AssociatedIrp.SystemBuffer;
 
         // Check so we don't get a smaller disk with these parameters
-        if ((grow_partition->PartitionNumber != 1) |
+        if ((grow_partition->PartitionNumber != 1) ||
             (device_extension->disk_geometry.Cylinders.QuadPart +
                 grow_partition->BytesToGrow.QuadPart <
                 device_extension->disk_geometry.Cylinders.QuadPart))

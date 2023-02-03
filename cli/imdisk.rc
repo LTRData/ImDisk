@@ -28,7 +28,7 @@ BEGIN
             VALUE "FileDescription", "Control program for the ImDisk Virtual Disk Driver"
             VALUE "FileVersion", IMDISK_RC_VERSION_STR ".50"
             VALUE "InternalName", "imdisk"
-            VALUE "LegalCopyright", "Copyright © 2004-2021 Olof Lagerkvist."
+            VALUE "LegalCopyright", "Copyright © 2004-2023 Olof Lagerkvist."
             VALUE "OriginalFilename", "imdisk.exe"
             VALUE "ProductName", "imdisk"
             VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".50"
