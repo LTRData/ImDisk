@@ -67,6 +67,8 @@ const GUID AWEAllocFsCtlGuid = \
 #define AWEALLOC_DEVICE_NAME                L"\\Device\\AWEAlloc"
 #define AWEALLOC_SYMLINK_NAME               L"\\DosDevices\\AWEAlloc"
 
+#define HIGH_MEMORY_CONDITION_NAME          L"\\KernelObjects\\HighMemoryCondition"
+
 #define AWEALLOC_STATUS_ALLOCATION_LOW_MEMORY ((STATUS_SEVERITY_INFORMATIONAL << 30) | \
     (1 << 29) | \
     (STATUS_INSUFFICIENT_RESOURCES & 0x1FFFFFFF))
@@ -322,6 +324,8 @@ __inout __deref PKIRQL LowestAssumedIrql)
 
 PDRIVER_OBJECT AWEAllocDriverObject;
 
+PKEVENT HighMemoryCondition;
+
 #pragma code_seg("INIT")
 
 //
@@ -333,6 +337,9 @@ IN PUNICODE_STRING RegistryPath)
 {
     NTSTATUS status;
     PDEVICE_OBJECT device_object;
+    UNICODE_STRING high_memory_condition_name;
+    HANDLE high_memory_condition_handle;
+    OBJECT_ATTRIBUTES object_attributes = { 0 };
     UNICODE_STRING ctl_device_name;
     UNICODE_STRING sym_link;
 
@@ -341,6 +348,26 @@ IN PUNICODE_STRING RegistryPath)
     AWEAllocDriverObject = DriverObject;
 
     MmPageEntireDriver((PVOID)(ULONG_PTR)DriverEntry);
+
+    RtlInitUnicodeString(&high_memory_condition_name,
+        HIGH_MEMORY_CONDITION_NAME);
+
+    InitializeObjectAttributes(&object_attributes, &high_memory_condition_name, 0, NULL, NULL);
+
+    status = ZwOpenEvent(&high_memory_condition_handle,
+        SYNCHRONIZE | EVENT_QUERY_STATE, &object_attributes);
+
+    if (!NT_SUCCESS(status))
+        return status;
+
+    status = ObReferenceObjectByHandle(high_memory_condition_handle,
+        SYNCHRONIZE | EVENT_QUERY_STATE, *ExEventObjectType, KernelMode,
+        &HighMemoryCondition, NULL);
+
+    ZwClose(high_memory_condition_handle);
+
+    if (!NT_SUCCESS(status))
+        return status;
 
     // Create the control device.
     RtlInitUnicodeString(&ctl_device_name, AWEALLOC_DEVICE_NAME);
@@ -402,7 +429,7 @@ IN OUT PKIRQL LowestAssumedIrql)
             (Context->ActiveReaders >= (OwnsReadLock ? 2 : 1)))
         {
             Context->WriteRequestLockConflicts++;
-            KdPrint(("AWEAlloc: I/O write protection busy while requesting lock for writing. Active readers: %i writers: %i\n",
+            KdPrint2(("AWEAlloc: I/O write protection busy while requesting lock for writing. Active readers: %i writers: %i\n",
                 Context->ActiveReaders, Context->ActiveWriters));
 
             status = STATUS_DEVICE_BUSY;
@@ -418,7 +445,7 @@ IN OUT PKIRQL LowestAssumedIrql)
             }
             else
             {
-                KdPrint(("AWEAlloc: Thread %p acquired lock for writing. Active readers: %i writers: %i\n",
+                KdPrint2(("AWEAlloc: Thread %p acquired lock for writing. Active readers: %i writers: %i\n",
                     KeGetCurrentThread(),
                     Context->ActiveReaders, Context->ActiveWriters));
 
@@ -431,7 +458,7 @@ IN OUT PKIRQL LowestAssumedIrql)
         if ((Context->ActiveWriters >= 1) | (Context->ActiveReaders >= LONG_MAX))
         {
             Context->ReadRequestLockConflicts++;
-            KdPrint(("AWEAlloc: I/O write protection busy while requesting lock for reading. Active readers: %i writers: %i\n",
+            KdPrint2(("AWEAlloc: I/O write protection busy while requesting lock for reading. Active readers: %i writers: %i\n",
                 Context->ActiveReaders, Context->ActiveWriters));
 
             status = STATUS_DEVICE_BUSY;
@@ -447,7 +474,7 @@ IN OUT PKIRQL LowestAssumedIrql)
             }
             else
             {
-                KdPrint(("AWEAlloc: Thread %p acquired lock for reading. Active readers: %i writers: %i\n",
+                KdPrint2(("AWEAlloc: Thread %p acquired lock for reading. Active readers: %i writers: %i\n",
                     KeGetCurrentThread(),
                     Context->ActiveReaders, Context->ActiveWriters));
 
@@ -471,7 +498,7 @@ IN OUT PKIRQL LowestAssumedIrql)
     {
         Context->ActiveWriters--;
 
-        KdPrint(("AWEAlloc: Thread %p released lock for writing. Active readers: %i writers: %i\n",
+        KdPrint2(("AWEAlloc: Thread %p released lock for writing. Active readers: %i writers: %i\n",
             KeGetCurrentThread(),
             Context->ActiveReaders, Context->ActiveWriters));
 
@@ -485,7 +512,7 @@ IN OUT PKIRQL LowestAssumedIrql)
     {
         Context->ActiveReaders--;
 
-        KdPrint(("AWEAlloc: Thread %p released lock for reading. Active readers: %i writers: %i\n",
+        KdPrint2(("AWEAlloc: Thread %p released lock for reading. Active readers: %i writers: %i\n",
             KeGetCurrentThread(),
             Context->ActiveReaders, Context->ActiveWriters));
 
@@ -1145,7 +1172,7 @@ AWEAllocSetSize(IN POBJECT_CONTEXT Context,
 IN OUT PIO_STATUS_BLOCK IoStatus,
 IN PLARGE_INTEGER EndOfFile)
 {
-    KdPrint(("AWEAlloc: Setting size to %u KB.\n",
+    KdPrint2(("AWEAlloc: Setting size to %u KB.\n",
         (ULONG)(EndOfFile->QuadPart >> 10)));
 
     if (AWEAllocGetTotalSize(Context) >= EndOfFile->QuadPart)
@@ -1199,11 +1226,24 @@ IN PLARGE_INTEGER EndOfFile)
             return STATUS_SUCCESS;
         }
 
+        // If running out of memory, do not attempt to
+        // allocate
+        if (KeReadStateEvent(HighMemoryCondition) == 0)
+        {
+            DbgPrint("AWEAlloc: Risk of running out of memory. Refusing to allocate more at this point.\n");
+
+            IoStatus->Status = STATUS_NO_MEMORY;
+            IoStatus->Information = 0;
+            return STATUS_NO_MEMORY;
+        }
+
         block = ExAllocatePoolWithTag(NonPagedPool,
             sizeof(BLOCK_DESCRIPTOR), POOL_TAG);
 
         if (block == NULL)
         {
+            DbgPrint("AWEAlloc: Out of pool memory.\n");
+
             IoStatus->Status = STATUS_NO_MEMORY;
             IoStatus->Information = 0;
             return STATUS_NO_MEMORY;
@@ -1340,7 +1380,7 @@ IN PLARGE_INTEGER EndOfFile)
         if (AWEAllocAddBlock(Context, block))
             continue;
 
-        KdPrint(("AWEAlloc: MmAllocatePagesForMdl failed.\n"));
+        DbgPrint("AWEAlloc: Failed to allocate memory to increase file size.\n");
 
         AWEAllocLogError(AWEAllocDriverObject,
             0,
@@ -1833,4 +1873,6 @@ AWEAllocUnload(IN PDRIVER_OBJECT DriverObject)
         IoDeleteDevice(device_object);
         device_object = next_device;
     }
+
+    ObDereferenceObject(HighMemoryCondition);
 }
