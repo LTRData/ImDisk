@@ -9,7 +9,7 @@
     <Title>DiscUtilsDevio</Title>
     <Description>ImDisk Devio for DiscUtils library</Description>
 
-    <TargetFrameworks>net46;net6.0-windows</TargetFrameworks>
+    <TargetFrameworks>net46;net48;net6.0-windows</TargetFrameworks>
 
   </PropertyGroup>
 
