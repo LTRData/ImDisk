@@ -698,6 +698,26 @@ send_info()
     return 1;
 }
 
+int
+send_failed()
+{
+    ULONGLONG req = ENODEV;
+    if (!comm_write(&req, sizeof req))
+    {
+        syslog(LOG_ERR, "stdout: %m\n");
+        return 1;
+    }
+
+    if (!comm_flush())
+    {
+        syslog(LOG_ERR, "Error flushing comm data: %m\n");
+
+        return 0;
+    }
+
+    return 1;
+}
+
 safeio_ssize_t
 vhd_read(char *io_ptr, safeio_size_t size, off_t_64 offset)
 {
@@ -2184,7 +2204,8 @@ do_comm(char *comm_device)
 
     for (;;)
     {
-        if (!comm_read(&req, sizeof(req)))
+        if (!comm_read(&req, sizeof(req))
+            || req == IMDPROXY_REQ_CLOSE)
         {
             puts("Connection closed.");
             return 0;
@@ -2208,12 +2229,9 @@ do_comm(char *comm_device)
             break;
 
         default:
-            req = ENODEV;
-            if (!comm_write(&req, sizeof req))
-            {
-                syslog(LOG_ERR, "stdout: %m\n");
+            if (!send_failed())
                 return 1;
-            }
+            break;
         }
     }
 }
