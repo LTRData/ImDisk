@@ -176,6 +176,11 @@ DevIoDrvDispatchControl(PDEVICE_OBJECT, PIRP Irp)
     {
     case FSCTL_SET_ZERO_DATA:
     {
+        if ((context->ServiceFlags & IMDPROXY_FLAG_SUPPORTS_ZERO) == 0)
+        {
+            break;
+        }
+
         PFILE_ZERO_DATA_INFORMATION zero = (PFILE_ZERO_DATA_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
 
         if (io_stack->Parameters.FileSystemControl.InputBufferLength != sizeof FILE_ZERO_DATA_INFORMATION ||
@@ -190,6 +195,11 @@ DevIoDrvDispatchControl(PDEVICE_OBJECT, PIRP Irp)
 
     case FSCTL_FILE_LEVEL_TRIM:
     {
+        if ((context->ServiceFlags & IMDPROXY_FLAG_SUPPORTS_UNMAP) == 0)
+        {
+            break;
+        }
+
         PFILE_LEVEL_TRIM trim = (PFILE_LEVEL_TRIM)Irp->AssociatedIrp.SystemBuffer;
 
         if (io_stack->Parameters.FileSystemControl.InputBufferLength < sizeof FILE_LEVEL_TRIM ||
