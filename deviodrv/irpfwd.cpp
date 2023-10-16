@@ -531,6 +531,68 @@ DevIoDrvDispatchServerIORequest(PIRP Irp,
 
         KeLowerIrql(irql);
     }
+    else if (client_item != NULL &&
+        IoGetCurrentIrpStackLocation(client_item->Irp)->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL &&
+        buffer->request_code == IMDPROXY_REQ_ZERO &&
+        IoGetCurrentIrpStackLocation(client_item->Irp)->Parameters.FileSystemControl.FsControlCode == FSCTL_SET_ZERO_DATA)
+    {
+        KdPrint(("IRP=%p IMDPROXY_REQ_ZERO.\n",
+            Irp));
+
+        PIMDPROXY_ZERO_RESP response = (PIMDPROXY_ZERO_RESP)(buffer + 1);
+
+        KIRQL irql;
+
+        KeRaiseIrql(APC_LEVEL, &irql);
+
+        KIRQL new_irql = APC_LEVEL;
+
+        if (response->errorno == 0)
+        {
+            DevIoDrvCompleteIrpQueueItem(client_item, STATUS_SUCCESS, 0, &new_irql);
+        }
+        else
+        {
+            DevIoDrvCompleteIrpQueueItem(client_item, STATUS_IO_DEVICE_ERROR, 0, &new_irql);
+        }
+
+        KeLowerIrql(irql);
+    }
+    else if (client_item != NULL &&
+        IoGetCurrentIrpStackLocation(client_item->Irp)->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL &&
+        buffer->request_code == IMDPROXY_REQ_UNMAP &&
+        IoGetCurrentIrpStackLocation(client_item->Irp)->Parameters.FileSystemControl.FsControlCode == FSCTL_FILE_LEVEL_TRIM)
+    {
+        KdPrint(("IRP=%p IMDPROXY_REQ_UNMAP.\n",
+            Irp));
+
+        PIMDPROXY_UNMAP_RESP response = (PIMDPROXY_UNMAP_RESP)(buffer + 1);
+
+        KIRQL irql;
+
+        KeRaiseIrql(APC_LEVEL, &irql);
+
+        KIRQL new_irql = APC_LEVEL;
+
+        if (response->errorno == 0)
+        {
+            if (IoGetCurrentIrpStackLocation(client_item->Irp)->Parameters.FileSystemControl.OutputBufferLength >=
+                sizeof(FILE_LEVEL_TRIM_OUTPUT))
+            {
+                PFILE_LEVEL_TRIM in_buffer = (PFILE_LEVEL_TRIM)client_item->Irp->AssociatedIrp.SystemBuffer;
+                PFILE_LEVEL_TRIM_OUTPUT out_buffer = (PFILE_LEVEL_TRIM_OUTPUT)client_item->Irp->AssociatedIrp.SystemBuffer;
+                out_buffer->NumRangesProcessed = in_buffer->NumRanges;
+            }
+
+            DevIoDrvCompleteIrpQueueItem(client_item, STATUS_SUCCESS, sizeof(FILE_LEVEL_TRIM_OUTPUT), &new_irql);
+        }
+        else
+        {
+            DevIoDrvCompleteIrpQueueItem(client_item, STATUS_IO_DEVICE_ERROR, 0, &new_irql);
+        }
+
+        KeLowerIrql(irql);
+    }
     else if (client_item == NULL && buffer->request_code == IMDPROXY_REQ_NULL)
     {
         // no response here, just wants next request
@@ -726,7 +788,8 @@ DevIoDrvSendClientRequestToServer(POBJECT_CONTEXT File,
         *ServerStatus = STATUS_SUCCESS;
     }
     else if (io_stack_client->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL &&
-        io_stack_client->Parameters.FileSystemControl.FsControlCode == FSCTL_SET_ZERO_DATA)
+        io_stack_client->Parameters.FileSystemControl.FsControlCode == FSCTL_SET_ZERO_DATA &&
+        (File->ServiceFlags & IMDPROXY_FLAG_SUPPORTS_ZERO) != 0)
     {
         if (ServerItem->MappedBufferSize < IMDPROXY_HEADER_SIZE + sizeof DEVICE_DATA_SET_RANGE)
         {
@@ -762,7 +825,8 @@ DevIoDrvSendClientRequestToServer(POBJECT_CONTEXT File,
         *ServerStatus = STATUS_SUCCESS;
     }
     else if (io_stack_client->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL &&
-        io_stack_client->Parameters.FileSystemControl.FsControlCode == FSCTL_FILE_LEVEL_TRIM)
+        io_stack_client->Parameters.FileSystemControl.FsControlCode == FSCTL_FILE_LEVEL_TRIM &&
+        (File->ServiceFlags & IMDPROXY_FLAG_SUPPORTS_UNMAP) != 0)
     {
         PFILE_LEVEL_TRIM trim_info = (PFILE_LEVEL_TRIM)ClientItem->Irp->AssociatedIrp.SystemBuffer;
 
