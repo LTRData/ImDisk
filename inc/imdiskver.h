@@ -1,6 +1,6 @@
 #define IMDISK_MAJOR_VERSION        2
 #define IMDISK_MINOR_VERSION        1
-#define IMDISK_MINOR_LOW_VERSION    1
+#define IMDISK_MINOR_LOW_VERSION    2
 
 #define STR_EXPAND(tok) #tok
 #define STR(tok) STR_EXPAND(tok)

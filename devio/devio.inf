@@ -7,7 +7,7 @@ signature = "$Windows NT$"
 Class = SCSIAdapter
 ClassGUID = {4D36E97B-E325-11CE-BFC1-08002BE10318}
 Provider = "LTR Data"
-DriverVer = 10/26/2021,2.1.0.00070
+DriverVer = 10/16/2023,2.1.2.00073
 CatalogFile = devio.cat
 
 

@@ -28,12 +28,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "AWE Allocation Driver\0"
-            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".24\0"
+            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".25\0"
             VALUE "InternalName", "awealloc\0"
             VALUE "LegalCopyright", "Copyright © 2009-2023 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "awealloc.sys\0"
             VALUE "ProductName", "imdisk\0"
-            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".24\0"
+            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".25\0"
         END
     END
     BLOCK "VarFileInfo"
