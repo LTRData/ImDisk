@@ -25,9 +25,9 @@
     <Product>ImDisk Virtual Disk Driver</Product>
     <Copyright>Copyright © Olof Lagerkvist, 2004 - 2023</Copyright>
     <Trademark />
-    <FileVersion>2.1.013.0</FileVersion>
-    <ProductVersion>1.0.009.0</ProductVersion>
-    <AssemblyVersion>1.0.009.0</AssemblyVersion>
+    <FileVersion>1.0.014.0</FileVersion>
+    <ProductVersion>1.0.014.0</ProductVersion>
+    <AssemblyVersion>1.0.014.0</AssemblyVersion>
 
   </PropertyGroup>
 
@@ -47,7 +47,7 @@
     <ProductName>ImDisk Virtual Disk Driver</ProductName>
     <Authors>Olof Lagerkvist</Authors>
     <Copyright>2011 - 2023, Olof Lagerkvist, LTR Data</Copyright>
-    <PackageVersion>1.0.13</PackageVersion>
+    <PackageVersion>1.0.14</PackageVersion>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
   </PropertyGroup>
