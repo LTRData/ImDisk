@@ -788,8 +788,7 @@ DevIoDrvSendClientRequestToServer(POBJECT_CONTEXT File,
         *ServerStatus = STATUS_SUCCESS;
     }
     else if (io_stack_client->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL &&
-        io_stack_client->Parameters.FileSystemControl.FsControlCode == FSCTL_SET_ZERO_DATA &&
-        (File->ServiceFlags & IMDPROXY_FLAG_SUPPORTS_ZERO) != 0)
+        io_stack_client->Parameters.FileSystemControl.FsControlCode == FSCTL_SET_ZERO_DATA)
     {
         if (ServerItem->MappedBufferSize < IMDPROXY_HEADER_SIZE + sizeof DEVICE_DATA_SET_RANGE)
         {
@@ -825,8 +824,7 @@ DevIoDrvSendClientRequestToServer(POBJECT_CONTEXT File,
         *ServerStatus = STATUS_SUCCESS;
     }
     else if (io_stack_client->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL &&
-        io_stack_client->Parameters.FileSystemControl.FsControlCode == FSCTL_FILE_LEVEL_TRIM &&
-        (File->ServiceFlags & IMDPROXY_FLAG_SUPPORTS_UNMAP) != 0)
+        io_stack_client->Parameters.FileSystemControl.FsControlCode == FSCTL_FILE_LEVEL_TRIM)
     {
         PFILE_LEVEL_TRIM trim_info = (PFILE_LEVEL_TRIM)ClientItem->Irp->AssociatedIrp.SystemBuffer;
 

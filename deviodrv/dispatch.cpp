@@ -176,7 +176,7 @@ DevIoDrvDispatchControl(PDEVICE_OBJECT, PIRP Irp)
     {
     case FSCTL_SET_ZERO_DATA:
     {
-        if ((context->ServiceFlags & IMDPROXY_FLAG_SUPPORTS_ZERO) == 0)
+        if (!FlagOn(context->ServiceFlags, IMDPROXY_FLAG_SUPPORTS_ZERO))
         {
             break;
         }
@@ -195,7 +195,7 @@ DevIoDrvDispatchControl(PDEVICE_OBJECT, PIRP Irp)
 
     case FSCTL_FILE_LEVEL_TRIM:
     {
-        if ((context->ServiceFlags & IMDPROXY_FLAG_SUPPORTS_UNMAP) == 0)
+        if (!FlagOn(context->ServiceFlags, IMDPROXY_FLAG_SUPPORTS_UNMAP))
         {
             break;
         }
