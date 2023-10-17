@@ -49,9 +49,15 @@ LIST_ENTRY FileTable;
 
 LONG FileTableListLock;
 
-NTSTATUS DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject)
+NTSTATUS DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject, ULONG DesiredAccess)
 {
     PAGED_CODE();
+
+    BOOLEAN check_attributes_only =
+        (DesiredAccess & 0xF001017FL) == 0;
+
+    BOOLEAN requests_write_access =
+        (DesiredAccess & (GENERIC_WRITE | GENERIC_ALL | FILE_WRITE_DATA)) != 0;
 
     if (InterlockedExchange(&FileTableListLock, 1) != 0)
     {
@@ -70,9 +76,20 @@ NTSTATUS DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject)
 
         if (RtlEqualUnicodeString(&FileObject->FileName, &context->Name, TRUE))
         {
-            if (InterlockedIncrement(&context->RefCount) != 2)
+            if (check_attributes_only &&
+                context->FileSize.QuadPart > 0)
+            {
+                status = STATUS_SUCCESS;
+            }
+            else if (InterlockedIncrement(&context->RefCount) != 2)
             {
                 status = STATUS_SHARING_VIOLATION;
+            }
+            else if (requests_write_access &&
+                FlagOn(context->ServiceFlags, IMDPROXY_FLAG_RO))
+            {
+                InterlockedDecrement(&context->RefCount);
+                status = STATUS_MEDIA_WRITE_PROTECTED;
             }
             else
             {

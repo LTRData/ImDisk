@@ -81,7 +81,8 @@ DevIoDrvDispatchCreate(PDEVICE_OBJECT, PIRP Irp)
     }
     else if (Options.CreateDisposition == FILE_OPEN) // Open client end
     {
-        status = DevIoDrvOpenFileTableEntry(io_stack->FileObject);
+        status = DevIoDrvOpenFileTableEntry(io_stack->FileObject,
+            io_stack->Parameters.Create.SecurityContext->DesiredAccess);
 
         if (status == STATUS_SUCCESS)
         {
@@ -113,14 +114,22 @@ DevIoDrvDispatchClose(PDEVICE_OBJECT, PIRP Irp)
     Irp->IoStatus.Information = 0;
     Irp->IoStatus.Status = STATUS_SUCCESS;
 
-    KdPrint(("Closing handle for FileObject=%p Name='%wZ'\n",
-        io_stack->FileObject, &((POBJECT_CONTEXT)io_stack->FileObject->FsContext2)->Name));
-
-    while (!NT_SUCCESS(DevIoDrvCloseFileTableEntry(io_stack->FileObject)))
+    if (io_stack->FileObject->FsContext2 != NULL)
     {
-        LARGE_INTEGER interval;
-        interval.QuadPart = -200000;
-        KeDelayExecutionThread(KernelMode, TRUE, &interval);
+        KdPrint(("Closing handle for FileObject=%p Name='%wZ'\n",
+            io_stack->FileObject, &((POBJECT_CONTEXT)io_stack->FileObject->FsContext2)->Name));
+
+        while (!NT_SUCCESS(DevIoDrvCloseFileTableEntry(io_stack->FileObject)))
+        {
+            LARGE_INTEGER interval;
+            interval.QuadPart = -200000;
+            KeDelayExecutionThread(KernelMode, TRUE, &interval);
+        }
+    }
+    else
+    {
+        KdPrint(("Closing handle for FileObject=%p\n",
+            io_stack->FileObject));
     }
 
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -135,12 +144,24 @@ DevIoDrvDispatchCleanup(PDEVICE_OBJECT, PIRP Irp)
 
     Irp->IoStatus.Information = 0;
 
-    KdPrint(("IRP=%p Cleanup request for FileObject=%p Name='%wZ'\n",
-        Irp, io_stack->FileObject, &((POBJECT_CONTEXT)io_stack->FileObject->FsContext2)->Name));
+    NTSTATUS status;
 
-    KIRQL lowest_assumed_irql = PASSIVE_LEVEL;
+    if (io_stack->FileObject->FsContext2 != NULL)
+    {
+        KdPrint(("IRP=%p Cleanup request for FileObject=%p Name='%wZ'\n",
+            Irp, io_stack->FileObject, &((POBJECT_CONTEXT)io_stack->FileObject->FsContext2)->Name));
 
-    NTSTATUS status = DevIoDrvCancelAll(io_stack->FileObject, &lowest_assumed_irql);
+        KIRQL lowest_assumed_irql = PASSIVE_LEVEL;
+
+        status = DevIoDrvCancelAll(io_stack->FileObject, &lowest_assumed_irql);
+    }
+    else
+    {
+        KdPrint(("IRP=%p Cleanup request for FileObject=%p\n",
+            Irp, io_stack->FileObject));
+
+        status = STATUS_SUCCESS;
+    }
 
     Irp->IoStatus.Status = status;
 
@@ -328,7 +349,7 @@ DevIoDrvDispatchReadWrite(PDEVICE_OBJECT, PIRP Irp)
 
     if (context == NULL)
     {
-        status = STATUS_INTERNAL_ERROR;
+        status = STATUS_ACCESS_DENIED;
     }
     else if (context->Server == NULL)
     {
@@ -376,22 +397,22 @@ DevIoDrvDispatchQueryInformation(PDEVICE_OBJECT, PIRP Irp)
     PIO_STACK_LOCATION io_stack = IoGetCurrentIrpStackLocation(Irp);
     POBJECT_CONTEXT context = (POBJECT_CONTEXT)io_stack->FileObject->FsContext2;
 
-    KdPrint(("IRP=%p Query information for '%wZ' FileObject=%p\n",
-        Irp, &context->Name, io_stack->FileObject));
+    if (context != NULL)
+    {
+        KdPrint(("IRP=%p Query information for '%wZ' FileObject=%p\n",
+            Irp, &context->Name, io_stack->FileObject));
+    }
+    else
+    {
+        KdPrint(("IRP=%p Query information for FileObject=%p\n",
+            Irp, io_stack->FileObject));
+    }
 
     Irp->IoStatus.Information = 0;
 
     NTSTATUS status;
 
     status = STATUS_INVALID_DEVICE_REQUEST;
-
-    if (context == NULL)
-    {
-        Irp->IoStatus.Status = status;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-        return status;
-    }
 
     switch (io_stack->Parameters.QueryFile.FileInformationClass)
     {
@@ -406,10 +427,39 @@ DevIoDrvDispatchQueryInformation(PDEVICE_OBJECT, PIRP Irp)
             break;
         }
 
-        standard_info->AllocationSize =
-            standard_info->EndOfFile = context->FileSize;
+        RtlZeroMemory(standard_info, sizeof(FILE_STANDARD_INFORMATION));
+
+        if (context != NULL)
+        {
+            standard_info->AllocationSize =
+                standard_info->EndOfFile = context->FileSize;
+        }
 
         Irp->IoStatus.Information = sizeof(FILE_STANDARD_INFORMATION);
+        status = STATUS_SUCCESS;
+        break;
+    }
+
+    case FileNetworkOpenInformation:
+    {
+        PFILE_NETWORK_OPEN_INFORMATION info =
+            (PFILE_NETWORK_OPEN_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
+
+        if (io_stack->Parameters.QueryFile.Length < sizeof(FILE_NETWORK_OPEN_INFORMATION))
+        {
+            status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        RtlZeroMemory(info, sizeof(FILE_NETWORK_OPEN_INFORMATION));
+
+        if (context != NULL)
+        {
+            info->AllocationSize =
+                info->EndOfFile = context->FileSize;
+        }
+
+        Irp->IoStatus.Information = sizeof(FILE_NETWORK_OPEN_INFORMATION);
         status = STATUS_SUCCESS;
         break;
     }

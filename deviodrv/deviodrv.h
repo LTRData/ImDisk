@@ -124,7 +124,7 @@ DRIVER_DISPATCH DevIoDrvDispatchControl;
 DRIVER_CANCEL DevIoDrvServerIrpCancelRoutine;
 
 NTSTATUS
-DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject);
+DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject, ULONG DesiredAccess);
 
 NTSTATUS
 DevIoDrvCreateFileTableEntry(PFILE_OBJECT FileObject);

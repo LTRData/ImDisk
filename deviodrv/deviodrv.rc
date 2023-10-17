@@ -10,8 +10,8 @@
 //
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION IMDISK_RC_VERSION_FLD,4
-PRODUCTVERSION IMDISK_RC_VERSION_FLD,4
+FILEVERSION IMDISK_RC_VERSION_FLD,5
+PRODUCTVERSION IMDISK_RC_VERSION_FLD,5
 FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
 #ifndef DEBUG
   FILEFLAGS    0
@@ -28,12 +28,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Olof Lagerkvist\0"
             VALUE "FileDescription", "DevIO Client Driver\0"
-            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".4\0"
+            VALUE "FileVersion", IMDISK_RC_VERSION_STR ".5\0"
             VALUE "InternalName", "deviodrv\0"
             VALUE "LegalCopyright", "Copyright © 2019 Olof Lagerkvist.\0"
             VALUE "OriginalFilename", "deviodrv.sys\0"
             VALUE "ProductName", "deviodrv\0"
-            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".4\0"
+            VALUE "ProductVersion", IMDISK_RC_VERSION_STR ".5\0"
         END
     END
     BLOCK "VarFileInfo"
