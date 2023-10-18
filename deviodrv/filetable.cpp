@@ -68,7 +68,9 @@ NTSTATUS DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject, ULONG DesiredAccess
 
     NTSTATUS status = STATUS_OBJECT_NAME_NOT_FOUND;
 
-    POBJECT_CONTEXT context;
+    POBJECT_CONTEXT context = NULL;
+
+    LONG ref_number = 0;
 
     while (entry != &FileTable)
     {
@@ -76,29 +78,16 @@ NTSTATUS DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject, ULONG DesiredAccess
 
         if (RtlEqualUnicodeString(&FileObject->FileName, &context->Name, TRUE))
         {
-            if (check_attributes_only)
-            {
-                if (context->FileSize.QuadPart > 0)
-                {
-                    status = STATUS_SUCCESS;
-                }
-            }
-            else if (InterlockedIncrement(&context->RefCount) != 2)
-            {
-                status = STATUS_SHARING_VIOLATION;
-            }
-            else if (requests_write_access &&
-                FlagOn(context->ServiceFlags, IMDPROXY_FLAG_RO))
-            {
-                InterlockedDecrement(&context->RefCount);
-                status = STATUS_MEDIA_WRITE_PROTECTED;
-            }
-            else
+            ref_number = InterlockedIncrement(&context->RefCount);
+
+            if (ref_number == 2)
             {
                 context->Client = FileObject;
-                FileObject->FsContext2 = context;
-                status = STATUS_SUCCESS;
             }
+
+            FileObject->FsContext2 = context;
+
+            status = STATUS_SUCCESS;
 
             break;
         }
@@ -107,6 +96,45 @@ NTSTATUS DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject, ULONG DesiredAccess
     }
 
     InterlockedExchange(&FileTableListLock, 0);
+
+    if (status == STATUS_SUCCESS)
+    {
+        // Looking for file metadata only and server side not yet
+        // initialized
+        if (check_attributes_only &&
+            context->FileSize.QuadPart == 0)
+        {
+            status = STATUS_OBJECT_NAME_NOT_FOUND;
+        }
+        // Opening client side can only be done once
+        else if (!check_attributes_only &&
+            ref_number != 2)
+        {
+            status = STATUS_SHARING_VIOLATION;
+        }
+        // Opening client side for writing when server side
+        // is read-only
+        else if (requests_write_access &&
+            FlagOn(context->ServiceFlags, IMDPROXY_FLAG_RO))
+        {
+            status = STATUS_MEDIA_WRITE_PROTECTED;
+        }
+        else if (!check_attributes_only)
+        {
+            FileObject->ReadAccess = TRUE;
+
+            if (requests_write_access)
+            {
+                FileObject->WriteAccess = TRUE;
+            }
+        }
+    }
+
+    if (!NT_SUCCESS(status)
+        && ref_number > 0)
+    {
+        DevIoDrvCloseFileTableEntry(FileObject);
+    }
 
     return status;
 }
@@ -178,6 +206,9 @@ NTSTATUS DevIoDrvCreateFileTableEntry(PFILE_OBJECT FileObject)
         FileObject->FsContext2 = context;
 
         InsertHeadList(&FileTable, &context->ListEntry);
+
+        FileObject->ReadAccess = TRUE;
+        FileObject->WriteAccess = TRUE;
     }
 
     InterlockedExchange(&FileTableListLock, 0);

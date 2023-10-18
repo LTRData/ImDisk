@@ -142,14 +142,19 @@ DevIoDrvDispatchCleanup(PDEVICE_OBJECT, PIRP Irp)
 {
     PIO_STACK_LOCATION io_stack = IoGetCurrentIrpStackLocation(Irp);
 
+    POBJECT_CONTEXT context = (POBJECT_CONTEXT)io_stack->FileObject->FsContext2;
+
     Irp->IoStatus.Information = 0;
 
     NTSTATUS status;
 
-    if (io_stack->FileObject->FsContext2 != NULL)
+    if (context != NULL &&
+        (io_stack->FileObject == context->Server ||
+            io_stack->FileObject->ReadAccess ||
+            io_stack->FileObject->WriteAccess))
     {
         KdPrint(("IRP=%p Cleanup request for FileObject=%p Name='%wZ'\n",
-            Irp, io_stack->FileObject, &((POBJECT_CONTEXT)io_stack->FileObject->FsContext2)->Name));
+            Irp, io_stack->FileObject, &context->Name));
 
         KIRQL lowest_assumed_irql = PASSIVE_LEVEL;
 
@@ -177,6 +182,7 @@ DevIoDrvDispatchControl(PDEVICE_OBJECT, PIRP Irp)
     POBJECT_CONTEXT context = (POBJECT_CONTEXT)io_stack->FileObject->FsContext2;
 
     if (context == NULL ||
+        !(io_stack->FileObject->ReadAccess | io_stack->FileObject->WriteAccess) ||
         (io_stack->MajorFunction != IRP_MJ_DEVICE_CONTROL &&
         !(io_stack->MajorFunction == IRP_MJ_FILE_SYSTEM_CONTROL &&
         (io_stack->MinorFunction == IRP_MN_KERNEL_CALL ||
@@ -347,7 +353,9 @@ DevIoDrvDispatchReadWrite(PDEVICE_OBJECT, PIRP Irp)
 
     POBJECT_CONTEXT context = (POBJECT_CONTEXT)io_stack->FileObject->FsContext2;
 
-    if (context == NULL)
+    if (context == NULL ||
+        (io_stack->MajorFunction == IRP_MJ_READ && !io_stack->FileObject->ReadAccess) ||
+        (io_stack->MajorFunction == IRP_MJ_WRITE && !io_stack->FileObject->WriteAccess))
     {
         status = STATUS_ACCESS_DENIED;
     }
