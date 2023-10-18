@@ -76,10 +76,12 @@ NTSTATUS DevIoDrvOpenFileTableEntry(PFILE_OBJECT FileObject, ULONG DesiredAccess
 
         if (RtlEqualUnicodeString(&FileObject->FileName, &context->Name, TRUE))
         {
-            if (check_attributes_only &&
-                context->FileSize.QuadPart > 0)
+            if (check_attributes_only)
             {
-                status = STATUS_SUCCESS;
+                if (context->FileSize.QuadPart > 0)
+                {
+                    status = STATUS_SUCCESS;
+                }
             }
             else if (InterlockedIncrement(&context->RefCount) != 2)
             {
