@@ -51,6 +51,7 @@ typedef u_char UCHAR;
 #define IMDPROXY_FLAG_SUPPORTS_ZERO     0x04 // Zero-fill ranges
 #define IMDPROXY_FLAG_SUPPORTS_SCSI     0x08 // SCSI SRB operations
 #define IMDPROXY_FLAG_SUPPORTS_SHARED   0x10 // Shared image access with reservations
+#define IMDPROXY_FLAG_KEEP_OPEN         0x20 // DevIoDrv mode with persistent virtual file
 
 typedef enum _IMDPROXY_REQ
 {

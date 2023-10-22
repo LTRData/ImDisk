@@ -69,7 +69,7 @@ DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING)
 
     PDEVICE_OBJECT DeviceObject;
 
-    NTSTATUS status = IoCreateDevice(DriverObject, 0, &dev_path, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
+    NTSTATUS status = IoCreateDevice(DriverObject, 0, &dev_path, FILE_DEVICE_DISK_FILE_SYSTEM, 0, FALSE, &DeviceObject);
     if (!NT_SUCCESS(status))
     {
         DbgPrint("Failed creating device %wZ: %#x\n", &dev_path, status);

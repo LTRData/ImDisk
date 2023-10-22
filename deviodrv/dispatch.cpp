@@ -150,8 +150,8 @@ DevIoDrvDispatchCleanup(PDEVICE_OBJECT, PIRP Irp)
 
     if (context != NULL &&
         (io_stack->FileObject == context->Server ||
-            io_stack->FileObject->ReadAccess ||
-            io_stack->FileObject->WriteAccess))
+            (!FlagOn(context->ServiceFlags, IMDPROXY_FLAG_KEEP_OPEN) &&
+                (io_stack->FileObject->ReadAccess || io_stack->FileObject->WriteAccess))))
     {
         KdPrint(("IRP=%p Cleanup request for FileObject=%p Name='%wZ'\n",
             Irp, io_stack->FileObject, &context->Name));
@@ -261,6 +261,28 @@ DevIoDrvDispatchControl(PDEVICE_OBJECT, PIRP Irp)
 
         return DevIoDrvDispatchServerLockMemory(Irp, &lowest_assumed_irql);
     }
+
+    case IOCTL_DISK_GET_LENGTH_INFO:
+
+        PGET_LENGTH_INFORMATION info =
+            (PGET_LENGTH_INFORMATION)Irp->AssociatedIrp.SystemBuffer;
+
+        if (io_stack->Parameters.QueryFile.Length < sizeof(GET_LENGTH_INFORMATION))
+        {
+            status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+
+        RtlZeroMemory(info, sizeof(GET_LENGTH_INFORMATION));
+
+        if (context != NULL)
+        {
+            info->Length = context->FileSize;
+        }
+
+        Irp->IoStatus.Information = sizeof(GET_LENGTH_INFORMATION);
+        status = STATUS_SUCCESS;
+        break;
     }
 
     Irp->IoStatus.Status = status;
