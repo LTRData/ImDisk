@@ -13,7 +13,7 @@
 
     <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release'">true</GeneratePackageOnBuild>
 
-    <TargetFrameworks>net40;net48;net6.0-windows;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net40;net48;net6.0-windows;net8.0-windows;netstandard2.0</TargetFrameworks>
 
   </PropertyGroup>
 
