@@ -1,44 +1,53 @@
+# ImDisk Virtual Disk Driver
 
-  ImDisk Virtual Disk Driver for Windows NT/2000/XP/2003/Vista/7/8/8.1/10
+ImDisk is a virtual disk driver for Windows. It emulates hard disk partitions, floppy drives and CD/DVD-ROM drives backed by disk image files, virtual memory, or redirected I/O through a cooperating service or proxy server.
 
-  PLEASE NOTE: This project is not recommended on recent versions of Windows
-  and many applications written for Windows Vista and later require features
-  that are not supported. It is based on an old design for compatibility with
-  as old versions as Windows NT 3.51. No new features will be added to this
-  project but it will remain available here because it could still be useful in
-  certain scenarios.
+## Project status and compatibility
 
-  I will continue development of Arsenal Image Mounter instead. That has a
-  different design and emulates complete disks and is compatible with most
-  cases where physical disk are normally used.
-  https://github.com/ArsenalRecon/Arsenal-Image-Mounter
+**ImDisk uses a legacy design and is not recommended for recent versions of Windows.** Its design preserves compatibility with systems as old as Windows NT 3.51, and many applications written for Windows Vista and later require features it does not provide.
 
-  Back to this project, ImDisk Virtual Disk driver.
-  This driver emulates harddisk partitions, floppy drives and CD/DVD-ROM drives
-  from disk image files, in virtual memory or by redirecting I/O requests
-  somewhere else, possibly to another machine, through a co-operating user-mode
-  service, ImDskSvc.
+No new features are planned. Maintenance has continued: the May 2026 changes include a driver bug fix, installer and signing updates, and an ImDiskNet update. This does not remove the design limitations on modern Windows, including Windows 10 and 11.
 
-  To install this driver, service and command line tool, right-click on the
-  imdisk.inf file and select 'Install'. To uninstall, use the Add/Remove
-  Programs applet in the Control Panel.
+Further feature development is focused on [Arsenal Image Mounter](https://github.com/ArsenalRecon/Arsenal-Image-Mounter). It emulates complete disks and works in many scenarios where applications expect physical disks. ImDisk remains available for older systems and specific uses that fit its partition/volume-level design.
 
-  You can get syntax help to the command line tool by typing just imdisk
-  without parameters.
+Historically tested systems include 32-bit Windows NT 3.51, NT 4.0, 2000, XP, Server 2003, Vista, 7, 8, 8.1 and 10, and x86-64 Windows XP, Server 2003, Vista, 7, 8, 8.1 and 10. This is a record of past testing, not a statement that every current build supports every listed system. See the [project website](https://ltr-data.se/opencode.html#ImDisk) for downloads and compatibility details.
 
-  I have tested this product under 32-bit versions of Windows NT 3.51, NT 4.0,
-  2000, XP, Server 2003, Vista, 7, 8, 8.1 and 10 and x86-64 versions of XP,
-  Server 2003, Vista, 7, 8, 8.1 and 10. Primary target are older versions and
-  there are several known compatibility issues on modern version of Windows.
-  Please see website for more details: https://ltr-data.se/opencode.html#ImDisk
+## Repository contents
 
-  The install/uninstall routines do not work under NT 3.51. If you want to use
-  this product under NT 3.51 you have to manually add registry entries needed
-  by driver and service or use resource kit tools to add necessary settings.
-  
-  To install/uninstall on ARM or ARM64 architectures a manual setup is needed.
-  More about that and other frequently asked questions in the wiki:
-  https://github.com/LTRData/ImDisk/wiki
+| Component | Purpose |
+|---|---|
+| [sys](https://github.com/LTRData/ImDisk/tree/master/sys) | Kernel-mode driver, `imdisk.sys`. |
+| [cli](https://github.com/LTRData/ImDisk/tree/master/cli) | Command-line tool, `imdisk.exe`. |
+| [cpl](https://github.com/LTRData/ImDisk/tree/master/cpl) / [cplcore](https://github.com/LTRData/ImDisk/tree/master/cplcore) | Control Panel applet and core native API library. |
+| [svc](https://github.com/LTRData/ImDisk/tree/master/svc) | `ImDskSvc`, the helper service that forwards proxy I/O over TCP/IP or serial connections. |
+| [devio](https://github.com/LTRData/ImDisk/tree/master/devio) | Native server for ImDisk proxy operation. |
+| [ImDiskNet](https://github.com/LTRData/ImDisk/tree/master/ImDiskNet) | VB.NET projects: the ImDisk API wrapper, DevioNet client/server library, and DiscUtilsDevio image-format integration. |
+
+### AWEAlloc and DevIoDrv have moved
+
+AWEAlloc and DevIoDrv were removed from this repository in May 2026. Their source now lives in Arsenal Image Mounter: [AWEAlloc](https://github.com/ArsenalRecon/Arsenal-Image-Mounter/tree/master/Unmanaged%20Source/awealloc) and [DevIoDrv](https://github.com/ArsenalRecon/Arsenal-Image-Mounter/tree/master/Unmanaged%20Source/deviodrv).
+
+The driver files can be installed with Arsenal Image Mounter, including its free versions. Those versions of `awealloc.sys` and `deviodrv.sys` can also be used with ImDisk. Older setup instructions may still refer to an AWEAlloc copy bundled with ImDisk; obtain that driver from Arsenal Image Mounter instead.
+
+## Installation and usage
+
+Use the distribution from the [project website](https://ltr-data.se/opencode.html#ImDisk). The installation instructions apply to an extracted distribution containing the built driver, service and tools, rather than just this source checkout.
+
+To install those components, right-click `imdisk.inf` and select **Install**. To uninstall, use **Add/Remove Programs** in Control Panel.
+
+Run `imdisk` without parameters for command-line syntax. The [FAQ](https://github.com/LTRData/ImDisk/wiki/FAQ) covers RAM disks, image files, proxy operation and mount points.
+
+The historical NT 3.51 install/uninstall routines require manual registry setup or resource-kit tools. ARM and ARM64 installations also require manual setup; see the [ARM64 setup guide](https://github.com/LTRData/ImDisk/wiki/ARM64-setup), together with the AWEAlloc migration note above.
+
+## Building from source
+
+The native projects are collected in [ImDisk.sln](https://github.com/LTRData/ImDisk/blob/master/ImDisk.sln). Toolchain requirements vary by configuration: the project files retain older Visual C++ toolsets, WDK 8.1/10 driver configurations and WDK 7 property sheets. The root `Makefile` is for the older WDK build environment and distribution packaging. Check the selected project's configuration and property sheets when setting up a build.
+
+The managed projects are collected in [ImDiskNet.slnx](https://github.com/LTRData/ImDisk/blob/master/ImDiskNet/ImDiskNet.slnx). Their targets include .NET 8, 9 and 10 alongside older .NET Framework targets; ImDiskNet and DevioNet also target .NET Standard. These managed targets do not change the Windows driver requirements for mounting an ImDisk device.
+
+## Copyright and licensing
+
+The original notices are retained below. The referenced GNU GPL text is available in [LICENSE.md](https://github.com/LTRData/ImDisk/blob/master/LICENSE.md).
 
     Copyright (c) 2005-2021 Olof Lagerkvist
     https://www.ltr-data.se      olof@ltr-data.se
@@ -68,7 +77,7 @@
     - Parts related to floppy emulation based on VFD by Ken Kato.
       https://web.archive.org/web/20100902032534/http://chitchat.at.infoseek.co.jp:80/vmware/vfd.html
     Copyright (C) Free Software Foundation, Inc.
-    Read gpl.txt for the full GNU GPL license.
+    Read LICENSE.md for the full GNU GPL license.
 
     This software may contain BSD licensed code:
     - Some code ported to NT from the FreeBSD md driver by Olof Lagerkvist.
